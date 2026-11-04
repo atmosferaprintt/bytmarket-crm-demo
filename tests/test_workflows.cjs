@@ -1,0 +1,25 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {prepareRepeatedOrder}=require('../app/static/workflows.js');
+const original={id:1,total:240,lines:[{product_id:10,name:'Гель',quantity:2,unit_size:12,price:120,total:240}]};
+const products=[{id:10,name:'Гель',unit_size:6,price:15,available:30}];
+let result=prepareRepeatedOrder(original,products),line=result.lines[0];
+assert.equal(line.quantity,24,'Two old boxes must become 24 pieces, never 2 pieces');
+assert.equal(line.unit_size,1);assert.equal(line.quantity*line.unit_size,24);
+assert.equal(line.packageChanged,true);assert.equal(line.priceChanged,true);
+assert.equal(line.oldPiecePrice,10);assert.equal(line.currentPiecePrice,15);
+assert.equal(line.oldTotal,240);assert.equal(line.total,360);assert.equal(result.total,360);
+assert.equal(line.shortage,false);assert.equal(original.lines[0].quantity,2);
+// Actual form values feed the same reservation calculation as a new order.
+const payload=result.lines.map(l=>({product_id:l.product_id,quantity:l.quantity,unit_size:l.unit_size}));
+assert.equal(payload.reduce((sum,l)=>sum+l.quantity*l.unit_size,0),24);
+assert.equal(payload.reduce((sum,l)=>sum+l.quantity*l.unit_size*products.find(p=>p.id===l.product_id).price,0),360);
+result=prepareRepeatedOrder(original,[{...products[0],unit_size:'12',price:10}]);
+assert.equal(result.lines[0].quantity,2);assert.equal(result.lines[0].unit_size,12);
+assert.equal(result.lines[0].packageChanged,false);assert.equal(result.lines[0].priceChanged,false);
+result=prepareRepeatedOrder(original,[{...products[0],available:23}]);assert.equal(result.lines[0].shortage,true);
+result=prepareRepeatedOrder(original,[]);assert.deepEqual(result.missing,['Гель']);assert.equal(result.total,0);
+const pieceOrder={total:20,lines:[{product_id:10,name:'Гель',quantity:2,unit_size:1,price:10,total:20}]};
+result=prepareRepeatedOrder(pieceOrder,products);assert.equal(result.lines[0].quantity,2);assert.equal(result.lines[0].unit_size,1);assert.equal(result.lines[0].packageChanged,false);
+assert.throws(()=>prepareRepeatedOrder({lines:[{...original.lines[0],quantity:-2}]},products),/Некорректное количество/);
+console.log('Repeat-order regression passed: 2 × 12 => 24 pieces, current price 360, original unchanged; unchanged packaging, string units, shortages, missing SKU and invalid quantity checked.');
