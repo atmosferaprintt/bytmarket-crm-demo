@@ -1,0 +1,286 @@
+/* Раздел «Продажи». Только токены из tokens.css, классы с префиксом sales-. */
+
+/* ---------- список заказов ---------- */
+.sales-orders .table td,
+.sales-orders .table th { padding-left: 8px; padding-right: 8px; }
+.sales-orders .table th:first-child,
+.sales-orders .table td:first-child { padding-left: 20px; }
+.sales-orders .table th:last-child,
+.sales-orders .table td:last-child { padding-right: 20px; }
+.sales-orders .table .chip { height: 20px; padding: 0 8px; font-size: var(--fs-11); }
+.sales-col-client { max-width: 220px; min-width: 150px; }
+.sales-col-client .ellipsis { max-width: 220px; }
+.sales-debt { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 2px; line-height: 1.2; }
+.table tbody tr.sales-row-off td { color: var(--faint); }
+.table tbody tr.sales-row-off .cell-title { color: var(--muted); }
+.sales-chips-compact .chip { height: 20px; padding: 0 7px; font-size: var(--fs-11); }
+
+/* телефон представителя */
+.sales-phone-seg { overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; }
+.sales-phone-seg::-webkit-scrollbar { display: none; }
+.sales-phone-seg .seg-item { height: 34px; font-size: var(--fs-13); }
+.sales-order-card {
+  border: 0; text-align: left; color: inherit; width: 100%;
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 6px;
+}
+.sales-order-card:active { background: var(--row-hover); }
+
+/* ---------- полоса условий клиента ---------- */
+.sales-cond { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); background: var(--sub); border-radius: var(--r-md); }
+.sales-cond > div { padding: 10px 14px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sales-cond > div + div { box-shadow: inset 1px 0 0 var(--line); }
+.sales-cond-label { font-size: var(--fs-12); color: var(--muted); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sales-cond-value { font-size: var(--fs-14); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- клиент в шапке ---------- */
+.sales-client-line { display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
+.sales-client-name { font-size: var(--fs-16); font-weight: 700; line-height: 1.3; display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- окно заказа ---------- */
+.sales-editor { display: flex; flex-direction: column; gap: var(--sp-5); }
+.sales-lines-wrap { margin: 0 -24px; overflow-x: auto; }
+.sales-lines td { height: 52px; }
+.sales-lines th, .sales-lines td { padding-left: 8px; padding-right: 8px; }
+.sales-lines th:first-child, .sales-lines td:first-child { padding-left: 24px; }
+.sales-lines th:last-child, .sales-lines td:last-child { padding-right: 20px; }
+.sales-lines .qty input { width: 40px; }
+.sales-lines tbody tr:last-child td { border-bottom: 1px solid var(--line); }
+.sales-line-name { display: block; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sales-eq { color: var(--muted); font-weight: 600; white-space: nowrap; }
+.sales-eq b { color: var(--ink); }
+.sales-price { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 1px; white-space: nowrap; line-height: 1.2; }
+.sales-short { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 1px; line-height: 1.2; }
+.sales-disc-btn { border: 0; background: transparent; padding: 2px; margin: -2px; border-radius: var(--r-full); cursor: pointer; }
+.sales-disc-btn:hover .chip, .sales-disc-btn:hover > span { box-shadow: inset 0 0 0 1px var(--line-strong); }
+.sales-disc-btn > .faint { display: inline-flex; min-width: 28px; height: 22px; align-items: center; justify-content: center; border-radius: var(--r-full); }
+.sales-pack-inline {
+  appearance: none; border: 0; background: transparent; padding: 0 14px 0 0; margin: 0;
+  font: inherit; font-size: var(--fs-12); color: var(--ink-2); font-weight: 600; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%235D6A82' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3 4.5 3 3 3-3'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 0 center;
+}
+.sales-pack-inline:hover { color: var(--link); }
+.sales-pack-inline { field-sizing: content; }
+.input-wrap > .input.sales-input-plain { padding-left: 12px; }
+.sales-pack-select { width: auto; min-width: 130px; }
+.sales-pack-static { font-size: var(--fs-12); color: var(--ink-2); font-weight: 600; }
+
+.table tbody tr.sales-flash td { animation: sales-flash 900ms var(--ease); }
+@keyframes sales-flash { from { background: var(--green-soft); } to { background: transparent; } }
+.sales-lines-empty { background: var(--sub); border-radius: var(--r-md); }
+
+.sales-add-line { display: flex; align-items: center; gap: var(--sp-2); }
+.sales-add-line.is-phone { flex-direction: column; align-items: stretch; }
+.sales-search { position: relative; flex: 1 1 auto; min-width: 0; }
+.sales-search .input-wrap { width: 100%; }
+.sales-suggest {
+  position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 5;
+  background: var(--panel); border-radius: var(--r-md); box-shadow: var(--sh-pop); padding: 6px;
+  max-height: 360px; overflow-y: auto; animation: pop-in var(--dur-fast) var(--ease);
+}
+.sales-suggest-row {
+  width: 100%; display: flex; align-items: center; gap: var(--sp-3); padding: 8px 10px; min-width: 0;
+  border: 0; background: transparent; border-radius: var(--r-sm); text-align: left; color: inherit;
+}
+.sales-suggest-row.is-active { background: var(--sub-hover); }
+.sales-suggest-empty { padding: 14px 10px; color: var(--muted); font-size: var(--fs-13); }
+
+.sales-ord-bottom { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: var(--sp-6); align-items: start; }
+.sales-ord-bottom.is-phone { grid-template-columns: minmax(0, 1fr); }
+.sales-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-4); }
+.sales-span-2 { grid-column: 1 / -1; }
+.sales-form-grid .seg { width: max-content; }
+.sales-static {
+  min-height: var(--control-h); display: flex; align-items: center; padding: 0 12px;
+  border-radius: var(--r-sm); background: var(--sub); color: var(--ink-2); font-size: var(--fs-13); min-width: 0;
+}
+.sales-totals { display: flex; flex-direction: column; gap: 4px; }
+.sales-totals .stat-row { padding: 7px 0; }
+.sales-total-big { display: flex; align-items: baseline; justify-content: space-between; padding: 10px 0 6px; }
+.sales-total-big > span:first-child { font-size: var(--fs-16); font-weight: 700; }
+.sales-total-big > span:last-child { font-size: var(--fs-24); font-weight: 800; white-space: nowrap; letter-spacing: -0.01em; }
+
+.sales-limit { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; }
+.sales-limit-bar { display: flex; height: 8px; border-radius: var(--r-full); background: var(--chart-track); overflow: hidden; }
+.sales-limit-bar > span { display: block; height: 100%; }
+.sales-limit-bar > span + span { box-shadow: -2px 0 0 var(--panel); }
+.sales-limit-bar .is-used, .sales-limit-legend i.is-used { background: var(--chart-4); }
+.sales-limit-bar .is-current, .sales-limit-legend i.is-current { background: var(--chart-2); }
+.sales-limit-legend { display: flex; gap: var(--sp-4); font-size: var(--fs-12); color: var(--muted); font-weight: 600; flex-wrap: wrap; }
+.sales-limit-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sales-limit-legend i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; background: var(--chart-track); }
+
+.sales-rep-note { display: flex; align-items: center; gap: 8px; font-size: var(--fs-13); font-weight: 600; color: var(--violet); }
+.sales-rep-note svg { width: 16px; height: 16px; }
+.sales-saved { font-size: var(--fs-12); color: var(--muted); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.sales-saved svg { width: 14px; height: 14px; color: var(--ok); }
+.sales-saved.is-idle svg { color: var(--faint); }
+.sales-editor-foot { display: flex; align-items: center; gap: var(--sp-2); width: 100%; }
+.sales-editor-foot.is-phone { flex-wrap: wrap; }
+.sales-editor-foot.is-phone > .spacer { display: none; }
+.sales-editor-foot.is-phone > .sales-saved { display: none; }
+.sales-editor-foot.is-phone > .btn { flex: 1 1 100%; }
+
+.sales-line-cards { display: flex; flex-direction: column; gap: var(--sp-2); }
+.sales-line-card { background: var(--sub); border-radius: var(--r-md); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.sales-line-card.sales-flash { animation: sales-flash 900ms var(--ease); }
+.sales-editor.is-phone .qty { height: 44px; border-radius: var(--r-sm); background: var(--panel); }
+.sales-editor.is-phone .qty button { width: 42px; }
+.sales-editor.is-phone .sales-line-card .sales-pack-select { flex: 1 1 auto; min-width: 0; }
+.sales-editor.is-phone .qty input { width: 52px; font-size: var(--fs-16); }
+.sales-editor.is-phone .sales-pack-select { height: 44px; background-color: var(--panel); font-size: var(--fs-14); }
+.sales-editor.is-phone .sales-cond { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.sales-editor.is-phone .sales-cond > div { box-shadow: inset 0 -1px 0 var(--line); }
+.sales-editor.is-phone .sales-cond > div:nth-child(2n) { box-shadow: inset 1px 0 0 var(--line), inset 0 -1px 0 var(--line); }
+.sales-editor.is-phone .sales-form-grid { grid-template-columns: minmax(0, 1fr); }
+.sales-editor.is-phone .input, .sales-editor.is-phone .select { height: 44px; font-size: var(--fs-14); }
+.sales-editor.is-phone .seg-item { height: 38px; font-size: var(--fs-13); padding: 0 16px; }
+
+.sales-picker { max-height: calc(100vh - 300px); overflow-y: auto; box-shadow: none; border-radius: var(--r-md); background: var(--sub); }
+.sales-picker .list-row { border-bottom-color: var(--line); }
+
+/* повтор: было → стало */
+.sales-repeat { background: var(--sub); box-shadow: none; overflow: hidden; }
+.sales-repeat-head { display: flex; align-items: center; gap: var(--sp-3); padding: 14px 16px 10px; }
+.sales-repeat-table th { background: transparent; }
+.sales-repeat-table th:first-child, .sales-repeat-table td:first-child { padding-left: 16px; }
+.sales-repeat-table td { border-bottom-color: var(--line); }
+.sales-repeat .table tbody tr:hover td { background: transparent; }
+.sales-repeat-foot { padding: 12px 16px; border-top: 1px solid var(--line); }
+.sales-was-now { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-weight: 700; }
+.sales-was-now .was { color: var(--faint); font-weight: 600; text-decoration: line-through; }
+.sales-was-now svg { width: 14px; height: 14px; color: var(--faint); }
+.sales-was-now.is-up .now { color: var(--bad); }
+.sales-was-now.is-down .now { color: var(--ok); }
+.sales-change-list { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.sales-modal-table { margin: 0 -24px; max-height: 52vh; overflow: auto; }
+.sales-modal-table th:first-child, .sales-modal-table td:first-child { padding-left: 24px; }
+.sales-modal-table th:last-child, .sales-modal-table td:last-child { padding-right: 24px; }
+.sales-return-table .select { min-width: 140px; }
+.sales-return-table td { height: 46px; }
+.sales-chip-btn { border: 0; cursor: pointer; }
+.sales-chip-btn:hover { background: var(--sub-hover); }
+
+/* меню «⋯» внутри панели — выше панели и окна */
+.menu.sales-top-menu { z-index: calc(var(--z-modal) + 5); }
+
+/* ---------- карточка заказа ---------- */
+.sales-card-foot { display: flex; align-items: center; gap: var(--sp-2); width: 100%; flex-wrap: wrap; }
+.sales-block { display: flex; flex-direction: column; gap: var(--sp-3); }
+.sales-block-head { display: flex; align-items: baseline; gap: var(--sp-3); }
+.sales-card-totals { align-self: flex-end; width: 360px; max-width: 100%; }
+.sales-card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-4); align-items: start; }
+.sales-order-body { display: flex; flex-direction: column; gap: var(--sp-5); }
+.sales-order-body .card { box-shadow: none; border: 1px solid var(--line); }
+.sales-order-body .card-head { padding: 14px 16px 0; min-height: 44px; }
+.sales-order-body .card-body { padding: 10px 16px 16px; }
+.sales-mini-list { display: flex; flex-direction: column; margin-top: 8px; border-top: 1px solid var(--line); }
+.sales-mini-list.is-flat { margin-top: 0; border-top: 0; }
+.sales-mini-row { display: flex; align-items: center; gap: var(--sp-2); padding: 8px 0; border-bottom: 1px solid var(--line); font-size: var(--fs-13); min-width: 0; }
+.sales-mini-row:last-child { border-bottom: 0; }
+.sales-mini-empty { padding-top: 10px; }
+.sales-phone-line { align-items: flex-start; gap: var(--sp-3); }
+.sales-wrap-value { white-space: normal; text-align: right; display: inline-block; }
+.sales-history { display: flex; flex-direction: column; }
+.sales-history-row { display: flex; align-items: baseline; gap: var(--sp-3); padding: 7px 0; border-bottom: 1px solid var(--line); font-size: var(--fs-13); }
+.sales-history-row:last-child { border-bottom: 0; }
+.sales-history-dot { width: 14px; flex: 0 0 14px; display: inline-flex; align-self: center; }
+.sales-history-dot svg { width: 14px; height: 14px; color: var(--ok); }
+.sales-history-dot:empty::before { content: ''; width: 6px; height: 6px; border-radius: var(--r-full); background: var(--line-strong); margin: 0 4px; }
+
+/* ---------- чаты ---------- */
+.sales-chats { display: grid; grid-template-columns: 300px minmax(0, 1fr) 290px; gap: var(--sp-4); height: calc(100vh - 150px); min-height: 560px; }
+.sales-chats > * { min-height: 0; }
+.sales-chats.is-phone { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 0; }
+.sales-chat-list { display: flex; flex-direction: column; overflow: hidden; }
+.sales-chat-list-head { padding: 14px; display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid var(--line); }
+.sales-chat-list-head .seg { align-self: flex-start; }
+.sales-chat-items { overflow-y: auto; flex: 1 1 auto; }
+.sales-chat-item {
+  width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 0; border-bottom: 1px solid var(--line);
+  background: transparent; text-align: left; color: inherit; min-width: 0;
+}
+.sales-chat-item > .grow { display: flex; flex-direction: column; gap: 2px; }
+.sales-chat-item:hover { background: var(--row-hover); }
+.sales-chat-item.is-active { background: var(--row-selected); }
+.sales-unread {
+  min-width: 20px; height: 20px; padding: 0 6px; border-radius: var(--r-full); background: var(--primary); color: var(--on-primary);
+  font-size: var(--fs-11); font-weight: 700; display: inline-flex; align-items: center; justify-content: center;
+}
+.sales-conv { display: flex; flex-direction: column; overflow: hidden; }
+.sales-chats.is-phone .sales-conv { height: calc(100vh - 230px); min-height: 480px; }
+.sales-conv-head { display: flex; align-items: center; gap: var(--sp-3); padding: 12px 16px; border-bottom: 1px solid var(--line); min-width: 0; }
+.sales-conv-body { flex: 1 1 auto; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 8px; background: var(--sub); }
+.sales-day-sep { align-self: center; margin: 8px 0; padding: 2px 10px; border-radius: var(--r-full); background: var(--panel); color: var(--muted); font-size: var(--fs-12); font-weight: 600; }
+.sales-msg { max-width: 76%; padding: 8px 12px 6px; border-radius: 14px; display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-13); line-height: 1.4; }
+.sales-msg.is-client { align-self: flex-start; background: var(--panel); border-bottom-left-radius: 4px; box-shadow: var(--sh-card); }
+.sales-msg.is-staff { align-self: flex-end; background: var(--green-soft); border-bottom-right-radius: 4px; }
+.sales-msg-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.sales-msg-meta { font-size: var(--fs-11); color: var(--muted); align-self: flex-end; }
+.sales-msg-order { align-self: flex-start; font-size: var(--fs-12); font-weight: 700; color: var(--link); border: 0; background: var(--panel); border-radius: 8px; padding: 4px 8px; cursor: pointer; }
+.sales-msg-order:hover { text-decoration: underline; }
+.sales-composer { padding: 12px 16px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+.sales-quick { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.sales-quick::-webkit-scrollbar { display: none; }
+.sales-quick .chip { flex: 0 0 auto; }
+.sales-composer-input { min-height: 44px; flex: 1 1 auto; }
+.sales-chat-side { display: flex; flex-direction: column; overflow: hidden; }
+.sales-chat-side-body { flex: 1 1 auto; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: var(--sp-4); }
+.sales-chat-side-foot { padding: 12px 16px 16px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: var(--sp-2); }
+.sales-side-order {
+  display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-radius: var(--r-sm); background: var(--sub);
+  border: 0; text-align: left; color: inherit; width: 100%; cursor: pointer;
+}
+.sales-side-order:hover { background: var(--sub-hover); }
+.sales-phone-chat-action { position: sticky; bottom: 76px; z-index: 2; }
+
+/* ---------- рабочий стол менеджера ---------- */
+.sales-home { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: var(--sp-5); align-items: start; }
+.sales-more-link { display: inline-flex; align-items: center; gap: 2px; font-size: var(--fs-13); font-weight: 600; }
+.sales-count {
+  min-width: 32px; height: 24px; padding: 0 8px; border-radius: var(--r-full); background: var(--neutral-soft); color: var(--muted);
+  font-size: var(--fs-13); font-weight: 700; display: inline-flex; align-items: center; justify-content: center;
+}
+.sales-count.is-on { background: var(--info-soft); color: var(--info); }
+.sales-count.is-warn { background: var(--warn-soft); color: var(--warn); }
+.sales-plan-bar { position: relative; }
+.sales-plan-bar .bar { height: 10px; }
+.sales-plan-mark { position: absolute; top: -3px; width: 2px; height: 16px; border-radius: 1px; background: var(--navy); transform: translateX(-1px); }
+.sales-task { align-items: flex-start; }
+
+/* ---------- ширина 1280 и уже ---------- */
+@media (max-width: 1360px) {
+  .sales-chats { grid-template-columns: 270px minmax(0, 1fr) 260px; }
+  .sales-col-client, .sales-col-client .ellipsis { max-width: 210px; }
+  .sales-orders .table td, .sales-orders .table th { padding-left: 6px; padding-right: 6px; }
+  .sales-orders .table th.is-sortable:not(.is-sorted) .th-inner svg { display: none; }
+  .sales-line-name { max-width: 230px; }
+}
+@media (max-width: 760px) {
+  .sales-client-line .icon-tile { display: none; }
+  .sales-home { grid-template-columns: minmax(0, 1fr); }
+  .sales-card-grid { grid-template-columns: minmax(0, 1fr); }
+  .sales-cond { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sales-lines-wrap { margin: 0 -24px; }
+}
+
+/* ---------- печать ---------- */
+.sales-print { display: none; }
+@media print {
+  body.sales-printing > *:not(.sales-print) { display: none !important; }
+  body.sales-printing .sales-print { display: block; }
+  body.sales-printing { background: var(--panel); }
+}
+.sales-doc { color: var(--ink); font-size: var(--fs-12); line-height: 1.4; padding: 0 4px; }
+.sales-doc-title { font-size: var(--fs-20); font-weight: 700; margin: 18px 0 12px; }
+.sales-doc-small { display: block; font-size: var(--fs-11); color: var(--muted); }
+.sales-doc-bank { width: 100%; border-collapse: collapse; }
+.sales-doc-bank td { border: 1px solid var(--ink); padding: 4px 8px; vertical-align: top; }
+.sales-doc-parties { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.sales-doc-lines { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+.sales-doc-lines th, .sales-doc-lines td { border: 1px solid var(--ink); padding: 4px 6px; text-align: left; vertical-align: top; }
+.sales-doc-lines th { font-weight: 700; }
+.sales-doc-lines .num { text-align: right; white-space: nowrap; }
+.sales-doc-lines tfoot td { font-weight: 700; text-align: right; border: 0; }
+.sales-doc-sign { display: flex; justify-content: space-between; margin-top: 36px; gap: 24px; }

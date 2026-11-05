@@ -1,0 +1,52 @@
+/* Оболочка: переключатель ролей, поиск, задачи, телефон. Только токены. */
+
+.role-card { box-shadow: none; border: 1px solid var(--line); overflow: hidden; }
+.role-card.is-active { border-color: var(--green-soft-2); background: var(--row-selected); }
+.role-card-main {
+  width: 100%; display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px;
+  border: 0; background: transparent; text-align: left; color: inherit;
+}
+.role-card-main:hover { background: var(--row-hover); }
+.role-card.is-active .role-card-main:hover { background: transparent; }
+.role-card-people { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 16px 12px 72px; }
+.role-card-people .chip { cursor: pointer; border: 0; }
+.role-card-people .chip.is-current { background: var(--navy); color: #fff; box-shadow: none; }
+
+.palette-overlay { align-items: flex-start; padding-top: 12vh; }
+.palette {
+  width: min(640px, 100%); background: var(--panel); border-radius: var(--r-lg); box-shadow: var(--sh-modal);
+  padding: 12px; display: flex; flex-direction: column; gap: 8px; animation: pop-in var(--dur) var(--ease);
+}
+.palette-list { max-height: 56vh; overflow-y: auto; display: flex; flex-direction: column; }
+.palette-group { font-size: var(--fs-12); color: var(--muted); font-weight: 600; padding: 10px 10px 4px; }
+.palette-item {
+  width: 100%; display: flex; align-items: center; gap: 12px; padding: 8px 10px; border: 0; border-radius: var(--r-sm);
+  background: transparent; text-align: left; color: inherit;
+}
+.palette-item.is-active { background: var(--sub-hover); }
+
+.topbar-logo { height: 28px; width: auto; }
+.topbar-date { font-size: var(--fs-13); font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+.topbar-tasks { position: relative; }
+.tasks-count {
+  position: absolute; top: 0; right: -2px;
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--r-full); background: var(--bad); color: #fff;
+  font-size: var(--fs-11); font-weight: 700; display: inline-flex; align-items: center; justify-content: center;
+}
+.task-check { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--green-600); flex: 0 0 auto; }
+
+.mobile-icon { position: relative; display: inline-flex; }
+.mobile-badge {
+  position: absolute; top: -4px; right: -10px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--r-full);
+  background: var(--bad); color: #fff; font-size: var(--fs-11); font-weight: 700; display: inline-flex; align-items: center; justify-content: center;
+}
+.mobile-more { position: fixed; inset: 0; z-index: calc(var(--z-nav) - 1); background: var(--overlay); display: flex; align-items: flex-end; padding: 0 8px 72px; }
+.mobile-more-sheet { width: 100%; overflow: hidden; }
+
+@media (max-width: 760px) {
+  .page-head { gap: var(--sp-3); }
+  .page-head .tabs { margin-left: 0; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .page-actions { margin-left: 0; width: 100%; }
+  .page-actions > .btn-primary { flex: 1 1 auto; }
+  .role-card-people { padding-left: 16px; }
+}

@@ -1,0 +1,74 @@
+/* Графики БытМаркет. Только токены: факт — --chart-1, сравнение — --chart-3, сетка — --chart-grid. Префикс vz-. */
+
+.vz-chart { position: relative; width: 100%; min-width: 0; }
+.vz-chart svg { display: block; overflow: visible; }
+.vz-chart.is-fill { flex: 1 1 auto; }
+.vz-chart.is-fill > svg { position: absolute; left: 0; top: 0; }
+.vz-chart svg:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; border-radius: var(--r-xs); }
+.vz-grid { stroke: var(--chart-grid); stroke-width: 1; shape-rendering: crispEdges; }
+.vz-base { stroke: var(--line-strong); stroke-width: 1; shape-rendering: crispEdges; }
+.vz-label { fill: var(--muted); font-size: var(--fs-11); font-weight: 500; font-variant-numeric: tabular-nums; }
+.vz-bar { fill: var(--chart-1); transition: fill var(--dur-fast) var(--ease); }
+.vz-bar.is-mark { fill: var(--green-600); }
+.vz-bar.is-hover { fill: var(--green-700); }
+.vz-line { stroke: var(--chart-3); stroke-width: 2; fill: none; stroke-linejoin: round; stroke-linecap: round; pointer-events: none; }
+.vz-dot-prev { fill: var(--chart-3); stroke: var(--panel); stroke-width: 2; pointer-events: none; }
+.vz-hit { fill: transparent; cursor: default; }
+
+.vz-tip {
+  position: absolute; z-index: 5; pointer-events: none;
+  transform: translate(-50%, calc(-100% - 10px));
+  min-width: 168px; padding: 8px 10px; border-radius: var(--r-sm);
+  background: var(--navy-900); color: var(--on-dark); box-shadow: var(--sh-pop);
+  font-size: var(--fs-12); white-space: nowrap;
+}
+.vz-tip-title { font-weight: 700; margin-bottom: 4px; }
+.vz-tip-row { display: flex; align-items: center; gap: 8px; line-height: 1.6; }
+.vz-tip-name { color: var(--on-dark-muted); }
+.vz-tip-val { margin-left: auto; padding-left: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.vz-key { display: inline-block; flex: 0 0 auto; }
+.vz-key.is-bar { width: 10px; height: 10px; border-radius: 3px; background: var(--chart-1); }
+.vz-key.is-line { width: 14px; height: 2px; border-radius: 2px; background: var(--chart-3); }
+.vz-key.is-muted { width: 10px; height: 10px; border-radius: 3px; background: var(--chart-3); }
+
+.vz-legend { display: inline-flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap; font-size: var(--fs-12); font-weight: 600; color: var(--muted); }
+.vz-legend-item { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.vz-legend-item b { color: var(--ink); font-weight: 700; margin-left: 2px; font-variant-numeric: tabular-nums; }
+
+.vz-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: var(--fs-13); font-weight: 600; }
+
+/* только для чтения с экрана */
+.vz-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+
+/* полосы */
+.vz-hbars { display: flex; flex-direction: column; }
+.vz-hbar {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'label val' 'track track';
+  column-gap: var(--sp-3); row-gap: 5px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: var(--fs-13);
+  width: 100%; text-align: left; color: inherit; background: transparent; border-left: 0; border-right: 0; border-top: 0;
+}
+.vz-hbar:last-child { border-bottom: 0; }
+.vz-hbar.is-click { cursor: pointer; border-radius: 0; }
+.vz-hbar.is-click:hover .vz-hbar-label { color: var(--link); }
+.vz-hbar-label { grid-area: label; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); font-weight: 500; }
+.vz-hbar-val { grid-area: val; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.vz-hbar-track { grid-area: track; height: 6px; border-radius: var(--r-full); background: var(--chart-track); overflow: hidden; }
+.vz-hbar-fill { display: block; height: 100%; border-radius: var(--r-full); }
+.vz-hbar-empty { padding: 18px 0; color: var(--muted); font-size: var(--fs-13); }
+
+/* целое из частей */
+.vz-seg { display: flex; flex-direction: column; gap: 10px; }
+.vz-seg-bar { display: flex; gap: 2px; height: 8px; border-radius: var(--r-full); overflow: hidden; }
+.vz-seg-bar > span { display: block; min-width: 3px; height: 100%; }
+.vz-seg-legend { display: flex; flex-wrap: wrap; gap: 6px var(--sp-4); font-size: var(--fs-12); font-weight: 600; color: var(--muted); }
+
+/* план */
+.vz-plan { display: inline-flex; align-items: center; gap: var(--sp-2); min-width: 96px; width: 100%; }
+.vz-plan-track { flex: 1 1 auto; height: 6px; border-radius: var(--r-full); background: var(--chart-track); overflow: hidden; }
+.vz-plan-fill { display: block; height: 100%; border-radius: var(--r-full); }
+.vz-plan-pct { font-size: var(--fs-12); font-weight: 700; color: var(--ink); min-width: 38px; text-align: right; font-variant-numeric: tabular-nums; }
+
+.vz-spark { display: block; }
+.vz-spark rect { fill: var(--chart-3); }
+.vz-spark rect.is-last { fill: var(--chart-1); }

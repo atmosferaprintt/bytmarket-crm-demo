@@ -1,0 +1,135 @@
+/* БытМаркет — токены оформления. Единственный источник цветов, размеров, радиусов и теней.
+   Цвета взяты из логотипа assets/brand: тёмно-синий #0D2559 и зелёный #1F8A13.
+   В компонентах — только var(--…); своих hex в разделах не заводить. */
+
+:root {
+  color-scheme: light;
+
+  /* шрифт и шкала размеров — только эти восемь */
+  --font: 'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --fs-11: 11px;
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-14: 14px;
+  --fs-16: 16px;
+  --fs-20: 20px;
+  --fs-24: 24px;
+  --fs-32: 32px;
+  --lh-tight: 1.2;
+  --lh: 1.45;
+
+  /* радиусы: карточки 16–20, поля и кнопки 10 */
+  --r-xs: 6px;
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-card: 18px;
+  --r-lg: 20px;
+  --r-full: 999px;
+
+  /* отступы */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+
+  /* бренд */
+  --navy: #0D2559;
+  --navy-900: #0A1D47;
+  --navy-800: #102A5E;
+  --navy-700: #1A3770;
+  --green: #1F8A13;
+  --green-600: #1B7A10;
+  --green-700: #16650D;
+  --green-soft: #E8F4E4;
+  --green-soft-2: #D6ECCF;
+
+  /* поверхности */
+  --page: #F2F5F9;
+  --panel: #FFFFFF;
+  --sub: #F6F8FB;
+  --sub-hover: #EEF2F7;
+  --field: #F1F4F8;
+  --field-hover: #E9EEF4;
+  --line: #E5EAF1;
+  --line-strong: #CDD6E2;
+  --row-hover: #F7F9FC;
+  --row-selected: #EEF5EB;
+
+  /* текст */
+  --ink: #0F1E3D;
+  --ink-2: #33425E;
+  --muted: #5D6A82;
+  --faint: #929DB1;
+  --on-dark: #F3F6FB;
+  --on-dark-muted: #A9B7D3;
+
+  /* главное действие — зелёный, ссылки — синий */
+  --primary: var(--green-600);
+  --primary-hover: var(--green-700);
+  --on-primary: #FFFFFF;
+  --link: #1D4FA8;
+  --focus: #2F7DE0;
+
+  /* статусы: текст + мягкая подложка; цвет только помогает тексту */
+  --ok: #1B6E2E;
+  --ok-soft: #E4F3E6;
+  --warn: #8F5200;
+  --warn-soft: #FCF0DB;
+  --bad: #B3301E;
+  --bad-soft: #FBE7E3;
+  --info: #1D58B0;
+  --info-soft: #E5EEFB;
+  --neutral: #4C5A72;
+  --neutral-soft: #EEF1F6;
+  --violet: #6B3FB0;
+  --violet-soft: #F0EAFA;
+
+  /* меню */
+  --nav-bg: var(--navy-900);
+  --nav-ink: #E9EEF8;
+  --nav-muted: #93A4C6;
+  --nav-hover: rgba(255, 255, 255, 0.07);
+  --nav-active-bg: rgba(255, 255, 255, 0.12);
+  --nav-active-ink: #FFFFFF;
+  --nav-active-icon: #6FD35F;
+  --nav-badge-bg: rgba(255, 255, 255, 0.14);
+
+  /* графики: факт — зелёный, сравнение — серо-синий, план — синий пунктир */
+  --chart-1: #1F8A13;
+  --chart-2: #2A5CB8;
+  --chart-3: #A4B0C4;
+  --chart-4: #D9822B;
+  --chart-5: #7A4FC2;
+  --chart-6: #1A9C8C;
+  --chart-grid: #EDF1F6;
+  --chart-track: #EEF2F6;
+
+  /* тени: лёгкие */
+  --sh-card: 0 1px 2px rgba(15, 30, 61, 0.05), 0 8px 24px -18px rgba(15, 30, 61, 0.22);
+  --sh-pop: 0 2px 6px rgba(15, 30, 61, 0.06), 0 18px 40px -16px rgba(15, 30, 61, 0.30);
+  --sh-modal: 0 0 0 1px rgba(15, 30, 61, 0.05), 0 40px 100px -30px rgba(10, 29, 71, 0.45);
+  --overlay: rgba(10, 29, 71, 0.32);
+
+  /* слои */
+  --z-nav: 40;
+  --z-pop: 90;
+  --z-drawer: 70;
+  --z-modal: 80;
+  --z-toast: 100;
+
+  /* движение */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 140ms;
+  --dur: 220ms;
+
+  /* размеры каркаса */
+  --sidebar-w: 236px;
+  --sidebar-w-collapsed: 76px;
+  --topbar-h: 60px;
+  --control-h: 36px;
+  --control-h-sm: 30px;
+  --row-h: 44px;
+}

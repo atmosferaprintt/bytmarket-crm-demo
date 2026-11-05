@@ -1,0 +1,378 @@
+/* Склад → Сборка: очередь подтверждённых заказов, лист сборки, «Начать сборку → Собрано», выдача самовывозом. */
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { ExternalLink, PackageCheck, Play, Printer } from 'lucide-react';
+import type { Delivery } from '../../data/types';
+import { LOCATION_NAMES } from '../../data/types';
+import { useDB, useDBVersion } from '../../data/store';
+import { indexes } from '../../data/selectors';
+import { useSession } from '../../roles/session';
+import { PageHeader } from '../../shell/PageHeader';
+import { EntityLink, useOpenEntity } from '../../shell/entities';
+import {
+  Button,
+  Card,
+  Chip,
+  ConfirmButton,
+  DataTable,
+  EmptyState,
+  MoreMenu,
+  Notice,
+  ProgressBar,
+  StatusChip,
+  DELIVERY_STATE,
+  PICK_STATE,
+  SHIP_STATE,
+  fmt,
+  toast,
+  type Column,
+  type FilterDef,
+} from '../../ui';
+import { pickQueue, stockTabCounts, type PickItem } from './picking';
+import { act } from './act';
+import { usePrint } from './print';
+
+function whenText(x: PickItem, today: string): string {
+  if (x.o.fulfillment === 'pickup') return 'Самовывоз';
+  if (!x.delivery) return 'Доставка, дата не назначена';
+  return `${fmt.relDate(x.delivery.date, today)}, ${x.delivery.interval}`;
+}
+
+function packText(rest: number, pack: string, packSize: number): string {
+  if (pack === 'pcs' || packSize <= 1) return '';
+  const n = Math.floor(rest / packSize);
+  const tail = rest - n * packSize;
+  const unit = pack === 'box' ? 'кор.' : 'уп.';
+  if (!n) return '';
+  return `${fmt.num(n)} ${unit} по ${packSize}${tail ? ` + ${tail} шт` : ''}`;
+}
+
+export function PickSheet({ x, today, client }: { x: PickItem; today: string; client: string }) {
+  return (
+    <div className="stock-print-page">
+      <h1>Лист сборки · заказ № {x.o.number}</h1>
+      <div className="stock-print-meta">
+        <span>Клиент: {client}</span>
+        <span>{x.o.fulfillment === 'pickup' ? 'Самовывоз' : `Доставка: ${x.delivery ? `${fmt.date(x.delivery.date)}, ${x.delivery.interval}, ${x.delivery.address}` : 'дата не назначена'}`}</span>
+        <span>Откуда: {LOCATION_NAMES[x.o.location]}</span>
+        <span>
+          Позиций: {x.positions} · штук: {x.qty} · мест: {x.places}
+        </span>
+        <span>Напечатан: {fmt.date(today)}</span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th style={{ width: 24 }} />
+            <th>№</th>
+            <th>Товар</th>
+            <th>Артикул</th>
+            <th>Упаковка</th>
+            <th className="num">Штук</th>
+          </tr>
+        </thead>
+        <tbody>
+          {x.lines.map((l, i) => (
+            <tr key={i}>
+              <td>
+                <span className="stock-print-box" />
+              </td>
+              <td>{i + 1}</td>
+              <td>{l.p.name}</td>
+              <td>{l.p.sku}</td>
+              <td>{packText(l.rest, l.line.pack, l.line.packSize) || 'штучно'}</td>
+              <td className="num">{l.rest}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="stock-print-sign">
+        <span>Собрал: ____________</span>
+        <span>Проверил: ____________</span>
+        <span>Мест: ______</span>
+      </div>
+    </div>
+  );
+}
+
+function DeliveryNote({ d, courier }: { d: Delivery | undefined; courier: string | null }) {
+  if (!d) return <Notice tone="warn">Доставка по заказу ещё не оформлена. Менеджер или диспетчер назначат дату и курьера</Notice>;
+  if (d.state === 'waiting')
+    return (
+      <Notice tone="warn" title="Ждёт назначения курьера">
+        Доставка № {d.number} на {fmt.date(d.date)}, {d.interval}. Товар спишется со склада, когда курьер отметит выезд
+      </Notice>
+    );
+  return (
+    <Notice tone="info" title={`Ждёт курьера${courier ? `: ${courier}` : ''}`}>
+      Доставка № {d.number}, {fmt.date(d.date)}, {d.interval}. Отдайте собранный заказ курьеру — товар спишется со склада, когда он отметит выезд
+    </Notice>
+  );
+}
+
+export default function PickingPage() {
+  const db = useDB();
+  const version = useDBVersion();
+  const { me, can } = useSession();
+  const open = useOpenEntity();
+  const printer = usePrint();
+  const ix = indexes(db);
+  const today = db.meta.today;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const queue = useMemo(() => pickQueue(db), [db, version]);
+  const [params] = useSearchParams();
+  const [sel, setSel] = useState<string | null>(() => params.get('order'));
+  const [checked, setChecked] = useState<Record<string, Set<number>>>({});
+  const current = queue.find((x) => x.id === sel) ?? queue[0];
+  useEffect(() => {
+    if (current && current.id !== sel) setSel(current.id);
+  }, [current, sel]);
+
+  const canWork = can('shipOrder');
+  const clientName = (x: PickItem) => x.client?.name ?? 'Клиент';
+
+  const filters: FilterDef<PickItem>[] = useMemo(
+    () => [
+      {
+        key: 'stage',
+        label: 'Этап',
+        showCounts: true,
+        options: [
+          { value: 'all', label: 'Все' },
+          { value: 'today', label: 'На сегодня', test: (x) => x.forToday },
+          { value: 'none', label: 'Не начаты', test: (x) => x.o.pick === 'none' },
+          { value: 'picking', label: 'Собираются', test: (x) => x.o.pick === 'picking' },
+          { value: 'picked', label: 'Собраны', test: (x) => x.o.pick === 'picked' },
+        ],
+      },
+    ],
+    [],
+  );
+
+  const columns: Column<PickItem>[] = [
+    {
+      key: 'order',
+      header: 'Заказ',
+      sort: (x) => x.o.number,
+      csv: (x) => x.o.number,
+      render: (x) => (
+        <div className="stock-order-cell">
+          <div className="cell-title">№ {x.o.number}</div>
+          <div className="cell-sub">{clientName(x)}</div>
+        </div>
+      ),
+    },
+    {
+      key: 'when',
+      header: 'Когда нужно',
+      sort: (x) => (x.forToday ? '0' : '1') + (x.dueDay ?? '9999') + x.o.createdAt,
+      csv: (x) => whenText(x, today),
+      render: (x) => (
+        <div>
+          <div className="row" style={{ gap: 6 }}>
+            <span className={x.forToday ? 'w-700 nowrap' : 'nowrap'}>{whenText(x, today)}</span>
+          </div>
+          {x.late ? <Chip tone="bad">Опаздывает</Chip> : x.o.fulfillment === 'pickup' ? <div className="cell-sub">заказ от {fmt.date(x.o.createdAt)}</div> : null}
+        </div>
+      ),
+    },
+    {
+      key: 'qty',
+      header: 'Состав',
+      align: 'right',
+      sort: (x) => x.qty,
+      csv: (x) => x.qty,
+      render: (x) => (
+        <span className="nowrap">
+          {fmt.num(x.positions)} поз. · <b>{fmt.qty(x.qty)}</b>
+        </span>
+      ),
+      total: (rs) => fmt.qty(rs.reduce((s, x) => s + x.qty, 0)),
+    },
+    {
+      key: 'pick',
+      header: 'Сборка',
+      sort: (x) => x.o.pick,
+      csv: (x) => PICK_STATE[x.o.pick].label,
+      render: (x) => (
+        <div className="chips">
+          <StatusChip s={PICK_STATE[x.o.pick]} />
+          {x.o.ship === 'partial' ? <StatusChip s={SHIP_STATE.partial} /> : null}
+        </div>
+      ),
+    },
+  ];
+
+  const run = (type: string, payload: unknown, ok: string) => {
+    const r = act(type, payload, me.id);
+    if (!r.ok) return toast(r.error, 'error');
+    toast(r.info ? `${ok}. ${r.info}` : ok);
+  };
+
+  const todays = queue.filter((x) => x.forToday);
+  const printToday = () => {
+    const list = todays.length ? todays : queue;
+    if (!list.length) return toast('Собирать нечего', 'info');
+    printer.print(
+      <>
+        {list.map((x) => (
+          <PickSheet key={x.id} x={x} today={today} client={clientName(x)} />
+        ))}
+      </>,
+    );
+  };
+
+  const side = current ? (
+    (() => {
+      const x = current;
+      const done = checked[x.id] ?? new Set<number>();
+      const allDone = done.size >= x.lines.length;
+      const courier = x.delivery?.courierId ? ix.employees.get(x.delivery.courierId)?.name ?? null : null;
+      const toggle = (i: number) =>
+        setChecked((c) => {
+          const s = new Set(c[x.id] ?? []);
+          if (s.has(i)) s.delete(i);
+          else s.add(i);
+          return { ...c, [x.id]: s };
+        });
+      return (
+        <Card
+          className="stock-pick-side"
+          title={
+            <EntityLink type="order" id={x.o.id}>
+              Заказ № {x.o.number}
+            </EntityLink>
+          }
+          sub={clientName(x)}
+          actions={
+            <MoreMenu
+              items={[
+                { label: 'Открыть заказ', icon: <ExternalLink />, onClick: () => open('order', x.o.id) },
+                { label: 'Печать листа сборки', icon: <Printer />, onClick: () => printer.print(<PickSheet x={x} today={today} client={clientName(x)} />) },
+              ]}
+            />
+          }
+          foot={
+            canWork ? (
+              <div className="stock-pick-actions" style={{ width: '100%' }}>
+                {x.o.pick === 'none' ? (
+                  <Button variant="primary" icon={<Play />} onClick={() => run('order.pick', { orderId: x.o.id, stage: 'picking' }, `Сборка заказа № ${x.o.number} начата`)}>
+                    Начать сборку
+                  </Button>
+                ) : x.o.pick === 'picking' ? (
+                  allDone ? (
+                    <Button variant="primary" icon={<PackageCheck />} onClick={() => run('order.pick', { orderId: x.o.id, stage: 'picked' }, `Заказ № ${x.o.number} собран`)}>
+                      Собрано
+                    </Button>
+                  ) : (
+                    <ConfirmButton
+                      variant="primary"
+                      icon={<PackageCheck />}
+                      confirmText={`Отмечено ${done.size} из ${x.lines.length}. Собрано?`}
+                      onConfirm={() => run('order.pick', { orderId: x.o.id, stage: 'picked' }, `Заказ № ${x.o.number} собран`)}
+                    >
+                      Собрано
+                    </ConfirmButton>
+                  )
+                ) : x.o.fulfillment === 'pickup' ? (
+                  <Button variant="primary" icon={<PackageCheck />} onClick={() => run('order.ship', { orderId: x.o.id }, `Заказ № ${x.o.number} выдан клиенту`)}>
+                    Выдать самовывозом
+                  </Button>
+                ) : null}
+                <Button icon={<Printer />} onClick={() => printer.print(<PickSheet x={x} today={today} client={clientName(x)} />)}>
+                  Лист сборки
+                </Button>
+              </div>
+            ) : null
+          }
+        >
+          <div className="stock-pick-meta">
+            <StatusChip s={PICK_STATE[x.o.pick]} />
+            {x.delivery ? <StatusChip s={DELIVERY_STATE[x.delivery.state]} /> : null}
+          </div>
+          <div className="t-13 ink-2 w-600" style={{ marginTop: 8 }}>
+            {x.o.fulfillment === 'delivery' ? `Доставка ${whenText(x, today)}` : 'Самовывоз'} · мест {x.places}
+          </div>
+          {x.delivery ? <div className="t-12 muted" style={{ marginTop: 2 }}>{x.delivery.address}{courier ? ` · курьер ${courier}` : ''}</div> : null}
+          {x.o.comment ? <div className="t-13 ink-2" style={{ marginTop: 8 }}>{x.o.comment}</div> : null}
+          {x.o.pick === 'picking' ? (
+            <div className="col" style={{ gap: 6, marginTop: 12 }}>
+              <div className="row t-12">
+                <span className="grow muted">Отобрано</span>
+                <span className="w-700">
+                  {done.size} из {x.lines.length}
+                </span>
+              </div>
+              <ProgressBar value={done.size} max={x.lines.length} thin />
+            </div>
+          ) : null}
+          <div className="stock-pick-lines" style={{ marginTop: 12 }}>
+            {x.lines.map((l, i) => {
+              const isDone = done.has(i);
+              const pk = packText(l.rest, l.line.pack, l.line.packSize);
+              return (
+                <label key={i} className={isDone ? 'stock-pick-line is-done' : 'stock-pick-line'}>
+                  <input type="checkbox" checked={isDone} disabled={x.o.pick !== 'picking'} onChange={() => toggle(i)} aria-label="Отобрано" />
+                  <span style={{ minWidth: 0 }}>
+                    <span className="stock-pick-name">{l.p.name}</span>
+                    <span className="cell-sub" style={{ display: 'block' }}>
+                      {l.p.sku} · {LOCATION_NAMES[x.o.location]}
+                    </span>
+                  </span>
+                  <span className="stock-pick-qty">
+                    <b>{fmt.qty(l.rest)}</b>
+                    {pk ? <span>{pk}</span> : null}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          {x.o.pick === 'picked' && x.o.fulfillment === 'delivery' ? (
+            <div style={{ marginTop: 12 }}>
+              <DeliveryNote d={x.delivery} courier={courier} />
+            </div>
+          ) : null}
+        </Card>
+      );
+    })()
+  ) : null;
+
+  return (
+    <>
+      <PageHeader
+        section="stock"
+        counts={stockTabCounts(db)}
+        actions={
+          <Button icon={<Printer />} onClick={printToday}>
+            Листы на сегодня
+          </Button>
+        }
+      />
+      {queue.length === 0 ? (
+        <Card>
+          <EmptyState icon={<PackageCheck />} title="Собирать нечего">
+            Все подтверждённые заказы собраны и отгружены
+          </EmptyState>
+        </Card>
+      ) : (
+        <div className="stock-pick stock-tight">
+          <DataTable
+            id="stock-picking"
+            rows={queue}
+            columns={columns}
+            rowKey={(x) => x.id}
+            filters={filters}
+            search={{ placeholder: 'Номер заказа или клиент', text: (x) => x.search }}
+            selectedKey={current?.id ?? null}
+            onRowClick={(x) => setSel(x.id)}
+            exportName="Сборка"
+            totalLabel={(n) => `Итого ${fmt.count(n, 'заказ', 'заказа', 'заказов')}`}
+            empty={<EmptyState title="Таких заказов нет">Измените отбор</EmptyState>}
+          />
+          {side}
+        </div>
+      )}
+      {printer.element}
+    </>
+  );
+}

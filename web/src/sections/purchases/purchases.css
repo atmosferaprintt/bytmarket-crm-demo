@@ -1,0 +1,54 @@
+/* Раздел «Закупки». Только токены, классы с префиксом pur-. Общие детали таблиц документов — в stock.css. */
+.pur-new-head { display: grid; grid-template-columns: minmax(0, 1fr) 170px 160px; gap: var(--sp-3); }
+.pur-line-name { display: block; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.pur-lines td { vertical-align: top; padding-top: 8px; padding-bottom: 8px; }
+.pur-lines th, .pur-lines td { padding-left: 8px; padding-right: 8px; }
+.pur-lines th:first-child, .pur-lines td:first-child { padding-left: 16px; }
+.pur-lines th:last-child, .pur-lines td:last-child { padding-right: 16px; }
+.pur-lines .pur-line-name { max-width: 220px; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.pur-num { width: 72px; }
+.pur-lines .select { min-width: 176px; }
+.pur-row-diff td { background: var(--warn-soft); }
+.pur-row-diff:hover td { background: var(--warn-soft) !important; }
+.pur-reason { color: var(--warn); font-weight: 600; white-space: nowrap; }
+.pur-pay-sum { padding: 0 20px 8px; }
+.pur-amount { min-width: 96px; text-align: right; }
+.pur-kpis .kpi { box-shadow: none; background: var(--sub); }
+
+/* предложение на закупку */
+.pur-suggest { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: var(--sp-4); align-items: start; }
+.pur-suggest-side { position: sticky; top: calc(var(--topbar-h) + 8px); }
+.pur-sup-row {
+  width: 100%; display: flex; align-items: center; gap: var(--sp-2); padding: 12px 20px; border: 0; border-bottom: 1px solid var(--line);
+  background: transparent; text-align: left; color: inherit;
+}
+.pur-sup-row:last-child { border-bottom: 0; }
+.pur-sup-row:hover { background: var(--row-hover); }
+.pur-sup-row.is-active { background: var(--row-selected); }
+.pur-sup-row > span:first-child { flex: 1 1 auto; min-width: 0; overflow: hidden; }
+.pur-sup-row > span:first-child .cell-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pur-sup-row .chip { flex: 0 0 auto; }
+.pur-sup-name { display: block; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pur-suggest-table td { vertical-align: top; padding-top: 10px; padding-bottom: 10px; }
+.pur-why { max-width: 300px; }
+.pur-sup-cell { display: block; min-width: 150px; max-width: 220px; }
+.pur-state-chips { min-width: 210px; }
+.pur-contact { max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pur-suggest-table .pur-line-name { max-width: 300px; }
+.pur-off td { opacity: 0.45; }
+.pur-off td:first-child { opacity: 1; }
+
+@media (max-width: 1360px) {
+  .pur-suggest { grid-template-columns: 236px minmax(0, 1fr); }
+  .pur-line-name { max-width: 240px; }
+  .pur-why { max-width: 210px; }
+  .pur-suggest-table .pur-line-name { max-width: 210px; }
+  .pur-state-chips { min-width: 210px; }
+.pur-contact { max-width: 220px; }
+  .pur-sup-cell { max-width: 170px; }
+  .pur-state-chips { min-width: 160px; }
+}
+@media (max-width: 760px) {
+  .pur-suggest, .pur-new-head { grid-template-columns: minmax(0, 1fr); }
+  .pur-suggest-side { position: static; }
+}

@@ -1,0 +1,133 @@
+/* Раздел «Деньги». Только токены из ui/tokens.css; классы с префиксом money-. */
+
+/* ---------- таблицы раздела ---------- */
+.money-tight { min-width: 0; }
+.money-tight .table-toolbar .input-wrap { width: 230px; }
+.money-tight .table th, .money-tight .table td { padding-left: 8px; padding-right: 8px; }
+.money-tight .table th:first-child, .money-tight .table td:first-child, .money-tight .table tfoot td:first-child { padding-left: 16px; }
+.money-tight .table th:last-child, .money-tight .table td:last-child, .money-tight .table tfoot td:last-child { padding-right: 16px; }
+.money-tight .table tfoot td { padding-left: 8px; padding-right: 8px; white-space: nowrap; }
+.money-party { min-width: 160px; max-width: 280px; }
+.money-party.is-wide { max-width: 340px; }
+.money-party.is-free { max-width: 440px; }
+.money-party .entity-link, .money-li-title .entity-link { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+.money-party .cell-sub .entity-link { display: inline; }
+.money-kind { display: inline-block; width: 104px; line-height: var(--lh-tight); }
+.entity-link.money-link { font-weight: 600; color: var(--link); font-size: inherit; }
+.money-row-actions { justify-content: flex-end; gap: 4px; white-space: nowrap; }
+.money-comment { display: block; max-width: 360px; color: var(--ink-2); }
+.money-col-amt { min-width: 96px; text-align: right; }
+.money-wrap { white-space: normal; text-align: right; display: inline-block; max-width: 340px; }
+
+/* ---------- окна ---------- */
+.money-pick { display: flex; flex-direction: column; border-radius: var(--r-md); background: var(--sub); overflow: hidden; }
+.money-pick-row { padding: 10px 14px; }
+.money-pick-row:hover { background: var(--sub-hover); }
+
+.money-client {
+  display: flex; align-items: center; gap: var(--sp-5); flex-wrap: wrap;
+  padding: 14px 16px; border-radius: var(--r-md); background: var(--sub);
+}
+.money-client .field { min-width: 240px; }
+.money-mini { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+.money-form-grid { display: grid; gap: var(--sp-3); grid-template-columns: minmax(160px, 1.1fr) auto minmax(150px, 1fr) minmax(140px, 0.8fr); align-items: start; }
+.money-form-grid.is-3 { grid-template-columns: minmax(160px, 1fr) auto minmax(180px, 1fr); }
+
+.money-alloc-box { border-radius: var(--r-md); background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
+.money-alloc-box .table th:first-child, .money-alloc-box .table td:first-child { padding-left: 14px; }
+.money-alloc-box .table th:last-child, .money-alloc-box .table td:last-child { padding-right: 10px; }
+.money-alloc-box .table th { position: static; }
+.money-alloc-box .table tbody tr.money-alloc-on td { background: var(--row-selected); }
+.money-alloc-input { display: inline-flex; align-items: center; gap: 4px; width: 150px; }
+.money-alloc-input .input-wrap { flex: 1 1 auto; }
+.money-alloc-left { display: flex; align-items: center; gap: var(--sp-2); margin-top: 10px; flex-wrap: wrap; }
+
+.money-pay-sum { display: flex; flex-direction: column; gap: 2px; }
+
+/* ---------- график платежей ---------- */
+.money-sched .list-row { padding: 10px 20px; }
+.money-sched-date {
+  min-width: 44px; height: 26px; padding: 0 8px; border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--sub); color: var(--ink-2); font-size: var(--fs-12); font-weight: 700;
+}
+
+/* ---------- строки списков в карточках ---------- */
+.money-li { display: flex; align-items: center; gap: var(--sp-3); padding: 10px 20px; min-height: 58px; }
+.money-li.is-click { cursor: pointer; }
+.money-li.is-click:hover { background: var(--row-hover); }
+.money-li-lead { flex: 0 0 auto; }
+.money-li-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.money-li-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.money-li-sub { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--fs-12); color: var(--muted); }
+.money-li-sub > span:not(.chip) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.money-li-sub > .chip { flex: 0 0 auto; }
+.money-li-amt { flex: 0 0 auto; font-weight: 700; text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.money-li-act { flex: 0 0 auto; display: inline-flex; gap: 4px; }
+.money-act-gap { display: inline-block; width: 92px; }
+
+.money-kpi-link { border: 0; padding: 0; background: none; text-align: left; border-radius: var(--r-card); cursor: pointer; display: flex; min-width: 0; }
+.money-kpi-link > .kpi { flex: 1 1 auto; transition: box-shadow var(--dur-fast) var(--ease); }
+.money-kpi-link:hover > .kpi { box-shadow: var(--sh-pop); }
+
+/* ---------- рабочий стол бухгалтера ---------- */
+.money-home-a { display: grid; gap: var(--sp-4); grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); }
+.money-home-b { display: grid; gap: var(--sp-4); grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+.money-home-list .list-row { padding: 10px 20px; min-height: 56px; }
+.money-home-list .empty { padding: 28px 20px; }
+.money-more { color: var(--link); font-weight: 600; font-size: var(--fs-13); min-height: 44px !important; }
+.money-more svg { width: 16px; height: 16px; }
+
+.money-legend { display: flex; align-items: center; gap: var(--sp-4); font-size: var(--fs-12); color: var(--muted); font-weight: 600; }
+.money-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.money-sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.money-sw.is-clients, .money-chart-bar .is-clients { background: var(--chart-1); }
+.money-sw.is-shifts, .money-chart-bar .is-shifts { background: var(--chart-2); }
+
+.money-chart { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--sp-3); height: 240px; align-items: end; padding-top: 4px; }
+.money-chart-col { display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; min-width: 0; }
+.money-chart-val { font-size: var(--fs-12); font-weight: 700; color: var(--ink-2); }
+.money-chart-bar {
+  flex: 1 1 auto; width: min(56px, 100%); display: flex; flex-direction: column; justify-content: flex-end; gap: 2px;
+  border-bottom: 1px solid var(--line-strong);
+}
+.money-chart-bar > span { display: block; width: 100%; min-height: 3px; }
+.money-chart-bar > span:first-child { border-radius: 4px 4px 0 0; }
+.money-chart-col:hover .money-chart-bar > span { filter: brightness(1.08); }
+.money-chart-day { font-size: var(--fs-12); color: var(--muted); font-weight: 600; white-space: nowrap; }
+
+/* ---------- акт сверки ---------- */
+.money-act-frame { border-radius: var(--r-md); box-shadow: inset 0 0 0 1px var(--line); padding: 24px 28px; background: var(--panel); max-height: 56vh; overflow-y: auto; }
+.money-act { color: var(--ink); font-size: var(--fs-13); }
+.money-act-title { font-size: var(--fs-16); font-weight: 700; text-align: center; }
+.money-act-sub { text-align: center; color: var(--ink-2); margin-top: 4px; }
+.money-act-req { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-6); margin: 18px 0; font-size: var(--fs-12); color: var(--ink-2); line-height: 1.5; }
+.money-act-table { width: 100%; border-collapse: collapse; font-size: var(--fs-12); }
+.money-act-table th, .money-act-table td { border: 1px solid var(--line-strong); padding: 5px 8px; text-align: left; vertical-align: top; }
+.money-act-table th { background: var(--sub); font-weight: 700; }
+.money-act-table .num { text-align: right; white-space: nowrap; }
+.money-act-table tr.is-total td { font-weight: 700; background: var(--sub); }
+.money-act-result { margin-top: 14px; }
+.money-act-sign { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-8); margin-top: 28px; font-size: var(--fs-12); }
+.money-act-line { margin-top: 36px; padding-top: 4px; border-top: 1px solid var(--ink); color: var(--muted); }
+
+.money-print-sheet { display: none; }
+@media print {
+  body.money-printing > *:not(.money-print-sheet) { display: none !important; }
+  body.money-printing { background: var(--panel); }
+  body.money-printing .money-print-sheet { display: block; padding: 0; }
+  .money-print-sheet .money-act-table th, .money-print-sheet .money-act-table tr.is-total td { background: var(--sub); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  @page { size: A4; margin: 16mm 14mm; }
+}
+
+/* ---------- ширина 1280 ---------- */
+@media (max-width: 1360px) {
+  .money-party, .money-party.is-wide { max-width: 210px; }
+  .money-party.is-free { max-width: 360px; }
+}
+@media (max-width: 760px) {
+  .money-home-a, .money-home-b { grid-template-columns: minmax(0, 1fr); }
+  .money-form-grid, .money-form-grid.is-3 { grid-template-columns: minmax(0, 1fr); }
+  .money-act-req, .money-act-sign { grid-template-columns: 1fr; }
+}

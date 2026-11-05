@@ -1,0 +1,76 @@
+/* Раздел «Отчёты». Только токены. Префикс rp-. */
+
+.rp-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--sp-4); }
+.rp-kpis .kpi { min-height: 104px; }
+.rp-kpi-line { display: flex; align-items: center; gap: 6px; margin-top: auto; font-size: var(--fs-12); color: var(--muted); font-weight: 600; white-space: nowrap; }
+.rp-kpi-line b { color: var(--ink); font-weight: 700; }
+.rp-kpi-line b.c-bad { color: var(--bad); }
+
+.rp-name { display: inline-flex; flex-direction: column; min-width: 0; max-width: 300px; }
+.rp-name .cell-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-name .cell-sub { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rp-name .cell-sub .chip { height: 18px; font-size: var(--fs-11); padding: 0 7px; }
+.row .rp-name { flex-direction: row; align-items: baseline; }
+
+.rp-select { width: 190px; }
+.rp-delta { font-weight: 600; white-space: nowrap; }
+.rp-margin { display: inline-flex; align-items: center; gap: 4px; }
+.rp-warn-icon { width: 13px; height: 13px; color: var(--warn); }
+.rp-stock-cell { display: inline-flex; align-items: center; gap: 8px; }
+.rp-stock-cell .chip { height: 20px; font-size: var(--fs-11); }
+
+.rp-share { display: inline-flex; align-items: center; gap: 8px; width: 100%; font-weight: 600; white-space: nowrap; }
+.rp-share-track { flex: 1 1 auto; height: 6px; border-radius: var(--r-full); background: var(--chart-track); overflow: hidden; min-width: 48px; }
+.rp-share-track > span { display: block; height: 100%; border-radius: inherit; background: var(--chart-1); }
+
+.rp-lists .card-head { flex-wrap: wrap; row-gap: 8px; padding-bottom: 4px; }
+.rp-lists .card-head .seg { flex-wrap: wrap; }
+.rp-empty { padding: 28px 20px; text-align: center; color: var(--muted); font-weight: 600; }
+
+.rp-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--sp-4); }
+.rp-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--sp-5); margin-top: var(--sp-4); }
+.rp-fact { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); padding: 9px 0; border-bottom: 1px solid var(--line); font-size: var(--fs-13); }
+.rp-fact span { color: var(--muted); }
+.rp-fact b { font-weight: 700; white-space: nowrap; }
+
+/* «Как считается» */
+.rp-how { overflow: hidden; }
+.rp-how-head {
+  width: 100%; display: flex; align-items: center; gap: 10px; padding: 14px 20px; border: 0; background: transparent;
+  font-size: var(--fs-14); font-weight: 700; color: var(--ink); text-align: left;
+}
+.rp-how-head:hover { background: var(--row-hover); }
+.rp-how-head svg { width: 18px; height: 18px; color: var(--muted); }
+.rp-chevron { transition: transform var(--dur) var(--ease); }
+.rp-chevron.is-open { transform: rotate(180deg); }
+.rp-how-body { margin: 0; padding: 4px 20px 18px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 32px; border-top: 1px solid var(--line); padding-top: 14px; }
+.rp-how-row dt { font-size: var(--fs-13); font-weight: 700; color: var(--ink); margin-bottom: 2px; }
+.rp-how-row dd { margin: 0; font-size: var(--fs-13); color: var(--ink-2); line-height: var(--lh); }
+
+@media (max-width: 1360px) {
+  .rp-kpis { gap: var(--sp-3); }
+  .rp-kpis .kpi { padding: 16px; }
+  .rp-kpis .kpi-value { font-size: var(--fs-20); }
+  .rp-name { max-width: 230px; }
+}
+@media (max-width: 1180px) {
+  .rp-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .rp-two { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .rp-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rp-how-body { grid-template-columns: minmax(0, 1fr); }
+  .rp-facts { grid-template-columns: minmax(0, 1fr); }
+}
+.rp-anchor { height: 0; margin-bottom: calc(-1 * var(--sp-5)); scroll-margin-top: calc(var(--topbar-h) + 12px); }
+.rp-partial { display: inline-flex; vertical-align: -2px; margin-left: 4px; }
+.rp-person { display: inline-flex; align-items: center; gap: 10px; white-space: nowrap; }
+.table td .vz-seg { min-width: 260px; gap: 6px; }
+.table td .vz-seg-legend { flex-wrap: nowrap; white-space: nowrap; }
+.rp-debt { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.rp-debt .chip { height: 18px; font-size: var(--fs-11); padding: 0 7px; }
+.rp-tight .table th, .rp-tight .table td { padding-left: 8px; padding-right: 8px; }
+.rp-tight .table th:first-child, .rp-tight .table td:first-child { padding-left: 20px; }
+.rp-tight .table th:last-child, .rp-tight .table td:last-child { padding-right: 20px; }
+.rp-tight .rp-name { max-width: 270px; }
+@media (max-width: 1360px) { .rp-tight .rp-name { max-width: 220px; } }

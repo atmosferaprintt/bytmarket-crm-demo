@@ -1,0 +1,177 @@
+import { useMemo, useState } from 'react';
+import { Chip, DataTable, fmt, type Column, type Tone } from '../../ui';
+import { useDB, useDBVersion } from '../../data/store';
+import { useSession } from '../../roles/session';
+import { promoRows, productRows, type PromoRow, type PromoState } from './calc';
+import { KpiTile } from '../overview/KpiTile';
+import { DeltaText, DocsDrawer, HowCalc, PartialMark, ReportTop, sum, useReportPeriod } from './parts';
+import { rangeText } from '../overview/period';
+
+const STATE: Record<PromoState, { label: string; tone: Tone }> = {
+  running: { label: 'Идёт', tone: 'ok' },
+  future: { label: 'Будет', tone: 'info' },
+  ended: { label: 'Закончилась', tone: 'outline' },
+  off: { label: 'Выключена', tone: 'neutral' },
+};
+const AUDIENCE = { all: 'Всем', retail: 'Розница', wholesale: 'Опт' };
+
+export default function PromosReport() {
+  const db = useDB();
+  const version = useDBVersion();
+  const { can } = useSession();
+  const seeProfit = can('seeProfit');
+  const { range, prev, label } = useReportPeriod();
+  const rows = useMemo(() => promoRows(db, range.from, range.to), [db, version, range.from, range.to]);
+  const prodRows = useMemo(() => productRows(db, range.from, range.to, prev.from, prev.to), [db, version, range.from, range.to, prev.from]);
+  const [pick, setPick] = useState<PromoRow | null>(null);
+
+  const revenue = sum(rows, (r) => r.agg.revenue);
+  const discount = sum(rows, (r) => r.agg.promoDiscount);
+  const profit = sum(rows, (r) => r.agg.profit);
+  const stockValue = sum(rows.filter((r) => r.state === 'running' || r.state === 'future'), (r) => r.stockValue);
+
+  const cols: Column<PromoRow>[] = [
+    {
+      key: 'name',
+      header: 'Акция',
+      render: (r) => (
+        <div className="rp-name">
+          <div className="cell-title">{r.pr.name}</div>
+          <div className="cell-sub">
+            {r.target} · {AUDIENCE[r.pr.audience]} · {r.pr.kind === 'percent' ? `−${r.pr.value} %` : `по ${fmt.price(r.pr.value)}`}
+          </div>
+        </div>
+      ),
+      sort: (r) => r.pr.name,
+      csv: (r) => r.pr.name,
+    },
+    { key: 'dates', header: 'Сроки', render: (r) => <span>{rangeText({ from: r.pr.start, to: r.pr.end })}</span>, sort: (r) => r.pr.start, csv: (r) => `${r.pr.start} – ${r.pr.end}` },
+    { key: 'state', header: 'Состояние', render: (r) => <Chip tone={STATE[r.state].tone}>{STATE[r.state].label}</Chip>, sort: (r) => r.state, csv: (r) => STATE[r.state].label },
+    { key: 'qty', header: 'Продано, шт', align: 'right', render: (r) => fmt.num(r.agg.qty), sort: (r) => r.agg.qty, total: (rs) => fmt.num(sum(rs, (r) => r.agg.qty)) },
+    { key: 'revenue', header: 'Выручка', align: 'right', render: (r) => fmt.money(r.agg.revenue), sort: (r) => r.agg.revenue, total: (rs) => fmt.money(sum(rs, (r) => r.agg.revenue)) },
+    { key: 'disc', header: 'Скидка', align: 'right', render: (r) => fmt.money(r.agg.promoDiscount), sort: (r) => r.agg.promoDiscount, total: (rs) => fmt.money(sum(rs, (r) => r.agg.promoDiscount)) },
+    {
+      key: 'profit',
+      header: 'Прибыль',
+      align: 'right',
+      hidden: !seeProfit,
+      render: (r) => (
+        <span title={r.margin !== null ? `Маржа ${fmt.pct(r.margin)}` : 'Себестоимость неизвестна'}>
+          {fmt.money(r.agg.profit)}
+          {r.agg.lines && r.agg.knownLines < r.agg.lines ? <PartialMark share={r.agg.knownLines / r.agg.lines} /> : null}
+        </span>
+      ),
+      sort: (r) => r.agg.profit,
+      total: (rs) => fmt.money(sum(rs, (r) => r.agg.profit)),
+    },
+    {
+      key: 'avg',
+      header: 'Чек с акцией',
+      align: 'right',
+      render: (r) => (r.receipts ? <span title={`${fmt.count(r.receipts, 'чек', 'чека', 'чеков')} с акционным товаром. Обычный средний чек за период — ${fmt.money(r.avgAll)}`}>{fmt.money(r.avgWith)}</span> : '—'),
+      sort: (r) => r.avgWith,
+    },
+    {
+      key: 'growth',
+      header: 'К дням до',
+      align: 'right',
+      render: (r) =>
+        r.growth === null ? (
+          <span className="faint" title="Перед акцией в базе нет столько же дней для сравнения">—</span>
+        ) : (
+          <span title={`Эти товары за дни акции: ${fmt.money(r.during)}, за столько же дней до неё: ${fmt.money(r.before)}`}>
+            <DeltaText cur={r.during} prev={r.before} />
+          </span>
+        ),
+      sort: (r) => r.growth,
+      csv: (r) => r.growth?.toFixed(1) ?? '',
+    },
+    {
+      key: 'stock',
+      header: 'Остаток',
+      align: 'right',
+      render: (r) => (
+        <span className="rp-stock-cell" title={`${fmt.qty(r.stockQty)} по себестоимости`}>
+          {fmt.money(r.stockValue)}
+          {r.absentProducts ? (
+            <Chip tone="warn" title="Товаров, которых не было в наличии 3 дня и больше за время акции">
+              {r.absentProducts} не было
+            </Chip>
+          ) : null}
+        </span>
+      ),
+      sort: (r) => r.stockValue,
+      total: (rs) => fmt.money(sum(rs, (r) => r.stockValue)),
+    },
+  ];
+
+  return (
+    <>
+      <ReportTop />
+      <div className="rp-kpis">
+        <KpiTile label="Акций за период" value={fmt.num(rows.length)} extra={<div className="rp-kpi-line">Идут сейчас <b>{fmt.num(rows.filter((r) => r.state === 'running').length)}</b></div>} />
+        <KpiTile label="Выручка по акциям" value={fmt.money(revenue)} />
+        <KpiTile label="Скидка покупателям" value={fmt.money(discount)} />
+        {seeProfit ? <KpiTile label="Прибыль по акциям" value={fmt.money(profit)} extra={<div className="rp-kpi-line">Маржа <b>{revenue ? fmt.pct((profit / revenue) * 100) : '—'}</b></div>} /> : null}
+        <KpiTile label="Остаток акционных товаров" value={fmt.money(stockValue)} />
+      </div>
+
+      <div className="rp-tight">
+      <DataTable
+        id="rp-promos"
+        title="Акции"
+        rows={rows}
+        columns={cols}
+        rowKey={(r) => r.pr.id}
+        defaultSort={{ key: 'revenue', dir: 'desc' }}
+        filters={[
+          {
+            key: 'state',
+            showCounts: true,
+            options: [
+              { value: 'all', label: 'Все' },
+              { value: 'running', label: 'Идут', test: (r) => r.state === 'running' },
+              { value: 'ended', label: 'Закончились', test: (r) => r.state === 'ended' },
+              { value: 'future', label: 'Будут', test: (r) => r.state === 'future' },
+            ],
+          },
+        ]}
+        onRowClick={(r) => setPick(r)}
+        exportName={`Акции ${label}`}
+        empty={<div className="rp-empty">За период акций не было</div>}
+      />
+      </div>
+
+      <HowCalc
+        rows={[
+          ['Продажи по акции', 'Строки чеков и заказов, где цена взята по этой акции. Опт — по отгрузке, розница — по чекам. Возврат акционного товара вычитается.'],
+          ['Скидка покупателям', 'Обычная цена минус акционная, умноженная на количество. Ручная скидка продавца сюда не входит.'],
+          ['Чек с акцией', 'Средняя сумма чеков, в которых есть акционный товар. Обычный средний чек за тот же период — в подсказке.'],
+          ['Сравнение', 'Выручка тех же товаров за дни акции против стольких же дней перед её началом, для той же аудитории. Если товара не было в наличии 3 дня и больше, это помечено: рост или падение могло быть из-за остатка, а не акции.'],
+          ['Остаток', 'Сколько акционных товаров лежит сейчас, по себестоимости.'],
+          ['Прибыль', 'Валовая, по строкам с известной себестоимостью. Чистую прибыль не считаем.'],
+        ]}
+      />
+
+      {pick ? (
+        <DocsDrawer
+          title={pick.pr.name}
+          sub={`${pick.target} · ${rangeText({ from: pick.pr.start, to: pick.pr.end })}`}
+          amountLabel="Выручка"
+          onClose={() => setPick(null)}
+          rows={prodRows
+            .filter((r) => pick.productIds.includes(r.p.id))
+            .map((r) => ({
+              key: r.p.id,
+              at: r.lastSale ?? '',
+              kind: 'Товар',
+              title: r.p.name,
+              sub: `Продано ${fmt.num(r.agg.qty)} шт · остаток ${fmt.num(r.onHand)} шт${r.outDays ? ` · не было ${fmt.count(r.outDays, 'день', 'дня', 'дней')}` : ''}`,
+              amount: r.agg.revenue,
+              entity: { type: 'product' as const, id: r.p.id },
+            }))}
+        />
+      ) : null}
+    </>
+  );
+}

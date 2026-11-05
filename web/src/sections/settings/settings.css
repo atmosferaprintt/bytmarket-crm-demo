@@ -1,0 +1,621 @@
+/* Настройки. Только токены из ui/tokens.css, классы с префиксом set-. */
+
+.set-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  min-width: 0;
+}
+
+/* ---------- компания ---------- */
+.set-company {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: var(--sp-5);
+  align-items: start;
+}
+.set-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-4);
+}
+.set-form .is-wide {
+  grid-column: 1 / -1;
+}
+
+.set-rules {
+  display: flex;
+  flex-direction: column;
+}
+.set-rule-group {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.set-rule-group:first-child {
+  padding-top: 0;
+}
+.set-rule-group:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.set-rule-title {
+  font-size: var(--fs-14);
+  font-weight: 700;
+  color: var(--ink);
+}
+.set-rule-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 128px;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 36px;
+}
+.set-rule-row .set-rule-label {
+  font-size: var(--fs-13);
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.set-rule-row .set-rule-error {
+  grid-column: 1 / -1;
+  font-size: var(--fs-12);
+  font-weight: 600;
+  color: var(--bad);
+}
+.set-rule-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+.set-num-input {
+  text-align: right;
+}
+
+.set-doc {
+  background: var(--sub);
+  border-radius: var(--r-md);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--fs-13);
+  color: var(--ink-2);
+}
+.set-doc-title {
+  font-size: var(--fs-16);
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 6px;
+}
+.set-doc-row {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: var(--sp-3);
+}
+.set-doc-row > span:first-child {
+  color: var(--muted);
+}
+.set-doc-row > span:last-child {
+  color: var(--ink);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.set-doc-empty {
+  color: var(--faint) !important;
+  font-weight: 500 !important;
+}
+
+/* ---------- команда ---------- */
+.set-person {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.set-person .cell-title {
+  white-space: nowrap;
+}
+
+.set-roles-list .list-row {
+  align-items: center;
+}
+.set-role-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.set-role-people {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 300px;
+  min-width: 0;
+}
+.set-role-people .ellipsis {
+  min-width: 0;
+}
+
+.set-matrix-scroll {
+  overflow-x: auto;
+}
+.set-matrix {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--fs-13);
+}
+.set-matrix th,
+.set-matrix td {
+  border-bottom: 1px solid var(--line);
+  padding: 0 8px;
+  height: 40px;
+}
+.set-matrix thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--sub);
+  height: 44px;
+  font-size: var(--fs-12);
+  font-weight: 600;
+  color: var(--muted);
+  text-align: center;
+  white-space: nowrap;
+}
+.set-matrix thead th:first-child {
+  text-align: left;
+  padding-left: 20px;
+}
+.set-matrix td:first-child {
+  padding-left: 20px;
+}
+.set-matrix td:last-child,
+.set-matrix th:last-child {
+  padding-right: 16px;
+}
+.set-matrix td.set-cell {
+  text-align: center;
+  width: 92px;
+}
+.set-matrix td.set-cell svg {
+  width: 18px;
+  height: 18px;
+  color: var(--ok);
+  stroke-width: 2.5;
+  vertical-align: middle;
+}
+.set-matrix tbody tr:hover td {
+  background: var(--row-hover);
+}
+.set-matrix tr.set-group td {
+  height: 36px;
+  background: var(--panel);
+  font-size: var(--fs-13);
+  font-weight: 700;
+  color: var(--ink);
+  padding-top: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.set-matrix tr.set-group:hover td {
+  background: var(--panel);
+}
+.set-perm {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-2);
+}
+.set-perm svg {
+  width: 15px;
+  height: 15px;
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+.set-perm.is-brief {
+  color: var(--ink);
+  font-weight: 600;
+}
+.set-perm.is-brief svg {
+  color: var(--navy);
+}
+.set-role-head {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.set-role-head .w-700 {
+  color: var(--ink);
+}
+.set-pct {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.set-roles-pick {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.set-role-option {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: var(--sub);
+  cursor: pointer;
+  min-width: 0;
+}
+.set-role-option:hover {
+  background: var(--sub-hover);
+}
+.set-role-option input {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--green-600);
+  flex: 0 0 auto;
+}
+.set-role-option.is-disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.set-audit .table-toolbar .input-wrap {
+  width: 200px;
+}
+.set-audit-text {
+  white-space: normal;
+  line-height: var(--lh);
+  min-width: 280px;
+}
+
+/* ---------- подготовка к работе ---------- */
+.set-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  padding: 6px;
+}
+.set-step {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  text-align: left;
+  color: inherit;
+  min-width: 0;
+  cursor: pointer;
+}
+.set-step:hover {
+  background: var(--row-hover);
+}
+.set-step.is-active {
+  background: var(--sub);
+}
+.set-step-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.set-step-dot {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-full);
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--field);
+  color: var(--muted);
+  font-size: var(--fs-12);
+  font-weight: 700;
+}
+.set-step-dot svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 3;
+}
+.set-step-dot.is-done {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.set-step.is-active .set-step-dot {
+  background: var(--navy);
+  color: var(--on-dark);
+}
+.set-step-title {
+  font-size: var(--fs-14);
+  font-weight: 700;
+  color: var(--ink);
+}
+.set-step-figure {
+  font-size: var(--fs-13);
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+.set-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--sp-4);
+}
+.set-two {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--sp-5);
+  align-items: start;
+}
+
+.set-todo {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: todo;
+}
+.set-todo li {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 10px;
+  font-size: var(--fs-13);
+  color: var(--ink-2);
+  line-height: var(--lh);
+  counter-increment: todo;
+}
+.set-todo li::before {
+  content: counter(todo);
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-full);
+  background: var(--field);
+  color: var(--ink-2);
+  font-size: var(--fs-12);
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.set-import-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+.set-paste {
+  min-height: 150px;
+  font-size: var(--fs-13);
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+  tab-size: 18;
+}
+.set-map {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px;
+}
+.set-map-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: var(--sub);
+  min-width: 0;
+}
+.set-map-item .set-map-head {
+  font-size: var(--fs-12);
+  color: var(--muted);
+  font-weight: 600;
+}
+.set-map-item .set-map-name {
+  font-size: var(--fs-13);
+  color: var(--ink);
+  font-weight: 700;
+}
+.set-section-label {
+  font-size: var(--fs-14);
+  font-weight: 700;
+  color: var(--ink);
+}
+.set-preview {
+  border-radius: var(--r-md);
+  box-shadow: inset 0 0 0 1px var(--line);
+  overflow: hidden;
+}
+.set-preview .table-toolbar {
+  padding: 12px 14px;
+}
+.set-issues {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+  font-size: var(--fs-12);
+  line-height: var(--lh);
+  white-space: normal;
+}
+.set-issue-error {
+  color: var(--bad);
+  font-weight: 600;
+}
+.set-issue-dup {
+  color: var(--warn);
+  font-weight: 600;
+}
+.set-issue-note {
+  color: var(--muted);
+}
+.set-bad-value {
+  color: var(--bad);
+  font-weight: 700;
+}
+.set-import-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+.set-import-foot .chips {
+  gap: 8px;
+}
+.set-result-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 8px;
+}
+
+.set-checks .list-row {
+  gap: var(--sp-4);
+}
+.set-check-count {
+  min-width: 150px;
+  text-align: right;
+  font-weight: 700;
+  font-size: var(--fs-13);
+  color: var(--ink);
+}
+
+/* ---------- подключения ---------- */
+.set-integrations {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-5);
+  align-items: start;
+}
+.set-int-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  min-width: 0;
+}
+.set-int {
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  gap: 14px;
+}
+.set-int-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.set-int-title {
+  font-size: var(--fs-16);
+  font-weight: 700;
+  color: var(--ink);
+}
+.set-int-what {
+  font-size: var(--fs-14);
+  color: var(--ink-2);
+  line-height: var(--lh);
+}
+.set-int-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1 1 auto;
+}
+.set-int-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.set-int-list li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  font-size: var(--fs-13);
+  color: var(--ink-2);
+  line-height: var(--lh);
+}
+.set-int-list li svg {
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.set-int-label {
+  font-size: var(--fs-12);
+  font-weight: 600;
+  color: var(--muted);
+}
+.set-int-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+.set-int.is-wide {
+  grid-column: 1 / -1;
+}
+
+.set-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border-radius: var(--r-md);
+  background: var(--sub);
+}
+.set-bubble {
+  max-width: 82%;
+  padding: 8px 12px;
+  border-radius: 14px;
+  font-size: var(--fs-13);
+  line-height: var(--lh);
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: var(--sh-card);
+}
+.set-bubble.is-staff {
+  align-self: flex-end;
+  background: var(--green-soft);
+}
+.set-bubble-time {
+  display: block;
+  font-size: var(--fs-11);
+  color: var(--muted);
+  margin-top: 2px;
+  text-align: right;
+}
+
+@media (max-width: 1360px) {
+  .set-company {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .set-role-people {
+    flex-basis: 240px;
+  }
+}
+@media (max-width: 1100px) {
+  .set-company,
+  .set-two,
+  .set-integrations {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .set-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .set-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
