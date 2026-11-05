@@ -11,6 +11,7 @@ import { RoleSwitcher } from './RoleSwitcher';
 import { CommandPalette } from './CommandPalette';
 import { TasksPanel } from './TasksPanel';
 import { EntityHost } from './entities';
+import { HintLayer, TrainingToggle } from './training/HintLayer';
 
 function useIsPhone() {
   const q = '(max-width: 760px)';
@@ -127,7 +128,7 @@ export function Layout({ children }: { children: ReactNode }) {
             <img className="logo-full" src="/brand/bytmarket-light.png" alt="БытМаркет" />
             <img className="logo-mark" src="/brand/bytmarket-mark-light.png" alt="" />
           </NavLink>
-          <nav className="nav" aria-label="Разделы">
+          <nav className="nav" aria-label="Разделы" data-hint="shell.nav">
             {groups.map((g) => (
               <div key={g} className="col" style={{ gap: 2 }}>
                 {groups.length > 1 ? <div className="nav-group-label">{g}</div> : null}
@@ -148,7 +149,7 @@ export function Layout({ children }: { children: ReactNode }) {
             ))}
           </nav>
           <div className="sidebar-foot">
-            <button type="button" className="role-button" onClick={() => setRoleOpen(true)} title="Посмотреть глазами другого сотрудника">
+            <button type="button" className="role-button" onClick={() => setRoleOpen(true)} title="Посмотреть глазами другого сотрудника" data-hint="shell.role">
               <Avatar name={me.name} />
               <span className="role-meta">
                 <span className="role-name" style={{ display: 'block' }}>{me.name}</span>
@@ -169,10 +170,10 @@ export function Layout({ children }: { children: ReactNode }) {
             </>
           ) : (
             <>
-              <button type="button" className="btn btn-ghost btn-icon" onClick={toggleCollapsed} aria-label={collapsed ? 'Развернуть меню' : 'Свернуть меню'} title={collapsed ? 'Развернуть меню' : 'Свернуть меню'}>
+              <button type="button" className="btn btn-ghost btn-icon" onClick={toggleCollapsed} aria-label={collapsed ? 'Развернуть меню' : 'Свернуть меню'} title={collapsed ? 'Развернуть меню' : 'Свернуть меню'} data-hint="shell.collapse">
                 {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
               </button>
-              <button type="button" className="search-trigger" onClick={() => setSearchOpen(true)}>
+              <button type="button" className="search-trigger" onClick={() => setSearchOpen(true)} data-hint="shell.search">
                 <Search />
                 <span>{sees("clients") || sees("products") ? "Найти товар, клиента или заказ" : "Найти доставку"}</span>
                 <span className="kbd">⌘K</span>
@@ -182,12 +183,13 @@ export function Layout({ children }: { children: ReactNode }) {
             </>
           )}
           <span className="demo-chip" title="Данные выдуманы, внешние сервисы не подключены">Демо</span>
-          <button type="button" className="btn btn-ghost btn-icon topbar-tasks" onClick={() => setTasksOpen(true)} aria-label="Мои задачи" title="Мои задачи">
+          <TrainingToggle />
+          <button type="button" className="btn btn-ghost btn-icon topbar-tasks" onClick={() => setTasksOpen(true)} aria-label="Мои задачи" title="Мои задачи" data-hint="shell.tasks">
             <ListChecks />
             {openTasks ? <span className="tasks-count">{openTasks}</span> : null}
           </button>
           {phone ? (
-            <button type="button" className="btn btn-ghost btn-icon" onClick={() => setRoleOpen(true)} aria-label="Сменить сотрудника">
+            <button type="button" className="btn btn-ghost btn-icon" onClick={() => setRoleOpen(true)} aria-label="Сменить сотрудника" data-hint="shell.role-phone">
               <Avatar name={me.name} size="sm" />
             </button>
           ) : null}
@@ -196,7 +198,7 @@ export function Layout({ children }: { children: ReactNode }) {
       </div>
 
       {phone ? (
-        <nav className="mobile-bar" aria-label="Разделы">
+        <nav className="mobile-bar" aria-label="Разделы" data-hint="shell.mobilebar">
           {phoneSections.map((s) => {
             const Icon = s.icon;
             const b = badges[s.key];
@@ -247,6 +249,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
       <EntityHost />
       <ToastStack />
+      <HintLayer />
       {roleOpen ? <RoleSwitcher onClose={() => setRoleOpen(false)} /> : null}
       {searchOpen ? <CommandPalette onClose={() => setSearchOpen(false)} /> : null}
       {tasksOpen ? <TasksPanel onClose={() => setTasksOpen(false)} /> : null}

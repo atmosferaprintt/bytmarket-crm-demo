@@ -53,6 +53,8 @@ interface SavedView extends ViewState {
 
 export interface DataTableProps<T> {
   id?: string; // для сохранённых видов
+  /** метка для подсказок режима обучения: data-hint на таблице */
+  hint?: string;
   rows: T[];
   columns: Column<T>[];
   rowKey: (row: T) => string;
@@ -400,7 +402,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
       </>
     );
   return (
-    <section className="card table-card">
+    <section className="card table-card" data-hint={props.hint}>
       {table}
       {namingModal}
     </section>

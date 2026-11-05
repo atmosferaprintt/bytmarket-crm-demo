@@ -54,3 +54,55 @@
   .page-actions > .btn-primary { flex: 1 1 auto; }
   .role-card-people { padding-left: 16px; }
 }
+
+/* ---------- режим обучения ---------- */
+.topbar-training.is-on { background: var(--green-soft); color: var(--green-700); }
+.hint-layer { position: fixed; inset: 0; z-index: calc(var(--z-toast) - 1); pointer-events: none; }
+.hint-layer > * { pointer-events: auto; }
+.hint-ring { position: fixed; pointer-events: none !important; border: 2px solid var(--primary); border-radius: 12px; box-shadow: 0 0 0 4px rgba(27, 122, 16, 0.18); transition: left var(--dur-fast) var(--ease), top var(--dur-fast) var(--ease), width var(--dur-fast) var(--ease), height var(--dur-fast) var(--ease); }
+.hint-beacon {
+  position: fixed; width: 24px; height: 24px; padding: 0; border: 2px solid #FFFFFF; border-radius: var(--r-full);
+  background: var(--primary); color: #FFFFFF; font: inherit; font-size: var(--fs-11); font-weight: 800; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: var(--sh-pop);
+}
+.hint-beacon::after { content: ''; position: absolute; inset: -6px; border-radius: inherit; border: 2px solid var(--primary); opacity: 0; animation: hint-pulse 1.8s var(--ease) infinite; }
+.hint-beacon.is-seen { background: var(--navy-700); opacity: 0.75; }
+.hint-beacon.is-seen::after { display: none; }
+.hint-beacon.is-open { background: var(--navy); opacity: 1; }
+.hint-beacon:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+@keyframes hint-pulse { 0% { opacity: 0.6; transform: scale(0.8); } 100% { opacity: 0; transform: scale(1.5); } }
+@media (prefers-reduced-motion: reduce) { .hint-beacon::after { animation: none; } .hint-ring { transition: none; } }
+
+.hint-pop {
+  position: fixed; width: 320px; padding: 14px 16px 12px; border-radius: var(--r-md); background: var(--panel);
+  box-shadow: var(--sh-modal); color: var(--ink); display: flex; flex-direction: column; gap: 6px;
+}
+.hint-pop.is-phone { left: 12px; right: 12px; bottom: 84px; width: auto; }
+.hint-pop-head { display: flex; align-items: center; justify-content: space-between; }
+.hint-pop-step { font-size: var(--fs-12); font-weight: 700; color: var(--green-700); }
+.hint-pop-x { width: 32px; height: 32px; margin: -6px -8px -6px 0; border: 0; border-radius: var(--r-sm); background: none; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.hint-pop-x:hover { background: var(--sub); color: var(--ink); }
+.hint-pop-title { font-size: var(--fs-16); font-weight: 700; line-height: var(--lh-tight); }
+.hint-pop-text { font-size: var(--fs-13); line-height: var(--lh); color: var(--ink-2); }
+.hint-pop-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
+.hint-pop-btn { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border: 0; border-radius: var(--r-sm); background: var(--sub); color: var(--ink); font: inherit; font-size: var(--fs-13); font-weight: 700; cursor: pointer; }
+.hint-pop-btn:hover { background: var(--sub-hover); }
+.hint-pop-btn.is-main { background: var(--primary); color: var(--on-primary); }
+.hint-pop-btn.is-main:hover { background: var(--primary-hover); }
+.hint-pop-btn:focus-visible, .hint-bar-btn:focus-visible, .hint-pop-x:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.hint-pop.is-phone .hint-pop-btn { height: 44px; padding: 0 16px; }
+
+.hint-bar {
+  position: fixed; left: calc(var(--sidebar-w) + 24px); bottom: 20px; max-width: 560px;
+  display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border-radius: var(--r-md);
+  background: var(--navy-900); color: var(--on-dark); box-shadow: var(--sh-pop); font-size: var(--fs-13);
+}
+.hint-bar svg { color: var(--nav-active-icon); flex: 0 0 auto; }
+.hint-bar .muted { color: var(--nav-muted); }
+.hint-bar.is-phone { left: 12px; right: 12px; bottom: 84px; max-width: none; }
+.hint-bar-btn { flex: 0 0 auto; height: 32px; min-width: 32px; padding: 0 10px; border: 0; border-radius: var(--r-sm); background: rgba(255, 255, 255, 0.1); color: var(--on-dark); font: inherit; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.hint-bar-btn:hover { background: rgba(255, 255, 255, 0.18); }
+.hint-bar-btn.is-main { background: var(--primary); }
+.hint-bar.is-phone .hint-bar-btn { height: 40px; min-width: 40px; }
+/* на телефоне окно подсказки и панель не одновременно: окно поверх панели */
+.hint-pop.is-phone ~ .hint-bar.is-phone { display: none; }

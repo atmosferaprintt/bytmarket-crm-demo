@@ -12,6 +12,7 @@ export function Card({
   flush,
   className,
   pad,
+  hint,
 }: {
   title?: ReactNode;
   sub?: ReactNode;
@@ -21,9 +22,11 @@ export function Card({
   flush?: boolean;
   pad?: boolean;
   className?: string;
+  /** метка для подсказок режима обучения: data-hint */
+  hint?: string;
 }) {
   return (
-    <section className={cx('card', flush && 'is-flush', className)}>
+    <section className={cx('card', flush && 'is-flush', className)} data-hint={hint}>
       {title || actions ? (
         <div className="card-head">
           <div className="grow">
@@ -49,6 +52,7 @@ export function Kpi({
   onClick,
   extra,
   icon,
+  hint,
 }: {
   label: ReactNode;
   value: ReactNode;
@@ -58,6 +62,8 @@ export function Kpi({
   onClick?: () => void;
   extra?: ReactNode;
   icon?: ReactNode;
+  /** метка для подсказок режима обучения: data-hint */
+  hint?: string;
 }) {
   const good = delta ? (delta.dir === 'flat' ? 'flat' : delta.dir === deltaGood ? 'up' : 'down') : 'flat';
   const body = (
@@ -78,11 +84,11 @@ export function Kpi({
   );
   if (onClick)
     return (
-      <button type="button" className="kpi card" onClick={onClick}>
+      <button type="button" className="kpi card" onClick={onClick} data-hint={hint}>
         {body}
       </button>
     );
-  return <div className="kpi card">{body}</div>;
+  return <div className="kpi card" data-hint={hint}>{body}</div>;
 }
 
 /** Строки «подпись — значение». */
