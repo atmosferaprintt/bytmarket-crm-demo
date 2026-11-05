@@ -556,3 +556,6 @@ button.list-row:hover, a.list-row:hover { background: var(--row-hover); text-dec
 .wa-parse { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; margin-top: 2px; padding: 6px 10px; border: 0; border-radius: 10px; background: var(--green-soft); color: var(--green-700); font: inherit; font-size: var(--fs-12); font-weight: 700; cursor: pointer; }
 .wa-parse:hover { background: var(--green-soft-2); }
 .wa-parse-miss { font-weight: 500; color: var(--ink-2); }
+
+/* ---------- фото товара (загруженное или нарисованная упаковка) ---------- */
+.product-photo { display: block; flex: 0 0 auto; border-radius: 10px; background: var(--sub); object-fit: cover; overflow: hidden; }

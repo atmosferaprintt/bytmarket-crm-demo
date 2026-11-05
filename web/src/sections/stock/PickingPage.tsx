@@ -32,6 +32,7 @@ import { pickQueue, stockTabCounts, type PickItem } from './picking';
 import { HandOverModal, UnpickedModal, Waybill, restSum } from './PickingModals';
 import { act } from './act';
 import { usePrint } from './print';
+import { ProductPhoto } from '../../shell/ProductPhoto';
 
 /** Порядок очереди: сегодняшнее и самовывоз — сверху, потом на будущие дни, собранные — в конце. */
 function pickRank(x: PickItem): number {
@@ -346,6 +347,7 @@ export default function PickingPage() {
               return (
                 <label key={i} className={cx('stock-pick-line', isDone && !picked && 'is-done', locked && 'is-locked')}>
                   <input type="checkbox" checked={isDone} disabled={locked} onChange={() => toggle(l.line.productId)} aria-label="Отобрано" />
+                  <ProductPhoto product={l.p} size={40} />
                   <span style={{ minWidth: 0 }}>
                     <span className="stock-pick-name">{l.p.name}</span>
                     <span className="stock-pick-sku">{l.p.sku}</span>

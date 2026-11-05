@@ -219,3 +219,17 @@
 .prd-issues-foot { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; margin-top: 6px; }
 .prd-promo-now { display: flex; gap: 6px; align-items: flex-start; }
 .prd-promo-now > svg { width: 14px; height: 14px; flex: 0 0 auto; margin-top: 3px; color: var(--green-700); }
+
+/* фото в строке каталога */
+.prd-name-cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.prd-name-cell .product-photo { border-radius: 8px; }
+.prd-drawer-hero { display: flex; align-items: center; gap: var(--sp-4); min-width: 0; }
+.prd-drawer-hero .prd-chips { flex: 1 1 auto; min-width: 0; }
+.prd-photo-btn { position: relative; flex: 0 0 auto; padding: 0; border: 0; background: none; border-radius: 14px; cursor: pointer; }
+.prd-photo-btn:disabled { cursor: default; }
+.prd-photo-btn .product-photo { border-radius: 14px; box-shadow: var(--sh-card); }
+.prd-photo-btn:not(:disabled):hover .product-photo { outline: 2px solid var(--primary); outline-offset: 2px; }
+.prd-photo-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.prd-photo-hint { position: absolute; left: 6px; right: 6px; bottom: 6px; padding: 2px 0; border-radius: 6px; background: rgba(15, 30, 61, 0.72); color: #FFFFFF; font-size: var(--fs-11); font-weight: 600; text-align: center; opacity: 0; transition: opacity var(--dur-fast) var(--ease); }
+.prd-photo-btn:not(:disabled):hover .prd-photo-hint, .prd-photo-btn:focus-visible .prd-photo-hint { opacity: 1; }
+.prd-m-head { display: flex; align-items: center; gap: 12px; min-width: 0; }

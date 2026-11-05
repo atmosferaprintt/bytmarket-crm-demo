@@ -8,6 +8,7 @@ import { useOpenEntity } from '../../shell/entities';
 import { Button, EmptyState, SearchInput, cx, fmt } from '../../ui';
 import { catalogMode, catalogRows, priceOf, promoFor, type CatalogRow } from './lib';
 import { PromoChip, PromoPriceChip, Qty } from './bits';
+import { ProductPhoto } from '../../shell/ProductPhoto';
 
 const norm = (s: string) => s.toLowerCase().replace(/ё/g, 'е');
 const PAGE = 30;
@@ -99,10 +100,15 @@ function ProductCard({ row, mode, promo, onOpen }: { row: CatalogRow; mode: Retu
   const discounted = !!promo && info.price < info.base;
   return (
     <button type="button" className="card prd-m-card" onClick={onOpen}>
-      <div className="prd-m-name">{p.name}</div>
-      <div className="prd-m-meta">
-        <span>{p.sku}</span>
-        <span>{row.packs}</span>
+      <div className="prd-m-head">
+        <ProductPhoto product={p} size={64} />
+        <div className="col" style={{ gap: 6, minWidth: 0 }}>
+          <div className="prd-m-name">{p.name}</div>
+          <div className="prd-m-meta">
+            <span>{p.sku}</span>
+            <span>{row.packs}</span>
+          </div>
+        </div>
       </div>
       <div className={sales ? 'prd-m-bottom is-two' : 'prd-m-bottom'}>
         <div className="prd-m-col">

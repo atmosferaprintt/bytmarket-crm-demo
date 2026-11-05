@@ -35,6 +35,7 @@ import { DiscountModal, HistoryPicker, ProductSearch, RepeatChanges } from './Or
 import { TopMenu } from './TopMenu';
 import { queueOffline, useOffline } from './offline';
 import './sales.css';
+import { ProductPhoto } from '../../shell/ProductPhoto';
 
 export interface NewOrderProps {
   /** клиент заранее выбран (из карточки клиента, визита, чата) */
@@ -597,6 +598,7 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
                   {calc.rows.map((r) => (
                     <div key={r.l.key} className={cx('sales-line-card', flash === r.l.key && 'sales-flash')}>
                       <div className="row" style={{ alignItems: 'flex-start' }}>
+                        {r.p ? <ProductPhoto product={r.p} size={44} /> : null}
                         <div className="grow">
                           <div className="w-600 t-14">{productName(r.p)}</div>
                           <div className="muted t-12">{r.p?.sku}</div>
@@ -642,6 +644,9 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
                       {calc.rows.map((r) => (
                         <tr key={r.l.key} className={cx(flash === r.l.key && 'sales-flash')}>
                           <td>
+                            <div className="sales-line-cell">
+                            {r.p ? <ProductPhoto product={r.p} size={36} /> : null}
+                            <div style={{ minWidth: 0 }}>
                             <div className="cell-title sales-line-name" title={r.p?.name}>
                               {productName(r.p)}
                             </div>
@@ -649,6 +654,8 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
                               <span>{r.p?.sku}</span>
                               <span>·</span>
                               <PackSelect product={r.p} value={r.l.pack} onChange={(pack) => setLine(r.l.key, { pack })} inline />
+                            </div>
+                            </div>
                             </div>
                           </td>
                           <td>

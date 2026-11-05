@@ -14,6 +14,8 @@ import {
   SearchInput, Segmented, Select, StatList, StatRow, StatusChip, Steps, Tabs, ToastStack, fmt, toast, ConfirmButton,
   ORDER_STATE, PAY_STATE, DELIVERY_STATE, overdueStatus,
 } from '../ui';
+import { ProductPhoto } from '../shell/ProductPhoto';
+import { getDB } from '../data/store';
 
 interface Row { id: string; sku: string; name: string; brand: string; price: number; shop: number; wh: number; state: 'ok' | 'low' | 'out' }
 const ROWS: Row[] = Array.from({ length: 140 }, (_, i) => ({
@@ -53,6 +55,31 @@ function Kit() {
         <Kpi label="Стоимость остатков" value={fmt.moneyShort(6840000)} />
       </div>
       <div className="grid-3">
+        <div style={{ gridColumn: '1 / -1' }}>
+        <Card title="Фото товаров" sub="Нарисованные упаковки: по три товара из каждой категории">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 14 }}>
+            {(() => {
+              const db = getDB();
+              const out: typeof db.products = [];
+              const seen = new Map<string, Set<string>>();
+              for (const pr of db.products) {
+                const s = seen.get(pr.categoryId) ?? new Set<string>();
+                if (s.size < 3 && !s.has(pr.brandId)) {
+                  s.add(pr.brandId);
+                  out.push(pr);
+                }
+                seen.set(pr.categoryId, s);
+              }
+              return out.map((pr) => (
+                <div key={pr.id} className="col" style={{ gap: 6 }}>
+                  <ProductPhoto product={pr} size={150} />
+                  <span className="t-11 muted" style={{ lineHeight: 1.3 }}>{pr.name}</span>
+                </div>
+              ));
+            })()}
+          </div>
+        </Card>
+        </div>
         <Card title="Кнопки" sub="Одна главная на экране">
           <div className="row" style={{ flexWrap: 'wrap' }}>
             <Button variant="primary">Главная</Button>

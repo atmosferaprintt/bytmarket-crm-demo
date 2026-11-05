@@ -157,3 +157,17 @@ describe('операции WhatsApp', () => {
     expect(() => op('chat.send', { chatId: ch.id, text: 'Тест' }, MANAGER)).toThrow(/не подключён/);
   });
 });
+
+describe('фото товара', () => {
+  it('загружает и убирает только владелец; принимаются только картинки', () => {
+    const { db, op } = fresh();
+    const p = db.products[0];
+    const photo = 'data:image/jpeg;base64,' + 'A'.repeat(200);
+    expect(() => op('product.photo', { productId: p.id, photo }, MANAGER)).toThrow(OpError);
+    expect(() => op('product.photo', { productId: p.id, photo: 'http://example.com/x.jpg' }, OWNER)).toThrow(/JPEG/);
+    op('product.photo', { productId: p.id, photo }, OWNER);
+    expect(db.products[0].photo).toBe(photo);
+    op('product.photo', { productId: p.id, photo: null }, OWNER);
+    expect(db.products[0].photo).toBeNull();
+  });
+});

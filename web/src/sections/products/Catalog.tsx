@@ -14,14 +14,18 @@ import { statusRank } from '../stock/StockStatus';
 import { catalogCount, catalogMode, catalogRows, promoFor, promosToday, type CatalogMode, type CatalogRow } from './lib';
 import { PriceCell, PromoChip, PromoPriceChip, Qty, StockChip } from './bits';
 import ProductForm from './ProductForm';
+import { ProductPhoto } from '../../shell/ProductPhoto';
 
 const AVAIL_TITLE = 'Доступно = магазин + склад − резерв';
 const WH_TITLE = 'Можно заказать = склад − резерв: столько берёт заявка и заказ';
 
 function nameCell(r: CatalogRow) {
   return (
-    <span className="prd-name" title={r.p.name}>
-      {r.p.name}
+    <span className="prd-name-cell">
+      <ProductPhoto product={r.p} size={36} />
+      <span className="prd-name" title={r.p.name}>
+        {r.p.name}
+      </span>
     </span>
   );
 }

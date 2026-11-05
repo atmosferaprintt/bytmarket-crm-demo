@@ -14,6 +14,7 @@ import { CallButton, DayChoice } from './parts';
 import { DELAY_REASONS, INTERVALS, LESS_REASONS, clockOf, dispatcherOf, intervalEnd, intervalFor, intervalPassed, kgText, minutesOf, packText, placesText, shortDistrict, timeAfter } from './lib';
 import { useRun } from './run';
 import { useOpenEntity } from '../../shell/entities';
+import { ProductPhoto } from '../../shell/ProductPhoto';
 
 type Method = 'cash' | 'card' | 'transfer' | 'none';
 
@@ -498,6 +499,7 @@ export function LinesSheet({ id, onClose }: { id: ID; onClose: () => void }) {
           const p = ix.products.get(l.productId);
           return (
             <div key={`${l.productId}-${i}`} className="dl-lines-row">
+              {p ? <ProductPhoto product={p} size={48} /> : null}
               <span className="grow col" style={{ gap: 2, minWidth: 0 }}>
                 <span className="dl-nt-name">{p?.name ?? 'Товар'}</span>
                 <span className="t-12 muted">{p?.sku}</span>

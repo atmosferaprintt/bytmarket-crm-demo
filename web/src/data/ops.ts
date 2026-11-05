@@ -2399,6 +2399,25 @@ function productCreate(db: DB, payload: ProductInput, ctx: OpCtx): OpResult {
   return { id: pr.id };
 }
 
+/** Фото товара: загрузить своё (уменьшенное в браузере) или убрать — тогда снова рисованная упаковка. Только владелец. */
+function productPhoto(db: DB, payload: { productId: ID; photo: string | null }, ctx: OpCtx): OpResult {
+  const p = obj(payload);
+  requireRole(db, ctx, [], 'Фото товара');
+  const pr = product(db, p.productId);
+  if (p.photo === null) {
+    if (!pr.photo) fail('Своего фото у товара нет');
+    pr.photo = null;
+    audit(db, ctx, 'product', pr.id, `Фото товара «${shortName(pr)}» убрано`);
+    return { id: pr.id };
+  }
+  const photo = String(p.photo ?? '');
+  if (!/^data:image\/(jpeg|png|webp);base64,/.test(photo)) fail('Фото: нужен файл JPEG, PNG или WebP');
+  if (photo.length > 400_000) fail('Фото слишком большое — уменьшите до 300 КБ');
+  pr.photo = photo;
+  audit(db, ctx, 'product', pr.id, `Загружено фото товара «${shortName(pr)}»`);
+  return { id: pr.id };
+}
+
 function productUpdate(db: DB, payload: { productId: ID; patch: ProductInput }, ctx: OpCtx): OpResult {
   const p = obj(payload);
   requireRole(db, ctx, [], 'Изменить товар');
@@ -2901,6 +2920,7 @@ export const ops = {
   'promo.toggle': promoToggle,
   'product.create': productCreate,
   'product.update': productUpdate,
+  'product.photo': productPhoto,
   'client.create': clientCreate,
   'client.update': clientUpdate,
 

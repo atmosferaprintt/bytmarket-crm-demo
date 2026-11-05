@@ -35,7 +35,8 @@ async (page) => {
           overflowX: document.documentElement.scrollWidth > window.innerWidth + 1,
           primaries: document.querySelectorAll('.content .btn-primary').length,
           upper: [...document.querySelectorAll('.content *')].filter((e) => e.children.length === 0 && e.textContent.trim().length > 3 && getComputedStyle(e).textTransform === 'uppercase').length,
-          sizes: [...new Set([...document.querySelectorAll('.content *')].filter((e) => e.children.length === 0 && e.textContent.trim()).map((e) => getComputedStyle(e).fontSize))],
+          // надписи внутри рисунков упаковок (svg) — часть картинки, шкала шрифта к ним не относится
+          sizes: [...new Set([...document.querySelectorAll('.content *')].filter((e) => e.children.length === 0 && e.textContent.trim() && !e.closest('svg')).map((e) => getComputedStyle(e).fontSize))],
           demoWords: (document.querySelector('.content')?.innerText.match(/демо|учебн|тестов/gi) || []).length,
           empty: document.querySelectorAll('.content .empty').length,
           failed: document.querySelectorAll('.content .notice.is-bad').length,

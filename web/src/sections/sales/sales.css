@@ -351,3 +351,7 @@ button.list-row.sales-req-row:last-child { border-bottom: 0; }
   .sales-card-foot .btn { height: 44px; }
   .sales-card-foot .btn-icon { width: 44px; }
 }
+
+/* фото товара в строке заказа */
+.sales-line-cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.sales-suggest-row .product-photo { border-radius: 8px; }

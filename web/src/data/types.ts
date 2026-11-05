@@ -78,6 +78,8 @@ export interface Product {
   expiryTracked: boolean; // учитывать партии и сроки годности
   marking: boolean; // подлежит маркировке
   createdAt: ISODate;
+  /** фото, загруженное владельцем (data:image/jpeg…); нет — показываем нарисованную упаковку */
+  photo?: string | null;
 }
 
 /* ---------- остатки ---------- */

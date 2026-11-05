@@ -9,11 +9,12 @@ import { useScoped } from '../../roles/scope';
 import { PageHeader } from '../../shell/PageHeader';
 import { EntityLink } from '../../shell/entities';
 import { Button, Card, Chip, EmptyState, Kpi, Notice, cx, fmt, toast } from '../../ui';
-import { buildCatalog, cartName, categoryIcon, fixNo, nbUnits, openShift, promoPct } from './lib';
+import { buildCatalog, cartName, fixNo, nbUnits, openShift, promoPct } from './lib';
 import { PromoChip } from '../sales/parts';
 import { stockLines } from '../stock/calc';
 import { moveQty, requestMoveToShop, requestedMoves } from './moveRequest';
 import './register.css';
+import { ProductPhoto } from '../../shell/ProductPhoto';
 
 /** Рабочий стол: продавец */
 export default function Home() {
@@ -135,12 +136,9 @@ export default function Home() {
             {promos.list.length ? (
               <div className="list">
                 {promos.list.map((x) => {
-                  const Icon = categoryIcon(x.category);
                   return (
                     <div key={x.p.id} className="list-row">
-                      <span className="icon-tile reg-tile">
-                        <Icon />
-                      </span>
+                      <ProductPhoto product={x.p} size={40} />
                       <div className="grow">
                         <EntityLink type="product" id={x.p.id}>
                           <span title={x.p.name}>{nbUnits(cartName(x.p))}</span>

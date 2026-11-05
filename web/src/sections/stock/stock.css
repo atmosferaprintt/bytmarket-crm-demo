@@ -86,7 +86,7 @@
 .stock-unpicked-row:last-child { border-bottom: 0; }
 /* лист сборки показывает все позиции заказа целиком, без внутренней прокрутки */
 .stock-pick-lines { display: flex; flex-direction: column; margin: 0 -20px; border-top: 1px solid var(--line); }
-.stock-pick-line { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: var(--sp-3); padding: 8px 20px; border-bottom: 1px solid var(--line); align-items: start; cursor: pointer; }
+.stock-pick-line { display: grid; grid-template-columns: 20px 40px minmax(0, 1fr) auto; gap: var(--sp-3); padding: 8px 20px; border-bottom: 1px solid var(--line); align-items: center; cursor: pointer; }
 .stock-pick-line.is-locked { cursor: default; }
 .stock-pick-line.is-locked:hover { background: transparent; }
 .stock-pick-sum { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: var(--fs-13); color: var(--ink-2); }
@@ -198,3 +198,7 @@ button.stock-feed-row:hover { background: var(--row-hover); }
 .stock-request-name { white-space: normal !important; }
 .stock-request-qty { white-space: nowrap; }
 .stock-list-meta.stock-request-meta { display: block; white-space: normal; }
+
+/* фото в строке остатков */
+.stock-name-cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.stock-name-cell .product-photo { border-radius: 8px; }

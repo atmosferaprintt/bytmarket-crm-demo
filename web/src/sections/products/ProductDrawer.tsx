@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
-import { CalendarClock, ListChecks, Pencil, Power, Tag } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
+import { CalendarClock, ImageOff, ImagePlus, ListChecks, Pencil, Power, Tag } from 'lucide-react';
+import { ProductPhoto } from '../../shell/ProductPhoto';
 import type { EntityDrawerProps } from '../../shell/entities';
 import { EntityLink, useOpenEntity } from '../../shell/entities';
 import { TaskModal } from '../../shell/TaskModal';
@@ -50,6 +51,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
   const [task, setTask] = useState(false);
   const row = useMemo(() => catalogRow(db, id), [db, version, id]);
   const phone = useIsPhone();
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const lastChange = useMemo(() => {
     let at: string | null = null;
@@ -81,6 +83,25 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
     toast(p.active ? 'Товар снят с продажи' : 'Товар снова в продаже');
   };
 
+  // своё фото товара: уменьшаем в браузере до 480 px и храним вместе с остальными изменениями демо
+  const pickPhoto = () => fileRef.current?.click();
+  const onPhoto = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      const photo = await shrinkPhoto(file, 480);
+      const r = dispatch('product.photo', { productId: p.id, photo }, me.id);
+      if (!r.ok) return toast(r.error, 'error');
+      toast('Фото товара загружено');
+    } catch {
+      toast('Не получилось открыть картинку — нужен JPEG или PNG', 'error');
+    }
+  };
+  const dropPhoto = () => {
+    const r = dispatch('product.photo', { productId: p.id, photo: null }, me.id);
+    if (!r.ok) return toast(r.error, 'error');
+    toast('Своё фото убрано — показываем рисунок упаковки');
+  };
+
   const footer =
     canEdit || canPrice ? (
       <>
@@ -96,6 +117,8 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
         ) : null}
         <MoreMenu
           items={[
+            { label: p.photo ? 'Заменить фото' : 'Загрузить фото', icon: <ImagePlus />, onClick: pickPhoto, hidden: !canEdit },
+            { label: 'Убрать своё фото', icon: <ImageOff />, onClick: dropPhoto, hidden: !canEdit || !p.photo },
             { label: p.active ? 'Снять с продажи' : 'Вернуть в продажу', icon: <Power />, onClick: toggleActive, hidden: !canEdit },
             { label: 'Поставить задачу', icon: <ListChecks />, onClick: () => setTask(true) },
           ]}
@@ -114,6 +137,12 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
         footer={footer}
         head={
           <div className="prd-drawer-head">
+            <div className="prd-drawer-hero">
+              <button type="button" className="prd-photo-btn" onClick={canEdit ? pickPhoto : undefined} disabled={!canEdit} title={canEdit ? (p.photo ? 'Заменить фото' : 'Загрузить своё фото') : p.photo ? 'Фото товара' : 'Рисунок упаковки'}>
+                <ProductPhoto product={p} size={phone ? 88 : 112} />
+                {canEdit && !p.photo ? <span className="prd-photo-hint">Своё фото</span> : null}
+              </button>
+              <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => { void onPhoto(e.target.files?.[0]); e.target.value = ''; }} />
             <div className="prd-chips">
               <StockChip row={row} />
               {p.active && promoFor(row, mode) ? mode === 'sales' ? <PromoPriceChip info={row.wholesale} /> : <PromoChip promo={promoFor(row, mode)!} /> : null}
@@ -123,6 +152,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
                 </Chip>
               ) : null}
               {p.marking ? <Chip tone="outline">Маркировка</Chip> : null}
+            </div>
             </div>
             <div className="prd-drawer-tabs">
               <Tabs items={tabs} value={tab} onChange={(k) => setTab(k as TabKey)} />
@@ -842,3 +872,31 @@ function SalesTab({ product }: { product: Product }) {
   );
 }
 
+
+/** Уменьшить картинку до max px по длинной стороне и вернуть JPEG data:URL (около 30–60 КБ). */
+function shrinkPhoto(file: File, max: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const w = Math.round(img.width * k);
+      const h = Math.round(img.height * k);
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const g = canvas.getContext('2d');
+      if (!g) return reject(new Error('canvas'));
+      g.fillStyle = '#FFFFFF';
+      g.fillRect(0, 0, w, h);
+      g.drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('image'));
+    };
+    img.src = url;
+  });
+}

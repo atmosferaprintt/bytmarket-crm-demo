@@ -8,6 +8,7 @@ import { Button, Checkbox, Chip, Field, Input, Modal, Notice, STOCK_LEVEL, Statu
 import { linePackLabel, norm, productName, useIsPhone } from './lib';
 import { PriceCell, PromoChip } from './parts';
 import { searchProducts } from '../../data/search';
+import { ProductPhoto } from '../../shell/ProductPhoto';
 
 /* ---------- поиск товара: штрихкод, название, артикул ---------- */
 
@@ -127,7 +128,10 @@ export function ProductSearch({ priceType, onPick, autoFocus }: { priceType: Pri
                   {phone ? (
                     // телефон: название целиком в две строки, наличие и цена — под ним
                     <>
-                      <span className="sales-suggest-name">{productName(r.p)}</span>
+                      <span className="row" style={{ gap: 10, alignItems: 'flex-start' }}>
+                        <ProductPhoto product={r.p} size={44} />
+                        <span className="sales-suggest-name grow">{productName(r.p)}</span>
+                      </span>
                       <span className="muted t-12 ellipsis">{[r.p.sku, r.p.packs.slice(1).map((x) => x.name).join(', ')].filter(Boolean).join(' · ')}</span>
                       <span className="sales-suggest-foot">
                         <span className={cx('t-13 num', avail > 0 ? 'ink-2' : 'c-bad w-600')}>{avail > 0 ? `Доступно ${fmt.qty(avail)}` : 'Нет на складе'}</span>
@@ -140,7 +144,8 @@ export function ProductSearch({ priceType, onPick, autoFocus }: { priceType: Pri
                     </>
                   ) : (
                   <>
-                  <span className="grow">
+                  <ProductPhoto product={r.p} size={36} />
+                  <span className="grow" style={{ minWidth: 0 }}>
                     <span className="w-600 ellipsis" style={{ display: 'block' }}>
                       {productName(r.p)}
                     </span>

@@ -13,6 +13,7 @@ import { CallButton, DelayChip, LateChip, MapLink, PayChip, StateChip } from './
 import { clockOf, dayLabel, deliveredAt, kgText, lastFail, packText, placesText, telUrl, transferPending } from './lib';
 import { actsFor, useDeliveryFlow } from './flow';
 import './delivery.css';
+import { ProductPhoto } from '../../shell/ProductPhoto';
 
 function stepsOf(d: Delivery): { label: string; state: 'done' | 'current' | 'todo' }[] {
   const s = d.state;
@@ -246,6 +247,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
               const p = ix.products.get(l.productId);
               return (
                 <div key={`${l.productId}-${i}`} className="dl-lines-row">
+                  {p ? <ProductPhoto product={p} size={36} /> : null}
                   <span className="grow col" style={{ gap: 0, minWidth: 0 }}>
                     <span className="w-600 dl-wrap">{p?.name ?? 'Товар'}</span>
                     <span className="t-12 muted">{p?.sku}</span>

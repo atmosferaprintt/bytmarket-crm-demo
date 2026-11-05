@@ -13,6 +13,7 @@ import { StockStatusChip, statusRank } from './StockStatus';
 import { stockTabCounts } from './picking';
 import { StockDocButtons, useStockDocs } from './docActions';
 import { useNarrow } from './useNarrow';
+import { ProductPhoto } from '../../shell/ProductPhoto';
 
 type FilterKey = 'all' | StockFlag;
 const FILTERS: { key: FilterKey; label: string; hint?: string }[] = [
@@ -118,8 +119,11 @@ export default function StockPage() {
       csv: (l) => l.p.name,
       className: 'stock-col-name',
       render: (l) => (
-        <div className="cell-title stock-name" title={l.p.name}>
-          {l.p.name}
+        <div className="stock-name-cell">
+          <ProductPhoto product={l.p} size={32} />
+          <div className="cell-title stock-name" title={l.p.name}>
+            {l.p.name}
+          </div>
         </div>
       ),
       total: (rs) => fmt.count(rs.length, 'товар', 'товара', 'товаров'),

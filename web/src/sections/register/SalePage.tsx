@@ -38,7 +38,6 @@ import {
   buildCatalog,
   cardNumber,
   cartName,
-  categoryIcon,
   clientByCard,
   clientPurchases,
   nbUnits,
@@ -65,6 +64,7 @@ import { usePrintReceipt } from './Print';
 import { moveQty, openMoveTask, requestMoveToShop } from './moveRequest';
 import { PromoChip } from '../sales/parts';
 import { useMedia } from '../sales/lib';
+import { ProductPhoto } from '../../shell/ProductPhoto';
 
 /* ---------- черновик чека сохраняется сам ---------- */
 
@@ -950,7 +950,6 @@ function SuggRow({ it, query, active, onHover, onAdd }: { it: CatalogItem; query
   const db = useDB();
   const st = stockOf(db, it.p.id);
   const info = priceFor(db, it.p.id, { priceType: 'retail', date: db.meta.today });
-  const Icon = categoryIcon(it.category);
   return (
     <div
       className={cx('reg-sugg', active && 'is-hl')}
@@ -959,9 +958,7 @@ function SuggRow({ it, query, active, onHover, onAdd }: { it: CatalogItem; query
       onMouseEnter={onHover}
       onClick={onAdd}
     >
-      <span className="icon-tile reg-tile">
-        <Icon />
-      </span>
+      <ProductPhoto product={it.p} size={44} />
       <div className="reg-sugg-name">
         <div className="reg-sugg-title">{highlight(nbUnits(it.p.name), query)}</div>
         <div className="cell-sub reg-sugg-sub">

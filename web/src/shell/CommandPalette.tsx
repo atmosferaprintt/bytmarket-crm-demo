@@ -9,6 +9,8 @@ import { useSession } from '../roles/session';
 import { useScoped } from '../roles/scope';
 import { SECTIONS, sectionLabel } from './nav';
 import { useOpenEntity } from './entities';
+import { ProductPhoto } from './ProductPhoto';
+import type { Product } from '../data/types';
 
 interface Hit {
   key: string;
@@ -16,6 +18,8 @@ interface Hit {
   title: string;
   sub: string;
   run: () => void;
+  /** товар — показываем его фото вместо значка */
+  product?: Product;
 }
 
 const norm = (s: string) => s.toLowerCase().replace(/ё/g, 'е');
@@ -54,7 +58,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     if (sees('products') && !kindWord) {
       for (const h of searchProducts(db, q, { limit: 6 }).list) {
         const p = h.p;
-        out.push({ key: `p-${p.id}`, group: 'Товары', title: p.name, sub: `${p.sku} · ${wholesale ? `опт ${fmt.price(p.wholesalePrice)}` : fmt.price(p.retailPrice)}`, run: () => open('product', p.id) });
+        out.push({ key: `p-${p.id}`, group: 'Товары', title: p.name, sub: `${p.sku} · ${wholesale ? `опт ${fmt.price(p.wholesalePrice)}` : fmt.price(p.retailPrice)}`, run: () => open('product', p.id), product: p });
       }
     }
     if (sees('clients') && !kindWord) {
@@ -171,7 +175,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
                   const idx = hits.indexOf(h);
                   return (
                     <button key={h.key} type="button" className={cx('palette-item', idx === active && 'is-active')} onMouseEnter={() => setActive(idx)} onClick={() => run(h)}>
-                      <span className="icon-tile">{icon(g)}</span>
+                      {h.product ? <ProductPhoto product={h.product} size={36} /> : <span className="icon-tile">{icon(g)}</span>}
                       <span className="grow" style={{ minWidth: 0 }}>
                         <span className="ellipsis w-600" style={{ display: 'block' }}>{h.title}</span>
                         <span className="ellipsis t-12 muted" style={{ display: 'block' }}>{h.sub}</span>
