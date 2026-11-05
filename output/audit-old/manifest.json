@@ -1,0 +1,80 @@
+{
+ "allowed_sections_by_role": {
+  "owner": [
+   "overview",
+   "tasks",
+   "register",
+   "sales",
+   "clients",
+   "chats",
+   "visits",
+   "returns",
+   "products",
+   "stock",
+   "purchases",
+   "pricing",
+   "imports",
+   "finance",
+   "delivery",
+   "reports",
+   "team",
+   "channels",
+   "settings"
+  ],
+  "seller": [
+   "overview",
+   "tasks",
+   "register",
+   "returns",
+   "products"
+  ],
+  "manager": [
+   "overview",
+   "tasks",
+   "sales",
+   "clients",
+   "chats",
+   "returns",
+   "products",
+   "delivery"
+  ],
+  "rep": [
+   "overview",
+   "tasks",
+   "sales",
+   "clients",
+   "chats",
+   "visits",
+   "products"
+  ],
+  "accountant": [
+   "overview",
+   "tasks",
+   "sales",
+   "clients",
+   "returns",
+   "finance",
+   "reports"
+  ],
+  "warehouse": [
+   "overview",
+   "tasks",
+   "returns",
+   "products",
+   "stock",
+   "purchases",
+   "delivery"
+  ],
+  "dispatcher": [
+   "overview",
+   "tasks",
+   "delivery"
+  ],
+  "courier": [
+   "overview",
+   "tasks",
+   "delivery"
+  ]
+ },
+ "note": "Снимки 1440 px, полная страница. Разделы вне списка роли переадресуют на Обзор."
+}
