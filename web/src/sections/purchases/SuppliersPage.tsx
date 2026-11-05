@@ -11,7 +11,7 @@ import { purchaseRows } from './calc';
 import { usePurchaseCounts } from './counts';
 import { useNarrow } from '../stock/useNarrow';
 
-/** «Наталья Викторовна Гречко, менеджер» → «Наталья Гречко»: имя и фамилия, полностью — в подсказке. */
+/** «Луиза Камилевна Гаджимурадова, менеджер» → «Луиза Гаджимурадова»: имя и фамилия, полностью — в подсказке. */
 function shortPerson(contact: string): string {
   const name = contact.split(',')[0].trim();
   const parts = name.split(/\s+/);

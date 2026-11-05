@@ -1,7 +1,7 @@
 /* Набор деталей БытМаркет. Разделы импортируют только отсюда: import { Button, DataTable } from '../../ui'; */
 export { cx } from './cx';
 export { Button, type ButtonProps } from './Button';
-export { Field, Input, Select, Textarea, SearchInput, Checkbox, QtyInput, MoneyInput, type SelectOption } from './Field';
+export { Field, Input, Select, Textarea, SearchInput, Checkbox, Switch, QtyInput, MoneyInput, type SelectOption } from './Field';
 export { Chip, StatusChip, type Tone } from './Chip';
 export { Card, Kpi, StatList, StatRow, EmptyState, Notice, ProgressBar, Steps, Avatar, IconTile } from './Card';
 export { Tabs, RouteTabs, Segmented, type TabItem, type SegOption } from './Tabs';

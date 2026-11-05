@@ -22,7 +22,7 @@ export function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; 
   const [tried, setTried] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const nameErr = name.trim().split(/\s+/).filter(Boolean).length < 2 ? 'Имя и фамилия, например «Анна Орлова»' : null;
+  const nameErr = name.trim().split(/\s+/).filter(Boolean).length < 2 ? 'Имя и фамилия, например «Айшат Набиева»' : null;
   const phoneNorm = normalizePhone(phone);
   const phoneErr = !phoneNorm ? 'Телефон: 11 цифр, например +7 917 123-45-67' : db.employees.some((e) => e.phone === phoneNorm) ? 'Этот телефон уже у другого сотрудника' : null;
   const rolesErr = roles.length ? null : 'Выберите хотя бы одну роль';
@@ -68,7 +68,7 @@ export function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; 
       <div className="col-4">
         <div className="set-form">
           <Field label="Имя и фамилия" error={tried ? nameErr : null}>
-            <Input autoFocus value={name} invalid={tried && !!nameErr} onChange={(e) => setName(e.target.value)} placeholder="Анна Орлова" />
+            <Input autoFocus value={name} invalid={tried && !!nameErr} onChange={(e) => setName(e.target.value)} placeholder="Айшат Набиева" />
           </Field>
           <Field label="Телефон" error={tried ? phoneErr : null}>
             <Input value={phone} invalid={tried && !!phoneErr} inputMode="tel" onChange={(e) => setPhone(e.target.value)} placeholder="+7 900 000-00-00" />

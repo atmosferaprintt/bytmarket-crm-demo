@@ -114,6 +114,15 @@ export function Checkbox({ checked, onChange, children, disabled }: { checked: b
   );
 }
 
+/** Переключатель «включено / выключено» для настроек. */
+export function Switch({ checked, onChange, disabled, label }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; label: string }) {
+  return (
+    <button type="button" role="switch" aria-checked={checked} aria-label={label} title={label} className={checked ? 'switch is-on' : 'switch'} disabled={disabled} onClick={() => onChange(!checked)}>
+      <span />
+    </button>
+  );
+}
+
 /** Количество с кнопками − / + и вводом с клавиатуры. */
 export function QtyInput({ value, onChange, min = 0, max, step = 1, ariaLabel = 'Количество' }: { value: number; onChange: (v: number) => void; min?: number; max?: number; step?: number; ariaLabel?: string }) {
   const [text, setText] = useState(String(value));

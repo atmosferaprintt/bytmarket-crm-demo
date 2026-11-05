@@ -220,7 +220,7 @@ export function ClientFormModal({ client, onClose, onSaved }: { client?: Client;
             value={name}
             invalid={nameError && !name.trim()}
             onChange={(e) => setName(e.target.value)}
-            placeholder={kind === 'person' ? 'Имя и фамилия' : 'Например: ИП Соколова, магазин «Чистый дом»'}
+            placeholder={kind === 'person' ? 'Имя и фамилия' : 'Например: ИП Гамзатова, магазин «Чистый дом»'}
           />
         </Field>
         <Field label="ИНН">
@@ -298,7 +298,7 @@ export function ClientFormModal({ client, onClose, onSaved }: { client?: Client;
                 <span className="cl-row-icon">
                   <UserRound />
                 </span>
-                <Input value={c.name} onChange={(e) => setContact(c.key, { name: e.target.value })} placeholder="Имя: Ольга Соколова" aria-label="Имя контакта" />
+                <Input value={c.name} onChange={(e) => setContact(c.key, { name: e.target.value })} placeholder="Имя: Зайнаб Гамзатова" aria-label="Имя контакта" />
                 <Select
                   value={c.role}
                   onChange={(e) => setContact(c.key, { role: e.target.value })}

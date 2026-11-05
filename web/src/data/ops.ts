@@ -6,6 +6,7 @@ import type {
   AccountKey,
   Allocation,
   Chat,
+  ChatFile,
   Client,
   ClientContact,
   ClientPoint,
@@ -40,9 +41,11 @@ import type {
   TaskLink,
   Visit,
   VisitResult,
+  WaAutoKey,
+  WhatsAppSettings,
   WriteoffReason,
 } from './types';
-import { ACCOUNT_NAMES, EXPENSE_CATEGORIES, PAY_METHOD_NAMES, RETURN_REASONS, WRITEOFF_REASONS } from './types';
+import { ACCOUNT_NAMES, EXPENSE_CATEGORIES, PAY_METHOD_NAMES, RETURN_REASONS, WA_AUTO_KEYS, WRITEOFF_REASONS } from './types';
 import { byIdempotencyKey, get, removeFrom, stockRow } from './idx';
 import {
   accountBalances,
@@ -89,6 +92,7 @@ import { dateOf, dayNum, dayText, diffDays, plusDays } from './dates';
 import { days, pcs, rub } from './text';
 import { isEan13, isInn, makeEan13 } from './codes';
 import { SALES_WINDOW_DAYS, SUGGEST_SAFETY_DAYS, isBelowMin } from './thresholds';
+import { WA_AUTO_META, ensureChat, waAfterOp } from './whatsapp';
 
 export { OpError, ROLE_NAMES };
 export type { OpCtx, OpResult };
@@ -2524,20 +2528,37 @@ function chatOf(db: DB, id: unknown): Chat {
   return c;
 }
 
-function chatSend(db: DB, payload: { chatId: ID; text: string; orderId?: ID | null }, ctx: OpCtx): OpResult {
+function chatFile(raw: unknown): ChatFile | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  const f = obj(raw);
+  const name = text(f.name, 'Файл');
+  if (name.length > 120) fail('Слишком длинное имя файла');
+  return { name, size: text(f.size, 'Размер файла', false) || '—', kind: oneOf(f.kind ?? 'pdf', ['pdf', 'xlsx'] as const, 'Тип файла') };
+}
+
+/** Сообщение клиенту в WhatsApp: в диалог (chatId) или клиенту (clientId) — диалог появится, если его не было. */
+function chatSend(db: DB, payload: { chatId?: ID; clientId?: ID; text: string; orderId?: ID | null; file?: ChatFile }, ctx: OpCtx): OpResult {
   const p = obj(payload);
-  requireRole(db, ctx, ['manager', 'rep'], 'Написать клиенту');
-  const chat = chatOf(db, p.chatId);
-  const msg = text(p.text, 'Сообщение');
+  requireRole(db, ctx, ['manager', 'rep', 'accountant'], 'Написать клиенту');
+  if (!db.settings.whatsapp.connected) fail('WhatsApp не подключён — подключите его в настройках');
+  let chat: Chat;
+  if (p.chatId !== undefined) chat = chatOf(db, p.chatId);
+  else {
+    const client = clientOf(db, p.clientId);
+    if (!client.phone) fail('У клиента нет телефона');
+    chat = ensureChat(db, client);
+  }
+  const file = chatFile(p.file);
+  const msg = text(p.text, 'Сообщение', !file);
   let orderId: ID | null = null;
   if (p.orderId) {
     const o = orderOf(db, p.orderId);
     if (o.clientId !== chat.clientId) fail('Заказ другого клиента');
     orderId = o.id;
   }
-  chat.messages.push({ at: ctx.at, from: 'staff', authorId: ctx.actorId, text: msg, orderId });
+  chat.messages.push({ at: ctx.at, from: 'staff', authorId: ctx.actorId, text: msg, orderId, ...(file ? { file } : {}) });
   chat.unread = 0;
-  return { id: chat.id, info: 'Сообщение сохранено в демо — наружу не отправляется' };
+  return { id: chat.id };
 }
 
 function chatRead(db: DB, payload: { chatId: ID }, ctx: OpCtx): OpResult {
@@ -2592,6 +2613,39 @@ function settingsUpdate(
   if (!changes.length) fail('Изменений нет');
   db.settings = next;
   audit(db, ctx, 'settings', 'settings', [...new Set(changes)].join('; '));
+  return {};
+}
+
+/** WhatsApp: подключить или отключить, включить или выключить автосообщения. Только владелец. */
+function settingsWhatsapp(db: DB, payload: { connected?: boolean; auto?: Partial<Record<WaAutoKey, boolean>> }, ctx: OpCtx): OpResult {
+  const p = obj(payload);
+  requireRole(db, ctx, [], 'Настройки WhatsApp');
+  const cur = db.settings.whatsapp;
+  const next: WhatsAppSettings = { ...cur, auto: { ...cur.auto }, hours: { ...cur.hours } };
+  const changes: string[] = [];
+  if (p.connected !== undefined) {
+    if (typeof p.connected !== 'boolean') fail('Подключение: неверное значение');
+    if (p.connected !== cur.connected) {
+      next.connected = p.connected;
+      if (p.connected) next.since = dayOf(ctx);
+      changes.push(p.connected ? `WhatsApp подключён, номер ${cur.phone}` : 'WhatsApp отключён');
+    }
+  }
+  if (p.auto !== undefined) {
+    const a = obj(p.auto);
+    for (const k of WA_AUTO_KEYS) {
+      if (a[k] === undefined) continue;
+      if (typeof a[k] !== 'boolean') fail('Автосообщение: неверное значение');
+      if (a[k] !== cur.auto[k]) {
+        next.auto[k] = a[k] as boolean;
+        changes.push(`автосообщение «${WA_AUTO_META[k].label}» ${a[k] ? 'включено' : 'выключено'}`);
+      }
+    }
+  }
+  if (!changes.length) fail('Изменений нет');
+  db.settings = { ...db.settings, whatsapp: next };
+  const t = changes.join('; ');
+  audit(db, ctx, 'settings', 'settings', t.charAt(0).toUpperCase() + t.slice(1));
   return {};
 }
 
@@ -2718,6 +2772,7 @@ export const ops = {
   'chat.read': chatRead,
 
   'settings.update': settingsUpdate,
+  'settings.whatsapp': settingsWhatsapp,
   'employee.create': employeeCreate,
   'employee.update': employeeUpdate,
 } satisfies Record<string, AnyOp>;
@@ -2741,6 +2796,12 @@ export function applyOp(db: DB, type: OpType | string, payload: unknown, ctx: Op
   try {
     const r = fn(db, payload, ctx) ?? {};
     db.meta.version++;
+    // автосообщение клиенту в WhatsApp по событию (после версии: подсчёты долга видят новое состояние)
+    const wa = waAfterOp(db, type, r, ctx);
+    if (wa) {
+      db.meta.version++;
+      return { ...r, info: r.info ? `${r.info}. ${wa}` : wa };
+    }
     return r;
   } catch (e) {
     for (const [k, n] of lengths) {

@@ -19,8 +19,8 @@ export type RoleKey =
 
 export interface Employee {
   id: ID;
-  name: string; // «Анна Орлова»
-  short: string; // «Анна О.»
+  name: string; // «Патимат Алиева»
+  short: string; // «Патимат А.»
   roles: RoleKey[]; // первая — основная; совмещение ролей допустимо
   phone: string;
   active: boolean;
@@ -199,7 +199,7 @@ export interface ClientContact {
 
 export interface Client {
   id: ID;
-  name: string; // «ИП Соколова · «Чистый дом»»
+  name: string; // «ИП Гамзатова · «Чистый дом»»
   kind: ClientKind;
   segment: ClientSegment;
   priceType: PriceType;
@@ -567,13 +567,27 @@ export interface Task {
   doneAt: ISODateTime | null;
 }
 
-/* ---------- чаты (пример WhatsApp, без отправки наружу) ---------- */
+/* ---------- чаты WhatsApp (пример подключения: сообщения хранятся в программе, наружу не уходят) ---------- */
+/** Автосообщения по событиям: заказ принят, собран к самовывозу, курьер выехал, доставлен, оплата получена, ответ вне рабочего времени. */
+export type WaAutoKey = 'confirmed' | 'pickup_ready' | 'on_way' | 'delivered' | 'payment' | 'away';
+export const WA_AUTO_KEYS: WaAutoKey[] = ['confirmed', 'pickup_ready', 'on_way', 'delivered', 'payment', 'away'];
+export interface ChatFile {
+  name: string; // «Счёт № 3600.pdf»
+  size: string; // «84 КБ»
+  kind: 'pdf' | 'xlsx';
+}
 export interface ChatMessage {
   at: ISODateTime;
   from: 'client' | 'staff';
-  authorId: ID | null;
+  authorId: ID | null; // у автосообщений — null
   text: string;
   orderId: ID | null;
+  /** автосообщение по событию */
+  auto?: WaAutoKey;
+  /** вложение: счёт, акт сверки, прайс */
+  file?: ChatFile;
+  /** ключ события, чтобы одно событие не отправлялось дважды: «delivered:dl-12» */
+  ref?: string;
 }
 export interface Chat {
   id: ID;
@@ -609,6 +623,15 @@ export interface Settings {
   defaultDeferDays: number;
   deliveryFee: number; // стоимость доставки для клиента по умолчанию
   freeDeliveryFrom: number; // бесплатная доставка от суммы
+  whatsapp: WhatsAppSettings;
+}
+
+export interface WhatsAppSettings {
+  connected: boolean;
+  phone: string; // номер WhatsApp магазина
+  since: ISODate | null; // подключён с
+  auto: Record<WaAutoKey, boolean>;
+  hours: { from: string; to: string }; // рабочее время для ответа вне часов
 }
 
 /* ---------- вся база демо ---------- */

@@ -173,7 +173,7 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
     !deliveryBusy &&
     (can('cancelOrder') || (repOnly && isRequest && o.authorId === me.id));
   const canEdit = isRequest && (canConfirm || (repOnly && o.authorId === me.id));
-  const hasChat = db.chats.some((c) => c.clientId === o.clientId);
+  const canWhatsApp = db.settings.whatsapp.connected && !!(client?.contacts[0]?.phone ?? client?.phone);
   const pickPending = o.state === 'confirmed' && o.pick !== 'picked' && o.ship === 'none';
 
   const confirm = () => run(() => dispatch('order.confirm', { orderId: o.id, override: role === 'owner' && override }, me.id), `Заказ № ${o.number} подтверждён, товар зарезервирован`);
@@ -270,7 +270,7 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
       onClick: () => setDialog('delivery'),
       hidden: !((can('assignDelivery') || can('confirmOrder')) && live && o.state === 'confirmed' && o.fulfillment === 'pickup' && o.ship === 'none'),
     },
-    { label: 'Отправить счёт клиенту', icon: <MessageCircle />, onClick: () => setDialog('send'), hidden: !canCreate || !hasChat || !live || pay.due <= 0 },
+    { label: 'Отправить счёт в WhatsApp', icon: <MessageCircle />, onClick: () => setDialog('send'), hidden: !canCreate || !canWhatsApp || !live || pay.due <= 0 },
     { label: 'Счёт на оплату', icon: <Printer />, onClick: () => setPrinting('invoice'), hidden: o.state === 'cancelled' || o.state === 'draft' },
     { label: 'Накладная', icon: <FileText />, onClick: () => setPrinting('waybill'), hidden: !live },
     { label: o.pick === 'none' ? 'Начать сборку' : 'Отметить: собран', icon: <ClipboardCheck />, onClick: pick, hidden: !canShip || !pickPending || next === 'pick' },

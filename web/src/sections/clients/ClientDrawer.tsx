@@ -1,5 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { CalendarPlus, ExternalLink, ListPlus, MapPin, Pencil, Phone, Plus, ShoppingCart, UserRound, Wallet } from 'lucide-react';
+import { CalendarPlus, ExternalLink, ListPlus, MapPin, MessageCircle, Pencil, Phone, Plus, ShoppingCart, UserRound, Wallet } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { tabsFor } from '../../shell/nav';
 import type { EntityDrawerProps } from '../../shell/entities';
 import { EntityLink, useOpenEntity } from '../../shell/entities';
 import { TaskModal } from '../../shell/TaskModal';
@@ -46,6 +48,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
   const db = useDB();
   const version = useDBVersion();
   const { me, role, can } = useSession();
+  const navigate = useNavigate();
   const scoped = useScoped();
   const phone = useIsPhone();
   const [tab, setTab] = useState<TabKey>('overview');
@@ -93,6 +96,9 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
   const canPlan = can('planVisits') && ownerIsRep && (role !== 'rep' || c.ownerId === me.id);
   const canEdit = can('editClients');
   const tel = telUrl(c.phone);
+  // переписку открывают те, у кого есть вкладка «Чаты»: владелец, менеджер, представитель
+  const canChat = db.settings.whatsapp.connected && !!c.phone && tabsFor('sales', role).some((t) => t.key === 'chats');
+  const hasChat = db.chats.some((x) => x.clientId === c.id);
 
   const secondary = [
     { key: 'pay', label: 'Принять оплату', icon: <Wallet />, onClick: () => setModal('pay'), hidden: !canPay || !canOrder },
@@ -144,6 +150,12 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
             <Phone size={15} />
             {fmt.phone(c.phone)}
           </a>
+        ) : null}
+        {canChat ? (
+          <button type="button" className="row cl-tel cl-wa" style={{ gap: 6 }} onClick={() => navigate(`/sales/chats?client=${c.id}`)}>
+            <MessageCircle size={15} />
+            {hasChat ? 'Переписка в WhatsApp' : 'Написать в WhatsApp'}
+          </button>
         ) : null}
       </div>
     </div>

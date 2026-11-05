@@ -45,14 +45,14 @@ describe('store', () => {
     const store = await import('./store');
     const db = store.getDB();
     const tasks = db.tasks.length;
-    const r = store.dispatch('task.create', { title: 'Проверить витрину', assigneeId: 'e-kim', due: db.meta.today }, 'e-volkov');
+    const r = store.dispatch('task.create', { title: 'Проверить витрину', assigneeId: 'e-kurbanova', due: db.meta.today }, 'e-gadzhiev');
     expect(r.ok).toBe(true);
     expect(store.getDB().tasks.length).toBe(tasks + 1);
     expect(store.getDB()).not.toBe(db); // новая версия — новый корень для React
     const saved = JSON.parse(mem.getItem(KEY)!);
     expect(saved.v).toBe(store.DATA_VERSION);
     expect(saved.ops).toHaveLength(1);
-    expect(saved.ops[0]).toMatchObject({ type: 'task.create', actorId: 'e-volkov' });
+    expect(saved.ops[0]).toMatchObject({ type: 'task.create', actorId: 'e-gadzhiev' });
 
     vi.resetModules();
     const again = await import('./store');
@@ -63,10 +63,10 @@ describe('store', () => {
 
   it('ошибка правила возвращается текстом и не попадает в журнал', async () => {
     const store = await import('./store');
-    const r = store.dispatch('shift.open', {}, 'e-orlova');
+    const r = store.dispatch('shift.open', {}, 'e-alieva');
     expect(r).toEqual({ ok: false, error: expect.stringContaining('Смена уже открыта') });
     expect(mem.getItem(KEY)).toBeNull();
-    const bad = store.dispatch('order.confirm', { orderId: 'нет-такого' }, 'e-sokolov');
+    const bad = store.dispatch('order.confirm', { orderId: 'нет-такого' }, 'e-omarov');
     expect(bad.ok).toBe(false);
   });
 
@@ -76,8 +76,8 @@ describe('store', () => {
     const client = db.clients.find((c) => c.segment !== 'retail')!;
     const n = db.payments.length;
     const payload = { clientId: client.id, amount: 1500, method: 'cash', idempotencyKey: 'store-pay-1' };
-    const a = store.dispatch('payment.client', payload, 'e-sokolov');
-    const b = store.dispatch('payment.client', payload, 'e-sokolov');
+    const a = store.dispatch('payment.client', payload, 'e-omarov');
+    const b = store.dispatch('payment.client', payload, 'e-omarov');
     expect(a.ok && b.ok).toBe(true);
     if (a.ok && b.ok) expect(b.id).toBe(a.id);
     expect(store.getDB().payments.length).toBe(n + 1);
@@ -87,8 +87,8 @@ describe('store', () => {
     mem.setItem(
       KEY,
       JSON.stringify({ v: CURRENT_VERSION, ops: [
-        { type: 'order.confirm', payload: { orderId: 'нет-такого' }, actorId: 'e-sokolov', at: '2026-11-05T15:00' },
-        { type: 'task.create', payload: { title: 'Живая задача', assigneeId: 'e-kim', due: '2026-11-05' }, actorId: 'e-volkov', at: '2026-11-05T15:01' },
+        { type: 'order.confirm', payload: { orderId: 'нет-такого' }, actorId: 'e-omarov', at: '2026-11-05T15:00' },
+        { type: 'task.create', payload: { title: 'Живая задача', assigneeId: 'e-kurbanova', due: '2026-11-05' }, actorId: 'e-gadzhiev', at: '2026-11-05T15:01' },
         { мусор: true },
       ] }),
     );
@@ -115,7 +115,7 @@ describe('store', () => {
     });
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const store = await import('./store');
-    const r = store.dispatch('task.create', { title: 'Без хранилища', assigneeId: 'e-kim', due: '2026-11-05' }, 'e-volkov');
+    const r = store.dispatch('task.create', { title: 'Без хранилища', assigneeId: 'e-kurbanova', due: '2026-11-05' }, 'e-gadzhiev');
     expect(r.ok).toBe(true);
     warn.mockRestore();
   });
@@ -123,7 +123,7 @@ describe('store', () => {
   it('resetDemo стирает журнал и возвращает исходную базу', async () => {
     const store = await import('./store');
     const tasks = store.getDB().tasks.length;
-    store.dispatch('task.create', { title: 'Временная', assigneeId: 'e-kim', due: '2026-11-05' }, 'e-volkov');
+    store.dispatch('task.create', { title: 'Временная', assigneeId: 'e-kurbanova', due: '2026-11-05' }, 'e-gadzhiev');
     const v = store.useDBVersion.length; // хук не вызываем вне React — только проверяем, что он есть
     expect(typeof v).toBe('number');
     store.resetDemo();
@@ -143,7 +143,7 @@ describe('store', () => {
 describe('версия данных', () => {
   it('журнал от другой версии генератора не применяется', async () => {
     vi.resetModules();
-    mem.setItem(KEY, JSON.stringify({ v: 'старая', ops: [{ type: 'task.create', payload: { title: 'Из старой версии', assigneeId: 'e-kim', due: '2026-11-05' }, actorId: 'e-volkov', at: '2026-11-05T15:01' }] }));
+    mem.setItem(KEY, JSON.stringify({ v: 'старая', ops: [{ type: 'task.create', payload: { title: 'Из старой версии', assigneeId: 'e-kurbanova', due: '2026-11-05' }, actorId: 'e-gadzhiev', at: '2026-11-05T15:01' }] }));
     const store = await import('./store');
     expect(store.getDB().tasks.some((t) => t.title === 'Из старой версии')).toBe(false);
   });

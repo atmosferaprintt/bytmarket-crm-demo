@@ -4,7 +4,7 @@ import type { Client, ClientContact, ClientPoint, ClientSegment, DB, ID, ISODate
 import type { Rng } from '../rng';
 import { makeInn10, makeInn12 } from '../codes';
 import type { ProdMeta } from './catalog';
-import { E, MANAGERS, TARASOV_START } from './org';
+import { E, MANAGERS, KHALILOV_START } from './org';
 import {
   CLEANING,
   CLIENT_NOTES,
@@ -37,7 +37,7 @@ export interface ClientMeta {
   id: ID;
   seg: ClientSegment;
   owner: ID; // ответственный на конец периода
-  startOwner: ID; // ответственный в начале (до выхода Тарасова)
+  startOwner: ID; // ответственный в начале (до выхода Халилова)
   cadence: number;
   discipline: Discipline;
   assortment: AssortItem[];
@@ -230,9 +230,14 @@ export function buildClients(db: DB, rng: Rng, meta: ProdMeta[], startDate: ISOD
     kind === 'ooo' ? makeInn10('30' + String(rng.int(1000000, 9999999))) : makeInn12('30' + String(rng.int(10000000, 99999999)));
 
   const contact = (roles: string[], female?: boolean): ClientContact => {
-    const p = who(female ?? rng.chance(0.6));
-    return { id: nextContact(), name: `${p.first} ${p.last}`, role: rng.pick(roles), phone: phone(rng) };
+    const fem = female ?? rng.chance(0.6);
+    const p = who(fem);
+    const role = rng.pick(roles);
+    return { id: nextContact(), name: `${p.first} ${p.last}`, role: role === 'Управляющая' && !fem ? 'Управляющий' : role, phone: phone(rng) };
   };
+  // владелец или директор у точки один — дополнительные контакты без этих ролей
+  const SHOP_STAFF = CONTACT_ROLES_SHOP.filter((r) => r !== 'Владелец');
+  const ORG_HEAD = CONTACT_ROLES_ORG.filter((r) => r !== 'Бухгалтер');
 
   // ---- магазины у дома (45) ----
   const districtsForShops = [0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3];
@@ -301,7 +306,7 @@ export function buildClients(db: DB, rng: Rng, meta: ProdMeta[], startDate: ISOD
     for (const pt of dup) pt.name += ', ' + pt.address.split(', ').slice(1).join(', ');
     const name = kind === 'ip' ? `ИП ${owner.last} · «${brandName}»` : `ООО «${brandName}»`;
     const contacts = [{ id: nextContact(), name: `${owner.first} ${owner.patr} ${owner.last}`, role: kind === 'ip' ? 'Владелец' : 'Директор', phone: phone(rng) }];
-    for (let i = rng.int(0, 2); i > 0; i--) contacts.push(contact(CONTACT_ROLES_SHOP));
+    for (let i = rng.int(0, 2); i > 0; i--) contacts.push(contact(SHOP_STAFF));
     const deferDays = deferPick('shop');
     const client = baseClient({
       name,
@@ -331,7 +336,7 @@ export function buildClients(db: DB, rng: Rng, meta: ProdMeta[], startDate: ISOD
       segment: 'horeca',
       inn: innFor(h.kind),
       points: [point(rng, nextPoint, brand, rng.weighted([0, 1, 2, 3], [45, 25, 20, 10]))],
-      contacts: [contact(CONTACT_ROLES_ORG), ...(rng.chance(0.6) ? [contact(['Бухгалтер'])] : [])],
+      contacts: [contact(ORG_HEAD), ...(rng.chance(0.6) ? [contact(['Бухгалтер'])] : [])],
       deferDays: deferPick('horeca'),
       orderEveryDays: rng.pick([10, 14, 14, 21]),
       minOrder: rng.weighted([0, 3000], [50, 50]),
@@ -351,7 +356,7 @@ export function buildClients(db: DB, rng: Rng, meta: ProdMeta[], startDate: ISOD
       segment: 'cleaning',
       inn: innFor(c.kind),
       points: [point(rng, nextPoint, brand, rng.int(0, 3))],
-      contacts: [contact(CONTACT_ROLES_ORG), contact(['Бухгалтер', 'Завхоз'])],
+      contacts: [contact(ORG_HEAD.filter((r) => r !== 'Завхоз')), contact(['Бухгалтер', 'Завхоз'])],
       deferDays: deferPick('cleaning'),
       orderEveryDays: rng.pick([14, 14, 21, 21, 30]),
       minOrder: 5000,
@@ -389,7 +394,7 @@ export function buildClients(db: DB, rng: Rng, meta: ProdMeta[], startDate: ISOD
   // ---- ответственные ----
   // Магазины и половина рынков — представители по районам; кафе, клининг и остальные рынки — менеджеры.
   const repByDistrict = (pt: ClientPoint): ID =>
-    pt.district === 'Кировский район' ? E.mironova : pt.district === 'Ленинский район' ? E.tarasov : pt.district === 'Советский район' ? E.abdullaev : rng.chance(0.5) ? E.abdullaev : E.tarasov;
+    pt.district === 'Кировский район' ? E.rasulova : pt.district === 'Ленинский район' ? E.khalilov : pt.district === 'Советский район' ? E.abdullaev : rng.chance(0.5) ? E.abdullaev : E.khalilov;
   let mi = 0;
   for (const m of metas) {
     const c = m.client;
@@ -399,16 +404,16 @@ export function buildClients(db: DB, rng: Rng, meta: ProdMeta[], startDate: ISOD
   // выравниваем точки у представителей: 25–40 у каждого
   const repPoints = (rep: ID): number => metas.filter((m) => m.owner === rep).reduce((s, m) => s + m.client.points.length, 0);
   for (let it = 0; it < 60; it++) {
-    const counts = [E.mironova, E.abdullaev, E.tarasov].map((r) => ({ r, n: repPoints(r) })).sort((a, b) => b.n - a.n);
+    const counts = [E.rasulova, E.abdullaev, E.khalilov].map((r) => ({ r, n: repPoints(r) })).sort((a, b) => b.n - a.n);
     if (counts[0].n - counts[2].n <= 4) break;
     const donor = metas.find((m) => m.owner === counts[0].r && m.client.points.length <= counts[0].n - counts[2].n - 1);
     if (!donor) break;
     donor.owner = counts[2].r;
   }
-  // до выхода Тарасова его точки вели Миронова и Абдуллаев
+  // до выхода Халилова его точки вели Расулова и Абдуллаев
   for (const m of metas) {
     m.startOwner = m.owner;
-    if (m.owner === E.tarasov) m.startOwner = m.client.points[0].district === 'Трусовский район' ? E.abdullaev : E.mironova;
+    if (m.owner === E.khalilov) m.startOwner = m.client.points[0].district === 'Трусовский район' ? E.abdullaev : E.rasulova;
     m.client.ownerId = m.startOwner;
   }
 
@@ -441,7 +446,7 @@ export function buildClients(db: DB, rng: Rng, meta: ProdMeta[], startDate: ISOD
     m.isNew = true;
     m.createdAt = `2026-${rng.pick(['08', '09', '09', '10', '10'])}-${String(rng.int(3, 26)).padStart(2, '0')}`;
     if (m.createdAt < startDate) m.createdAt = '2026-08-20';
-    if (m.owner === E.tarasov && m.createdAt < TARASOV_START) m.createdAt = TARASOV_START;
+    if (m.owner === E.khalilov && m.createdAt < KHALILOV_START) m.createdAt = KHALILOV_START;
     m.client.createdAt = m.createdAt;
   }
   // двое новых в ноябре, с первыми заказами: магазин у представителя и клиент менеджера.

@@ -45,6 +45,10 @@ export interface NewOrderProps {
   source?: OrderSource;
   visitId?: ID;
   chatId?: ID;
+  /** строки, разобранные из сообщения клиента в WhatsApp */
+  initialLines?: { productId: ID; pack: PackKey; packQty: number }[];
+  /** что из сообщения не нашли или стоит проверить — показываем над строками */
+  fromMessage?: { found: number; unsure: string[]; missed: string[] };
   onClose: () => void;
   onCreated?: (orderId: ID) => void;
 }
@@ -109,7 +113,7 @@ export function defaultPack(p: Product, wholesale: boolean): PackKey {
 }
 
 /** Редактор заказа: новый, повтор, продолжение черновика или заявки (editId). */
-export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf, source, chatId, onClose, onCreated, editId }: NewOrderProps & { editId?: ID }) {
+export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf, source, chatId, initialLines, fromMessage, onClose, onCreated, editId }: NewOrderProps & { editId?: ID }) {
   const db = useDB();
   const version = useDBVersion();
   const { me, role, can, discountLimit } = useSession();
@@ -125,7 +129,7 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
   const preview = useMemo(() => (repeatOf ? repeatPreviewSafe(db, repeatOf) : null), [repeatOf]); // считаем один раз при открытии
   const repeatSource = repeatOf ? db.orders.find((o) => o.id === repeatOf) : undefined;
 
-  const draftKey = `${DRAFT_PREFIX}:${me.id}:${editId ? 'e' + editId : repeatOf ? 'r' + repeatOf : clientProp ?? 'new'}`;
+  const draftKey = `${DRAFT_PREFIX}:${me.id}:${editId ? 'e' + editId : repeatOf ? 'r' + repeatOf : initialLines ? 'm' + (chatId ?? clientProp ?? 'new') : clientProp ?? 'new'}`;
 
   const [state, setState] = useState<DraftState>(() => {
     const base: DraftState = {
@@ -146,6 +150,9 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
         comment: editing.comment,
         lines: editing.lines.map((l) => ({ key: newKey('l'), productId: l.productId, pack: l.pack, packQty: l.packQty, discountPct: l.discountPct, discountReason: l.discountReason })),
       };
+    }
+    if (initialLines?.length) {
+      return { ...base, lines: initialLines.map((l) => ({ key: newKey('l'), productId: l.productId, pack: l.pack, packQty: l.packQty, discountPct: 0, discountReason: null })) };
     }
     if (preview) {
       return {
@@ -173,7 +180,7 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
 
   // восстановить черновик, если окно закрыли, не оформив
   useEffect(() => {
-    if (editing || preview) return;
+    if (editing || preview || initialLines?.length) return;
     const d = loadDraft(draftKey);
     if (d && d.lines.length) {
       setState({ clientId: clientProp ?? d.clientId, pointId: clientProp ? pointProp ?? null : d.pointId, lines: d.lines, fulfillment: d.fulfillment, date: d.date < today ? nextWorkday(today) : d.date, interval: d.interval, comment: d.comment });
@@ -276,7 +283,9 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
       const d = dispatch('delivery.create', { orderId, date: state.date, interval: state.interval, pointId: point?.id }, me.id);
       if (!d.ok) toast(`Заказ создан, доставку оформите отдельно: ${d.error}`, 'error');
     }
-    if (chatId) {
+    // заказ из переписки: номер и сумму клиент получит автосообщением «Заказ принят»; если оно выключено или это заявка — пишем сами
+    const wa = db.settings.whatsapp;
+    if (chatId && wa.connected && !(confirmsSelf && wa.auto.confirmed)) {
       const o = getOrderNumber(orderId);
       dispatch('chat.send', { chatId, text: `Оформили ${confirmsSelf ? 'заказ' : 'заявку'} № ${o} на ${fmt.money(calc.total)}. ${deliveryNote}.`, orderId }, me.id);
     }
@@ -501,6 +510,14 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
                 }
               >
                 Восстановлен черновик от {restored}
+              </Notice>
+            ) : null}
+
+            {fromMessage ? (
+              <Notice tone={fromMessage.missed.length || fromMessage.unsure.length ? 'warn' : 'info'} title={`Из сообщения клиента: ${fmt.count(fromMessage.found, 'товар', 'товара', 'товаров')}`}>
+                {fromMessage.unsure.length ? <div>Проверьте: {fromMessage.unsure.map((x) => `«${x}»`).join(', ')} — похожих товаров несколько, выбран привычный клиенту.</div> : null}
+                {fromMessage.missed.length ? <div>Не нашли в каталоге: {fromMessage.missed.map((x) => `«${x}»`).join(', ')} — добавьте вручную или уточните у клиента.</div> : null}
+                {!fromMessage.missed.length && !fromMessage.unsure.length ? <div>Проверьте количество и условия доставки.</div> : null}
               </Notice>
             ) : null}
 

@@ -25,12 +25,12 @@ beforeAll(() => {
 });
 
 const T = '2026-11-05';
-const OWNER = 'e-volkov';
-const MANAGER = 'e-sokolov';
-const SELLER = 'e-orlova';
-const WAREHOUSE = 'e-krylov';
-const ACCOUNTANT = 'e-belova';
-const DISPATCHER = 'e-lebedeva';
+const OWNER = 'e-gadzhiev';
+const MANAGER = 'e-omarov';
+const SELLER = 'e-alieva';
+const WAREHOUSE = 'e-ibragimov';
+const ACCOUNTANT = 'e-suleymanova';
+const DISPATCHER = 'e-abakarova';
 
 /** Сообщения используют неразрывные пробелы (как в интерфейсе) — для проверки заменяем на обычные. */
 function errorOf(fn: () => unknown): string {
@@ -65,7 +65,7 @@ function newClient(op: ReturnType<typeof fresh>['op'], over: Record<string, unkn
       segment: 'shop',
       phone: '+79170000000',
       points: [{ name: '«Проверка» на Кирова', address: 'ул. Кирова, 1', district: 'Кировский район', lat: 46.349, lng: 48.036 }],
-      contacts: [{ name: 'Анна Тестова', role: 'Владелец', phone: '+79170000001' }],
+      contacts: [{ name: 'Айшат Тестова', role: 'Владелец', phone: '+79170000001' }],
       ownerId: MANAGER,
       deferDays: 0,
       creditLimit: 0,
@@ -137,15 +137,15 @@ describe('§18: два заказа не берут последнюю един�
     const orders = db.orders.length;
     const counter = db.counters.order;
     const movements = db.movements.length;
-    expect(errorOf(() => op('order.create', { clientId: c2, lines: [{ productId: p.id, pack: 'pcs', packQty: 1 }], state: 'confirmed' }, 'e-petrova'))).toMatch(
+    expect(errorOf(() => op('order.create', { clientId: c2, lines: [{ productId: p.id, pack: 'pcs', packQty: 1 }], state: 'confirmed' }, 'e-magomedova'))).toMatch(
       /на складе доступно 0 шт, а в заказе 1 шт/,
     );
     expect(db.orders.length).toBe(orders);
     expect(db.counters.order).toBe(counter);
     expect(db.movements.length).toBe(movements);
     // заявка без резерва создаётся, но подтвердить её нельзя
-    const req = op('order.create', { clientId: c2, lines: [{ productId: p.id, pack: 'pcs', packQty: 1 }], state: 'request' }, 'e-petrova').id!;
-    expect(() => op('order.confirm', { orderId: req }, 'e-petrova')).toThrow(OpError);
+    const req = op('order.create', { clientId: c2, lines: [{ productId: p.id, pack: 'pcs', packQty: 1 }], state: 'request' }, 'e-magomedova').id!;
+    expect(() => op('order.confirm', { orderId: req }, 'e-magomedova')).toThrow(OpError);
     expect(orderOf(db, req).state).toBe('request');
     expect(checkInvariants(db)).toEqual([]);
   });
@@ -374,20 +374,20 @@ describe('§18: курьер видит только свои доставки',
     const d = db.deliveries.find((x) => x.id === did)!;
     expect(d.state).toBe('waiting');
     expect(d.collect).toBe(orderOf(db, id).total);
-    op('delivery.assign', { deliveryId: did, courierId: 'e-morozov' }, DISPATCHER);
-    expect(d.courierId).toBe('e-morozov');
-    expect(() => op('delivery.start', { deliveryId: did }, 'e-zaytsev')).toThrow(/другого курьера/);
-    op('delivery.start', { deliveryId: did }, 'e-morozov');
+    op('delivery.assign', { deliveryId: did, courierId: 'e-musaev' }, DISPATCHER);
+    expect(d.courierId).toBe('e-musaev');
+    expect(() => op('delivery.start', { deliveryId: did }, 'e-ramazanov')).toThrow(/другого курьера/);
+    op('delivery.start', { deliveryId: did }, 'e-musaev');
     expect(orderOf(db, id).state).toBe('closed');
-    const cash0 = courierCash(db, 'e-morozov').onHand;
-    op('delivery.deliver', { deliveryId: did, collected: d.collect - 500, method: 'cash' }, 'e-morozov');
+    const cash0 = courierCash(db, 'e-musaev').onHand;
+    op('delivery.deliver', { deliveryId: did, collected: d.collect - 500, method: 'cash' }, 'e-musaev');
     // доставлено — не значит оплачено
     expect(orderOf(db, id).ship).toBe('delivered');
     expect(orderPayment(db, orderOf(db, id))).toMatchObject({ debt: 500, state: 'partial' });
-    expect(courierCash(db, 'e-morozov').onHand).toBe(cash0 + d.collect - 500);
+    expect(courierCash(db, 'e-musaev').onHand).toBe(cash0 + d.collect - 500);
     const shop = accountBalances(db).shop_cash;
-    op('courier.handIn', { courierId: 'e-morozov' }, 'e-morozov');
-    expect(courierCash(db, 'e-morozov').onHand).toBe(0);
+    op('courier.handIn', { courierId: 'e-musaev' }, 'e-musaev');
+    expect(courierCash(db, 'e-musaev').onHand).toBe(0);
     expect(accountBalances(db).shop_cash).toBe(shop + cash0 + d.collect - 500);
     expect(checkInvariants(db)).toEqual([]);
   });
@@ -399,11 +399,11 @@ describe('§18: курьер видит только свои доставки',
     const id = op('order.create', { clientId: client, lines: [{ productId: p.id, packQty: 4 }], state: 'confirmed' }, MANAGER).id!;
     op('order.pick', { orderId: id }, WAREHOUSE);
     op('order.pick', { orderId: id }, WAREHOUSE);
-    const did = op('delivery.create', { orderId: id, date: T, courierId: 'e-vlasov' }, DISPATCHER).id!;
-    op('delivery.start', { deliveryId: did }, 'e-vlasov');
+    const did = op('delivery.create', { orderId: id, date: T, courierId: 'e-daudov' }, DISPATCHER).id!;
+    op('delivery.start', { deliveryId: did }, 'e-daudov');
     const sales = salesForPeriod(db, T, T).wholesale;
-    expect(() => op('delivery.fail', { deliveryId: did, reason: '' }, 'e-vlasov')).toThrow(/Причина/);
-    op('delivery.fail', { deliveryId: did, reason: 'Отказ от товара' }, 'e-vlasov');
+    expect(() => op('delivery.fail', { deliveryId: did, reason: '' }, 'e-daudov')).toThrow(/Причина/);
+    op('delivery.fail', { deliveryId: did, reason: 'Отказ от товара' }, 'e-daudov');
     op('delivery.returnToStock', { deliveryId: did }, DISPATCHER);
     const o = orderOf(db, id);
     expect(o).toMatchObject({ state: 'cancelled', ship: 'none' });
@@ -423,13 +423,13 @@ describe('неудачная доставка и маршрут', () => {
     const id = op('order.create', { clientId: client, lines: [{ productId: p.id, packQty: 4 }], state: 'confirmed' }, MANAGER).id!;
     op('order.pick', { orderId: id }, WAREHOUSE);
     op('order.pick', { orderId: id }, WAREHOUSE);
-    const did = op('delivery.create', { orderId: id, date: T, courierId: 'e-vlasov' }, DISPATCHER).id!;
-    op('delivery.start', { deliveryId: did }, 'e-vlasov');
+    const did = op('delivery.create', { orderId: id, date: T, courierId: 'e-daudov' }, DISPATCHER).id!;
+    op('delivery.start', { deliveryId: did }, 'e-daudov');
     const o = orderOf(db, id);
     o.dueDate = '2026-10-30'; // как будто срок оплаты уже прошёл
     db.meta.version++;
     expect(orderPayment(db, o).overdueDays).toBe(6);
-    op('delivery.fail', { deliveryId: did, reason: 'Клиента нет на месте' }, 'e-vlasov');
+    op('delivery.fail', { deliveryId: did, reason: 'Клиента нет на месте' }, 'e-daudov');
     expect(orderPayment(db, o)).toMatchObject({ overdueDays: 0, debt: o.total });
     expect(clientBalance(db, client)).toMatchObject({ overdue: 0, debt: o.total });
   });
@@ -443,8 +443,8 @@ describe('неудачная доставка и маршрут', () => {
       const id = op('order.create', { clientId: client, lines: [{ productId: p.id, packQty: 2 }], state: 'confirmed' }, MANAGER).id!;
       return op('delivery.create', { orderId: id, date: D, interval }, MANAGER).id!;
     });
-    for (const did of ids) op('delivery.assign', { deliveryId: did, courierId: 'e-zaytsev' }, DISPATCHER);
-    const route = db.deliveries.filter((d) => d.courierId === 'e-zaytsev' && d.date === D).sort((a, b) => a.routeOrder - b.routeOrder);
+    for (const did of ids) op('delivery.assign', { deliveryId: did, courierId: 'e-ramazanov' }, DISPATCHER);
+    const route = db.deliveries.filter((d) => d.courierId === 'e-ramazanov' && d.date === D).sort((a, b) => a.routeOrder - b.routeOrder);
     expect(route.map((d) => d.interval)).toEqual(['09:00–12:00', '12:00–15:00', '15:00–18:00']);
     expect(route.map((d) => d.routeOrder)).toEqual([1, 2, 3]);
   });
@@ -473,14 +473,14 @@ describe('лимит, просрочка и подтверждение влад�
 
   it('представитель создаёт только заявку без резерва', () => {
     const { db, op } = fresh();
-    const c = db.clients.find((x) => x.ownerId === 'e-mironova' && clientBalance(db, x.id).overdue === 0)!;
+    const c = db.clients.find((x) => x.ownerId === 'e-rasulova' && clientBalance(db, x.id).overdue === 0)!;
     const p = productWhere(db, (x) => stockOf(db, x.id).warehouse.available >= 5);
     const before = wh(db, p.id);
-    const id = op('order.create', { clientId: c.id, lines: [{ productId: p.id, packQty: 2 }] }, 'e-mironova').id!;
+    const id = op('order.create', { clientId: c.id, lines: [{ productId: p.id, packQty: 2 }] }, 'e-rasulova').id!;
     expect(orderOf(db, id).state).toBe('request');
     expect(wh(db, p.id)).toEqual(before);
-    expect(() => op('order.confirm', { orderId: id }, 'e-mironova')).toThrow(/недоступно/);
-    expect(() => op('order.create', { clientId: c.id, lines: [{ productId: p.id, packQty: 1 }], state: 'confirmed' }, 'e-mironova')).toThrow(/подтверждает менеджер/);
+    expect(() => op('order.confirm', { orderId: id }, 'e-rasulova')).toThrow(/недоступно/);
+    expect(() => op('order.create', { clientId: c.id, lines: [{ productId: p.id, packQty: 1 }], state: 'confirmed' }, 'e-rasulova')).toThrow(/подтверждает менеджер/);
   });
 });
 
@@ -599,8 +599,8 @@ describe('ошибка не меняет базу', () => {
     expect(() => op('shift.open', {}, SELLER)).toThrow(/Смена уже открыта/);
     expect(() => op('visit.complete', { visitId: db.visits.find((v) => v.state === 'planned' && v.repId === 'e-abdullaev')!.id, result: 'refusal' }, 'e-abdullaev')).toThrow(/Причина отказа/);
     // клиент уже в маршруте на сегодня — второй визит к нему (и к другой его точке) не планируется
-    const inRoute = db.visits.find((v) => v.date === T && v.repId === 'e-mironova')!;
-    expect(() => op('visit.plan', { repId: 'e-mironova', clientId: inRoute.clientId, date: T, time: '17:30' }, 'e-mironova')).toThrow(/уже в маршруте/);
+    const inRoute = db.visits.find((v) => v.date === T && v.repId === 'e-rasulova')!;
+    expect(() => op('visit.plan', { repId: 'e-rasulova', clientId: inRoute.clientId, date: T, time: '17:30' }, 'e-rasulova')).toThrow(/уже в маршруте/);
     expect(JSON.stringify({ ...db, meta: null })).toBe(after1);
   });
 });

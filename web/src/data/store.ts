@@ -11,7 +11,7 @@ export type OpType = keyof typeof ops;
 
 const STORAGE_KEY = 'bytmarket-demo-v2-ops';
 /** Версия исходных данных. Менять при любой правке генератора: старый журнал тогда отбрасывается, а не применяется к другим товарам. */
-export const DATA_VERSION = 'g6';
+export const DATA_VERSION = 'g7';
 const MIN_MINUTES = 14 * 60 + 5; // сгенерированные события идут до 14:00
 const MAX_MINUTES = 20 * 60 + 55;
 

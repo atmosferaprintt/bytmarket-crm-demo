@@ -14,7 +14,7 @@ export interface MenuItem {
 }
 
 /** Всплывающее меню «⋯» со второстепенными действиями. */
-export function MoreMenu({ items, label = 'Ещё действия', trigger, size = 'md', align = 'end' }: { items: MenuItem[]; label?: string; trigger?: ReactNode; size?: 'sm' | 'md'; align?: 'start' | 'end' }) {
+export function MoreMenu({ items, label = 'Ещё действия', trigger, icon, size = 'md', align = 'end' }: { items: MenuItem[]; label?: string; trigger?: ReactNode; /** своя иконка вместо «⋯» */ icon?: ReactNode; size?: 'sm' | 'md'; align?: 'start' | 'end' }) {
   const [open, setOpen] = useState(false);
   const btn = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -67,7 +67,7 @@ export function MoreMenu({ items, label = 'Ещё действия', trigger, si
           setOpen((v) => !v);
         }}
       >
-        {trigger ?? <MoreHorizontal />}
+        {trigger ?? icon ?? <MoreHorizontal />}
       </button>
       {open
         ? createPortal(

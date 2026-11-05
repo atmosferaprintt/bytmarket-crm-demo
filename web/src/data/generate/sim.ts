@@ -13,7 +13,7 @@ import { MISSED_ORDER_FACTOR } from '../thresholds';
 import { roundRetail } from './catalog';
 import type { ProdMeta } from './catalog';
 import type { AssortItem, ClientMeta } from './clients';
-import { COURIERS, E, MANAGERS, REPS, SELLERS, TARASOV_START, WAREHOUSE } from './org';
+import { COURIERS, E, MANAGERS, REPS, SELLERS, KHALILOV_START, WAREHOUSE } from './org';
 
 /* ---------- очередь событий ---------- */
 
@@ -183,7 +183,7 @@ export function simulate(input: SimInput): SimStats {
 
   /* ---------- 5 августа: начальные остатки денег и товара ---------- */
   const d0 = START;
-  run('balance.initial', { balances: { bank: 680_000, shop_cash: 16_000 } }, E.belova, at(d0, 7 * 60));
+  run('balance.initial', { balances: { bank: 680_000, shop_cash: 16_000 } }, E.suleymanova, at(d0, 7 * 60));
   const whLines: { productId: ID; qty: number; expiry?: ISODate }[] = [];
   const shLines: { productId: ID; qty: number; expiry?: ISODate }[] = [];
   const pushBatches = (arr: typeof whLines, m: ProdMeta, qty: number, loc: 'shop' | 'warehouse'): void => {
@@ -226,8 +226,8 @@ export function simulate(input: SimInput): SimStats {
     pushBatches(whLines, m, wh, 'warehouse');
     pushBatches(shLines, m, sh, 'shop');
   }
-  run('stock.initial', { location: 'warehouse', lines: whLines, comment: 'Начальные остатки склада на 5 августа' }, E.krylov, at(d0, 7 * 60 + 5));
-  run('stock.initial', { location: 'shop', lines: shLines, comment: 'Начальные остатки магазина на 5 августа' }, E.krylov, at(d0, 7 * 60 + 10));
+  run('stock.initial', { location: 'warehouse', lines: whLines, comment: 'Начальные остатки склада на 5 августа' }, E.ibragimov, at(d0, 7 * 60 + 5));
+  run('stock.initial', { location: 'shop', lines: shLines, comment: 'Начальные остатки магазина на 5 августа' }, E.ibragimov, at(d0, 7 * 60 + 10));
 
   /* ---------- состояние симуляции ---------- */
   const cmById = new Map<ID, ClientMeta>();
@@ -258,12 +258,12 @@ export function simulate(input: SimInput): SimStats {
   );
   // должники платят с опозданием, но регулярно заказывают: «плохая» дисциплина держала бы их в блоке месяцами
   for (const c of clients) if (overdueSet.has(c.id)) c.discipline = 'late';
-  // «Пропустил привычный заказ» у менеджеров: у Соколова двое, у Петровой один клиент перестали заказывать
+  // «Пропустил привычный заказ» у менеджеров: у Омарова двое, у Магомедовой один клиент перестали заказывать
   // на 0,2–0,6 привычного срока позже порога MISSED_ORDER_FACTOR. Должники и лимит впритык не берутся — у них своя история.
   // метка генератора подобрана так, чтобы остальные показатели демо (дефицит ходовых, заказы в работе) остались прежними
   const lrng = rng.fork('lapsed-v2');
   const lapsedFrom = new Map<ID, number>(); // клиент → с этого дня заказов нет
-  for (const [mgr, n] of [[E.sokolov, 2], [E.petrova, 1]] as const) {
+  for (const [mgr, n] of [[E.omarov, 2], [E.magomedova, 1]] as const) {
     const pool = clients.filter((c) => c.owner === mgr && c.seg !== 'retail' && !c.isNew && !c.tight && !overdueSet.has(c.id) && c.cadence <= 21);
     const good = pool.filter((c) => c.discipline === 'good');
     for (const c of lrng.sample(good.length >= n ? good : pool, n)) lapsedFrom.set(c.id, dayNum(TODAY) - Math.round(c.cadence * lrng.float(MISSED_ORDER_FACTOR + 0.2, MISSED_ORDER_FACTOR + 0.6)));
@@ -284,8 +284,8 @@ export function simulate(input: SimInput): SimStats {
     return false;
   };
   let supplierLateLeft = 1;
-  const mgrOf = (d: ISODate, i = 0): ID => (isSat(d) ? E.petrova : MANAGERS[(dayNum(d) + i) % 2]);
-  // два через два: Анна Орлова — вчера и сегодня, Виктория Ким — два дня до этого
+  const mgrOf = (d: ISODate, i = 0): ID => (isSat(d) ? E.magomedova : MANAGERS[(dayNum(d) + i) % 2]);
+  // два через два: Патимат Алиева — вчера и сегодня, Мадина Курбанова — два дня до этого
   const sellerOn = (d: ISODate): ID => SELLERS[(((dayNum(d) - dayNum(TODAY) + 1) % 4) + 4) % 4 < 2 ? 0 : 1];
   const whOn = (d: ISODate, i = 0): ID => WAREHOUSE[(dayNum(d) + i) % 2];
 
@@ -362,7 +362,7 @@ export function simulate(input: SimInput): SimStats {
         if (!x || x.state !== 'confirmed') return;
         const op = orderPayment(db, x);
         if (op.due <= 0) return;
-        run('payment.client', { clientId: cm.id, amount: op.due, method: 'transfer', status: d < TODAY && rng.chance(0.25) ? 'pending' : 'posted', comment: `Предоплата по заказу №${x.number}` }, E.belova, t);
+        run('payment.client', { clientId: cm.id, amount: op.due, method: 'transfer', status: d < TODAY && rng.chance(0.25) ? 'pending' : 'posted', comment: `Предоплата по заказу №${x.number}` }, E.suleymanova, t);
       });
     }
     // сборка
@@ -575,7 +575,7 @@ export function simulate(input: SimInput): SimStats {
         status: method === 'transfer' && d < TODAY && rng.chance(0.1) ? 'pending' : 'posted',
         comment: method === 'transfer' ? 'Оплата по счёту' : 'Оплата наличными в офисе',
       },
-      method === 'cash' ? mgrOf(d) : E.belova,
+      method === 'cash' ? mgrOf(d) : E.suleymanova,
       t,
     );
   };
@@ -691,7 +691,7 @@ export function simulate(input: SimInput): SimStats {
 
   /* ---------- курьеры ---------- */
   const courierFor = (dl: Delivery, load: Map<ID, number>): ID => {
-    const pref = dl.district === 'Советский район' ? E.zaytsev : dl.district === 'Трусовский район' ? E.vlasov : E.morozov;
+    const pref = dl.district === 'Советский район' ? E.ramazanov : dl.district === 'Трусовский район' ? E.daudov : E.musaev;
     const min = Math.min(...COURIERS.map((c) => load.get(c) ?? 0));
     if ((load.get(pref) ?? 0) <= min + 1) return pref;
     return COURIERS.reduce((a, c) => ((load.get(c) ?? 0) < (load.get(a) ?? 0) ? c : a), COURIERS[0]);
@@ -704,9 +704,9 @@ export function simulate(input: SimInput): SimStats {
       const reason = dl.attempts[dl.attempts.length - 1]?.reason ?? '';
       if (returnToStockLeft > 0 && (reason === 'Отказ от товара' || rng.chance(0.25))) {
         returnToStockLeft--;
-        run('delivery.returnToStock', { deliveryId: dl.id }, E.lebedeva, t);
+        run('delivery.returnToStock', { deliveryId: dl.id }, E.abakarova, t);
       } else {
-        run('delivery.reschedule', { deliveryId: dl.id, date: d, interval: rng.pick(INTERVALS) }, E.lebedeva, t);
+        run('delivery.reschedule', { deliveryId: dl.id, date: d, interval: rng.pick(INTERVALS) }, E.abakarova, t);
       }
     }
     const todays = db.deliveries.filter((x) => x.date === d && x.state === 'waiting');
@@ -717,7 +717,7 @@ export function simulate(input: SimInput): SimStats {
       // лишние — на завтра
       while (todays.length > 15) {
         const x = todays.pop()!;
-        run('delivery.reschedule', { deliveryId: x.id, date: plusDays(TODAY, 1) }, E.lebedeva, t);
+        run('delivery.reschedule', { deliveryId: x.id, date: plusDays(TODAY, 1) }, E.abakarova, t);
       }
     }
     const load = new Map<ID, number>();
@@ -733,7 +733,7 @@ export function simulate(input: SimInput): SimStats {
     for (const [courier, list] of byCourier) {
       // маршрут курьера — по началу интервала (список уже отсортирован по интервалу)
       list.forEach((dl, i) => {
-        run('delivery.assign', { deliveryId: dl.id, courierId: courier, date: d, routeOrder: i + 1 }, E.lebedeva, t);
+        run('delivery.assign', { deliveryId: dl.id, courierId: courier, date: d, routeOrder: i + 1 }, E.abakarova, t);
       });
       if (d === TODAY) todayRoute(courier, list);
       else route(courier, list, d);
@@ -759,7 +759,7 @@ export function simulate(input: SimInput): SimStats {
       t = end + rng.int(10, 25);
       if (end > 19 * 60) {
         const tr = at(d, 18 * 60 + 30);
-        sched(tr, () => void run('delivery.reschedule', { deliveryId: dl.id, date: nextWorkday(d) }, E.lebedeva, tr));
+        sched(tr, () => void run('delivery.reschedule', { deliveryId: dl.id, date: nextWorkday(d) }, E.abakarova, tr));
         continue;
       }
       const ts = at(d, start);
@@ -770,7 +770,7 @@ export function simulate(input: SimInput): SimStats {
         const o = x ? get(db, 'orders', x.orderId) : undefined;
         if (!x || !o || x.state !== 'assigned') return;
         if (o.state === 'confirmed' && o.pick !== 'picked') {
-          run('delivery.reschedule', { deliveryId: dlId, date: nextWorkday(d) }, E.lebedeva, ts);
+          run('delivery.reschedule', { deliveryId: dlId, date: nextWorkday(d) }, E.abakarova, ts);
           return;
         }
         if (!run('delivery.start', { deliveryId: dlId }, courier, ts)) return;
@@ -803,8 +803,8 @@ export function simulate(input: SimInput): SimStats {
   const todayRoute = (courier: ID, list: Delivery[]): void => {
     const d = TODAY;
     const plan: ('deliver' | 'fail' | 'onway')[] =
-      courier === E.morozov ? ['deliver', 'deliver', 'onway'] : courier === E.zaytsev ? ['deliver', 'fail', 'onway'] : ['deliver', 'onway'];
-    const methods: PayMethod[] = courier === E.morozov ? ['cash', 'transfer'] : courier === E.zaytsev ? ['cash'] : ['card'];
+      courier === E.musaev ? ['deliver', 'deliver', 'onway'] : courier === E.ramazanov ? ['deliver', 'fail', 'onway'] : ['deliver', 'onway'];
+    const methods: PayMethod[] = courier === E.musaev ? ['cash', 'transfer'] : courier === E.ramazanov ? ['cash'] : ['card'];
     let k = 0;
     let paid = 0;
     const step = (i: number, t: number): void => {
@@ -852,7 +852,7 @@ export function simulate(input: SimInput): SimStats {
 
   const handIn = (d: ISODate): void => {
     COURIERS.forEach((c, i) => {
-      if (d === YESTERDAY && c === E.morozov) return; // Денис вчера не заехал в магазин
+      if (d === YESTERDAY && c === E.musaev) return; // Денис вчера не заехал в магазин
       const t = at(d, 18 * 60 + 35 + i * 7);
       sched(t, () => {
         const has = db.deliveries.some((x) => x.courierId === c && x.collectedMethod === 'cash' && x.collected > 0 && !x.handedIn);
@@ -1016,7 +1016,7 @@ export function simulate(input: SimInput): SimStats {
   const CASH_DIFF: Record<ISODate, number> = {
     [plusDays(TODAY, -13)]: 200, // излишек
     [plusDays(TODAY, -7)]: -350, // недостача
-    [YESTERDAY]: -600, // у Анны Орловой не хватает 600 ₽
+    [YESTERDAY]: -600, // у Патимат Алиевой не хватает 600 ₽
   };
 
   const shiftSummaryLocal = (shiftId: ID): number => {
@@ -1074,7 +1074,7 @@ export function simulate(input: SimInput): SimStats {
     const r = run(
       'purchase.create',
       { supplierId: sid, lines: sug.map((x) => ({ productId: x.productId, boxes: x.boxes, boxSize: x.boxSize })), comment: mode === 'draft' ? 'Предложение на закупку — проверить и подтвердить' : '' },
-      E.krylov,
+      E.ibragimov,
       t,
     );
     if (!r?.id || mode === 'draft') return;
@@ -1154,7 +1154,7 @@ export function simulate(input: SimInput): SimStats {
     const rest = purchaseAccepted(db, purchaseId) - purchasePaid(db, purchaseId);
     const left = part < 1 ? Math.round((rest * part) / 1000) * 1000 : rest;
     if (left <= 0) return;
-    const ok = run('payment.supplier', { supplierId: pu.supplierId, amount: left, allocations: [{ purchaseId, amount: left }], comment: `Оплата по закупке №${pu.number}` }, E.belova, t);
+    const ok = run('payment.supplier', { supplierId: pu.supplierId, amount: left, allocations: [{ purchaseId, amount: left }], comment: `Оплата по закупке №${pu.number}` }, E.suleymanova, t);
     if (!ok && attempt < 6) {
       const nt = at(nextOfficeDay(plusDays(t.slice(0, 10), 2)), 11 * 60 + rng.int(0, 120));
       sched(nt, () => paySupplier(purchaseId, nt, attempt + 1, part));
@@ -1164,7 +1164,7 @@ export function simulate(input: SimInput): SimStats {
   /* ---------- представители: маршрут дня ---------- */
   const fieldDay = (d: ISODate): boolean => [2, 3, 4].includes(dow(d));
   const LAST_VISIT = 18 * 60;
-  const repActive = (rep: ID, d: ISODate): boolean => rep !== E.tarasov || d >= TARASOV_START;
+  const repActive = (rep: ID, d: ISODate): boolean => rep !== E.khalilov || d >= KHALILOV_START;
   const REFUSAL_W = [34, 15, 15, 15, 13, 8];
   const CALLBACK_TEXT = [
     'Перезвонить в пятницу — хозяйка будет на месте',
@@ -1273,11 +1273,13 @@ export function simulate(input: SimInput): SimStats {
     on('2026-08-12T09:15', () => void run('employee.update', { employeeId: E.owner, patch: { roles: ['owner', 'manager'] } }, E.owner, '2026-08-12T09:15'));
     on('2026-09-01T09:05', () => void run('settings.update', { patch: { discountLimits: { rep: 7 } } }, E.owner, '2026-09-01T09:05'));
     on('2026-10-01T09:05', () => void run('settings.update', { patch: { minMarginPct: 12 } }, E.owner, '2026-10-01T09:05'));
-    on(TARASOV_START + 'T09:00', () => {
-      run('employee.update', { employeeId: E.tarasov, patch: { active: true } }, E.owner, TARASOV_START + 'T09:00');
+    // WhatsApp магазина подключили 20 октября: с этого дня клиенты получают автосообщения о заказах, доставке и оплате
+    on('2026-10-20T08:30', () => void run('settings.whatsapp', { connected: true }, E.owner, '2026-10-20T08:30'));
+    on(KHALILOV_START + 'T09:00', () => {
+      run('employee.update', { employeeId: E.khalilov, patch: { active: true } }, E.owner, KHALILOV_START + 'T09:00');
       for (const cm of clients) {
-        if (cm.owner !== E.tarasov || cm.isNew) continue;
-        run('client.update', { clientId: cm.id, patch: { ownerId: E.tarasov } }, E.owner, TARASOV_START + 'T09:00');
+        if (cm.owner !== E.khalilov || cm.isNew) continue;
+        run('client.update', { clientId: cm.id, patch: { ownerId: E.khalilov } }, E.owner, KHALILOV_START + 'T09:00');
       }
     });
     // новые клиенты
@@ -1384,7 +1386,7 @@ export function simulate(input: SimInput): SimStats {
       on(when, () => {
         const c = get(db, 'clients', cm.id);
         if (!c) return;
-        const actor = c.ownerId ?? E.sokolov;
+        const actor = c.ownerId ?? E.omarov;
         if (c.contacts.length) {
           const contacts = c.contacts.map((x, i) => (i === 0 ? { ...x, phone: '+79' + rng.pick(['17', '27', '37', '61']) + String(rng.int(1000000, 9999999)) } : x));
           run('client.update', { clientId: c.id, patch: { contacts, note: c.note || 'Сменился номер владельца' } }, actor, when);
@@ -1419,7 +1421,7 @@ export function simulate(input: SimInput): SimStats {
         if (when.slice(0, 10) < START) return;
         const d = when.slice(0, 10);
         const t = officeDay(d) ? when : at(nextOfficeDay(d), minutesOf(when));
-        on(t, () => void run('payment.expense', { category, amount, method, comment }, E.belova, t));
+        on(t, () => void run('payment.expense', { category, amount, method, comment }, E.suleymanova, t));
       };
       exp('05', '10:00', 'Аренда', 75000, 'Аренда магазина, ул. Бориса Алексеева');
       exp('05', '10:05', 'Аренда', 105000, 'Аренда склада');
@@ -1435,20 +1437,20 @@ export function simulate(input: SimInput): SimStats {
     for (let day = dayNum(START) + 5; day < dayNum(TODAY); day += 7) {
       const d = isoDay(day);
       const t = at(nextOfficeDay(d), 9 * 60 + 30);
-      on(t, () => void run('payment.expense', { category: 'Топливо и доставка', amount: 11000 + rng.int(0, 6) * 1000, method: 'card', comment: 'Бензин для машин доставки' }, E.belova, t));
+      on(t, () => void run('payment.expense', { category: 'Топливо и доставка', amount: 11000 + rng.int(0, 6) * 1000, method: 'card', comment: 'Бензин для машин доставки' }, E.suleymanova, t));
     }
-    on('2026-08-21T14:00', () => void run('payment.expense', { category: 'Ремонт и обслуживание', amount: 14500, method: 'cash', comment: 'Ремонт гидравлической тележки' }, E.belova, '2026-08-21T14:00'));
-    on('2026-09-28T14:00', () => void run('payment.expense', { category: 'Ремонт и обслуживание', amount: 6000, method: 'transfer', comment: 'Обслуживание кассового терминала' }, E.belova, '2026-09-28T14:00'));
-    on('2026-10-16T14:00', () => void run('payment.expense', { category: 'Ремонт и обслуживание', amount: 23000, method: 'transfer', comment: 'Ремонт ворот склада' }, E.belova, '2026-10-16T14:00'));
+    on('2026-08-21T14:00', () => void run('payment.expense', { category: 'Ремонт и обслуживание', amount: 14500, method: 'cash', comment: 'Ремонт гидравлической тележки' }, E.suleymanova, '2026-08-21T14:00'));
+    on('2026-09-28T14:00', () => void run('payment.expense', { category: 'Ремонт и обслуживание', amount: 6000, method: 'transfer', comment: 'Обслуживание кассового терминала' }, E.suleymanova, '2026-09-28T14:00'));
+    on('2026-10-16T14:00', () => void run('payment.expense', { category: 'Ремонт и обслуживание', amount: 23000, method: 'transfer', comment: 'Ремонт ворот склада' }, E.suleymanova, '2026-10-16T14:00'));
     const unknown = (when: string, amount: number, identifyIn: number | null): void =>
       on(when, () => {
-        const r = run('payment.client', { clientId: null, amount, method: 'transfer', comment: 'Поступление на счёт без назначения платежа' }, E.belova, when);
+        const r = run('payment.client', { clientId: null, amount, method: 'transfer', comment: 'Поступление на счёт без назначения платежа' }, E.suleymanova, when);
         if (!r?.id || identifyIn === null) return;
         const pid = r.id;
         const t2 = at(nextOfficeDay(plusDays(when.slice(0, 10), identifyIn)), 10 * 60 + 40);
         on(t2, () => {
           const debtor = clients.find((c) => c.seg !== 'retail' && clientBalance(db, c.id).debt >= amount);
-          if (debtor) run('payment.identify', { paymentId: pid, clientId: debtor.id }, E.belova, t2);
+          if (debtor) run('payment.identify', { paymentId: pid, clientId: debtor.id }, E.suleymanova, t2);
         });
       });
     unknown('2026-09-17T11:20', 18400, 2);
@@ -1468,13 +1470,13 @@ export function simulate(input: SimInput): SimStats {
       const debtor = clients.find((c) => c.seg !== 'retail' && c.client.deferDays > 0 && clientBalance(db, c.id).debt > 5000);
       if (!debtor) return;
       const b = clientBalance(db, debtor.id);
-      run('payment.client', { clientId: debtor.id, amount: Math.round(b.debt / 2 / 100) * 100, method: 'transfer', status: 'pending', comment: 'Прислали скриншот перевода в WhatsApp' }, E.sokolov, TODAY + 'T12:40');
+      run('payment.client', { clientId: debtor.id, amount: Math.round(b.debt / 2 / 100) * 100, method: 'transfer', status: 'pending', comment: 'Прислали скриншот перевода в WhatsApp' }, E.omarov, TODAY + 'T12:40');
     });
     on(TODAY + 'T11:25', () => {
       const debtor = clients.filter((c) => c.seg !== 'retail' && c.client.deferDays > 0 && clientBalance(db, c.id).debt > 3000)[3];
       if (!debtor) return;
       const b = clientBalance(db, debtor.id);
-      run('payment.client', { clientId: debtor.id, amount: Math.round(b.debt / 100) * 100, method: 'transfer', status: 'pending', comment: 'Скриншот перевода от бухгалтера клиента' }, E.belova, TODAY + 'T11:25');
+      run('payment.client', { clientId: debtor.id, amount: Math.round(b.debt / 100) * 100, method: 'transfer', status: 'pending', comment: 'Скриншот перевода от бухгалтера клиента' }, E.suleymanova, TODAY + 'T11:25');
     });
     // лимит снижен после просрочки — у двух должников долг теперь выше лимита
     const cutIds = new Set<ID>();
@@ -1571,7 +1573,7 @@ export function simulate(input: SimInput): SimStats {
     for (const p of rng.sample(pool, n)) lines.push({ productId: p.id, qty: Math.min(avail(p.id, loc) - 1, rng.int(1, 4)), reason });
     if (!lines.length) return;
     const comment = { leak: 'Протекли при разгрузке', damage: 'Повреждены при перемещении', expired: 'Истёк срок годности', shortage: 'Недостача по итогам проверки полки', other: '' }[reason];
-    run('stock.writeoff', { location: loc, lines, comment }, E.krylov, when);
+    run('stock.writeoff', { location: loc, lines, comment }, E.ibragimov, when);
   }
 
   function countDoc(loc: 'shop' | 'warehouse', cats: string[], when: ISODateTime): void {
@@ -1586,7 +1588,7 @@ export function simulate(input: SimInput): SimStats {
       if (rng.chance(0.08)) fact = Math.max(r.reserved, fact + rng.pick([-3, -2, -1, -1, 1, 2]));
       lines.push({ productId: p.id, qty: fact });
     }
-    if (lines.length) run('stock.count', { location: loc, lines, comment: loc === 'shop' ? 'Пересчёт магазина: мыло, гигиена, бумага' : 'Пересчёт склада: освежители, губки и тряпки' }, E.krylov, when);
+    if (lines.length) run('stock.count', { location: loc, lines, comment: loc === 'shop' ? 'Пересчёт магазина: мыло, гигиена, бумага' : 'Пересчёт склада: освежители, губки и тряпки' }, E.ibragimov, when);
   }
 
   function orderReturn(when: ISODateTime): void {
@@ -1614,7 +1616,7 @@ export function simulate(input: SimInput): SimStats {
     if (!lines.length) return;
     const pay = orderPayment(db, o);
     const refund = pay.state === 'paid' && rng.chance(0.6);
-    run('return.create', { orderId: o.id, lines, refund, method: 'transfer', comment: refund ? 'Вернули деньги переводом' : '' }, refund ? E.sokolov : E.krylov, when);
+    run('return.create', { orderId: o.id, lines, refund, method: 'transfer', comment: refund ? 'Вернули деньги переводом' : '' }, refund ? E.omarov : E.ibragimov, when);
   }
 
   /** Решения по товару на проверке: вернуть в продажу или списать. */
@@ -1639,8 +1641,8 @@ export function simulate(input: SimInput): SimStats {
               : item.reason === RETURN_REASONS.defect
                 ? 'Брак подтверждён при проверке'
                 : `С проверки: ${item.reason}`;
-        run('quarantine.writeoff', { itemId: item.id, reason: expired ? 'expired' : 'damage', comment }, E.krylov, t);
-      } else run('quarantine.release', { itemId: item.id }, E.krylov, t);
+        run('quarantine.writeoff', { itemId: item.id, reason: expired ? 'expired' : 'damage', comment }, E.ibragimov, t);
+      } else run('quarantine.release', { itemId: item.id }, E.ibragimov, t);
     }
   };
 
@@ -1671,7 +1673,7 @@ export function simulate(input: SimInput): SimStats {
       sched(t, () => {
         const cash = accountBalances(db).shop_cash;
         const amount = Math.floor((cash - 15000) / 1000) * 1000;
-        if (amount >= 20000) run('payment.transfer', { from: 'shop_cash', to: 'bank', amount, comment: 'Инкассация' }, officeDay(d) ? E.belova : sellerOn(d), t);
+        if (amount >= 20000) run('payment.transfer', { from: 'shop_cash', to: 'bank', amount, comment: 'Инкассация' }, officeDay(d) ? E.suleymanova : sellerOn(d), t);
       });
     }
     if (workday(d)) {
@@ -1691,7 +1693,7 @@ export function simulate(input: SimInput): SimStats {
       sched(t, () => {
         for (const p of db.payments) {
           if (p.status !== 'pending' || p.at.slice(0, 10) >= d) continue;
-          run('payment.confirm', { paymentId: p.id }, E.belova, t);
+          run('payment.confirm', { paymentId: p.id }, E.suleymanova, t);
         }
       });
     }

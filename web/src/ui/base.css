@@ -82,17 +82,18 @@ svg { flex-shrink: 0; }
   color: var(--nav-ink);
   overflow: hidden;
 }
+/* логотип в светлом исполнении прямо на синем меню, без подложки */
 .sidebar-logo {
-  margin: 10px 10px 6px;
-  padding: 10px 12px;
-  background: #FFFFFF;
-  border-radius: var(--r-md);
-  display: flex; align-items: center; justify-content: center;
-  min-height: 56px;
+  margin: 14px 10px 8px;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  display: flex; align-items: center; justify-content: flex-start;
+  min-height: 52px;
 }
-.sidebar-logo img { display: block; width: 100%; max-width: 176px; height: auto; }
-.sidebar-logo .logo-mark { display: none; width: 34px; height: 34px; object-fit: cover; object-position: 2% 50%; }
-.is-collapsed .sidebar-logo { padding: 8px; }
+.sidebar-logo:focus-visible { outline: 2px solid var(--nav-active-icon); outline-offset: 2px; }
+.sidebar-logo img { display: block; width: 100%; max-width: 184px; height: auto; }
+.sidebar-logo .logo-mark { display: none; width: 36px; height: 36px; }
+.is-collapsed .sidebar-logo { padding: 6px 0; justify-content: center; }
 .is-collapsed .sidebar-logo .logo-full { display: none; }
 .is-collapsed .sidebar-logo .logo-mark { display: block; }
 
@@ -509,3 +510,36 @@ button.list-row:hover, a.list-row:hover { background: var(--row-hover); text-dec
 .entity-link { color: var(--ink); font-weight: 600; border: 0; background: transparent; padding: 0; cursor: pointer; text-align: left; }
 .entity-link:hover { color: var(--link); text-decoration: underline; }
 .section-loading { padding: 60px 0; display: flex; justify-content: center; color: var(--faint); }
+
+/* ---------- переключатель ---------- */
+.switch {
+  position: relative; flex: 0 0 auto;
+  width: 36px; height: 20px; padding: 0;
+  border: 0; border-radius: var(--r-full);
+  background: var(--line-strong); cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+.switch > span {
+  position: absolute; top: 2px; left: 2px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--panel); box-shadow: var(--sh-card);
+  transition: transform var(--dur-fast) var(--ease);
+}
+.switch.is-on { background: var(--primary); }
+.switch.is-on > span { transform: translateX(16px); }
+.switch:disabled { opacity: 0.55; cursor: not-allowed; }
+.switch:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .switch, .switch > span { transition: none; } }
+
+/* ---------- WhatsApp: общие детали для чатов, окна отправки и настроек ---------- */
+.sales-msg.is-auto { background: var(--green-soft); }
+.wa-auto-label { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-11); font-weight: 700; color: var(--green-700); }
+.wa-tick { color: var(--muted); flex: 0 0 auto; }
+.wa-read { color: var(--info); }
+.wa-list-icon { flex: 0 0 auto; }
+.wa-file { display: flex; align-items: center; gap: 10px; min-width: 0; max-width: 340px; padding: 8px 10px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); font-size: var(--fs-13); }
+.wa-file-icon { flex: 0 0 auto; width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; background: var(--sub); color: var(--muted); }
+.wa-file-icon svg { width: 18px; height: 18px; }
+.wa-parse { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; margin-top: 2px; padding: 6px 10px; border: 0; border-radius: 10px; background: var(--green-soft); color: var(--green-700); font: inherit; font-size: var(--fs-12); font-weight: 700; cursor: pointer; }
+.wa-parse:hover { background: var(--green-soft-2); }
+.wa-parse-miss { font-weight: 500; color: var(--ink-2); }

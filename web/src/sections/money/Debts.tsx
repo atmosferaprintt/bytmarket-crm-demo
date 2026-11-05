@@ -1,7 +1,7 @@
 /* Долги покупателей — по клиентам: долг, просрочка, отсрочка, лимит, последняя оплата. */
 import { useMemo, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
-import { BellRing, FileText, HandCoins } from 'lucide-react';
+import { FileText, HandCoins, ListChecks, MessageCircle } from 'lucide-react';
 import type { Client, ID } from '../../data/types';
 import { CLIENT_SEGMENT_NAMES } from '../../data/types';
 import { useDB, useDBVersion } from '../../data/store';
@@ -16,6 +16,8 @@ import { MoneyModalHost, useMoneyMenu, type MoneyModal } from './actions';
 import { clientPayInfo, useMoneyPerms, type ClientPayInfo } from './lib';
 import { useMoneyCounts } from './counts';
 import { PhoneStats, useNarrow, usePhone } from './parts';
+import { SendWhatsAppModal } from '../sales/SendInvoiceModal';
+import { actFile, textReminder } from '../../data/whatsapp';
 
 interface DRow {
   c: Client;
@@ -34,6 +36,8 @@ export default function Debts() {
   const counts = useMoneyCounts();
   const [modal, setModal] = useState<MoneyModal>(null);
   const [task, setTask] = useState<ID | null>(null);
+  const [remind, setRemind] = useState<ID | null>(null);
+  const waOn = db.settings.whatsapp.connected;
   const menu = useMoneyMenu(setModal, ['accept']);
   const today = db.meta.today;
   const narrow = useNarrow();
@@ -182,8 +186,9 @@ export default function Debts() {
           <MoreMenu
             size="sm"
             items={[
+              { label: 'Напомнить в WhatsApp', icon: <MessageCircle />, onClick: () => setRemind(r.c.id), hidden: !waOn || r.b.debt <= 0 || !(r.c.contacts[0]?.phone ?? r.c.phone) },
               { label: 'Акт сверки', icon: <FileText />, onClick: () => setModal({ kind: 'act', clientId: r.c.id }) },
-              { label: 'Напомнить об оплате', icon: <BellRing />, onClick: () => setTask(r.c.id) },
+              { label: 'Задача: напомнить об оплате', icon: <ListChecks />, onClick: () => setTask(r.c.id) },
             ]}
           />
         </div>
@@ -263,7 +268,31 @@ export default function Debts() {
       )}
       <MoneyModalHost modal={modal} onClose={() => setModal(null)} onOpen={setModal} />
       {task ? <TaskModal link={{ type: 'client', id: task }} defaultTitle="Напомнить об оплате долга" onClose={() => setTask(null)} /> : null}
+      {remind ? <RemindModal clientId={remind} onClose={() => setRemind(null)} /> : null}
     </>
+  );
+}
+
+/** Напоминание о долге в WhatsApp: сумма, просрочка, акт сверки во вложении. Перед отправкой видно текст. */
+function RemindModal({ clientId, onClose }: { clientId: ID; onClose: () => void }) {
+  const db = useDB();
+  const c = db.clients.find((x) => x.id === clientId);
+  const b = clientBalances(db).get(clientId);
+  const [text] = useState(() => textReminder(db, clientId, c?.contacts[0]?.name.split(' ')[0] ?? ''));
+  if (!c || !b) return null;
+  return (
+    <SendWhatsAppModal
+      clientId={clientId}
+      title="Напомнить об оплате"
+      initialText={text}
+      file={actFile(db.meta.today)}
+      rows={[
+        { label: 'Долг', value: fmt.money(b.debt) },
+        { label: 'Просрочено', value: b.overdue > 0 ? <span className="c-bad">{fmt.money(b.overdue)}</span> : fmt.money(0) },
+      ]}
+      okText="Напоминание отправлено клиенту в WhatsApp"
+      onClose={onClose}
+    />
   );
 }
 

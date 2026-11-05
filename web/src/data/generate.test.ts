@@ -49,7 +49,7 @@ describe('согласованность', () => {
   });
 
   it('у каждой доставки, кроме ожидающих назначения, ровно один курьер из трёх', () => {
-    const couriers = new Set(['e-morozov', 'e-zaytsev', 'e-vlasov']);
+    const couriers = new Set(['e-musaev', 'e-ramazanov', 'e-daudov']);
     for (const d of db.deliveries) {
       if (d.state === 'waiting') expect(d.courierId).toBeNull();
       else expect(couriers.has(d.courierId ?? '')).toBe(true);
@@ -172,12 +172,12 @@ describe('объёмы и правила задания', () => {
     expect(names.some((x) => /демо/i.test(x))).toBe(false);
     expect(names).toEqual(
       expect.arrayContaining([
-        'Александр Волков', 'Анна Орлова', 'Виктория Ким', 'Михаил Соколов', 'Ирина Петрова', 'Елена Миронова', 'Руслан Абдуллаев', 'Олег Тарасов',
-        'Ольга Белова', 'Сергей Крылов', 'Тимур Исмаилов', 'Марина Лебедева', 'Денис Морозов', 'Артём Зайцев', 'Кирилл Власов',
+        'Магомед Гаджиев', 'Патимат Алиева', 'Мадина Курбанова', 'Шамиль Омаров', 'Зарема Магомедова', 'Аминат Расулова', 'Ислам Абдуллаев', 'Арсен Халилов',
+        'Хадижат Сулейманова', 'Гусейн Ибрагимов', 'Мурад Исмаилов', 'Джамиля Абакарова', 'Саид Мусаев', 'Камиль Рамазанов', 'Ахмед Даудов',
       ]),
     );
-    expect(db.employees.find((e) => e.id === 'e-volkov')!.roles).toEqual(['owner', 'manager']);
-    expect(db.employees.filter((e) => e.roles.includes('courier')).map((e) => e.name).sort()).toEqual(['Артём Зайцев', 'Денис Морозов', 'Кирилл Власов']);
+    expect(db.employees.find((e) => e.id === 'e-gadzhiev')!.roles).toEqual(['owner', 'manager']);
+    expect(db.employees.filter((e) => e.roles.includes('courier')).map((e) => e.name).sort()).toEqual(['Ахмед Даудов', 'Камиль Рамазанов', 'Саид Мусаев']);
   });
 
   it('поставщики и закупки: 6–8 поставщиков, 30–40 закупок, 2–3 в пути, одна частичная, расхождения, долги', () => {
@@ -205,7 +205,7 @@ describe('объёмы и правила задания', () => {
     expect(seg('retail')).toBeGreaterThan(0.18);
     expect(seg('market')).toBeGreaterThan(0.08);
     expect(seg('horeca') + seg('cleaning')).toBeGreaterThan(0.1);
-    for (const rep of ['e-mironova', 'e-abdullaev', 'e-tarasov']) {
+    for (const rep of ['e-rasulova', 'e-abdullaev', 'e-khalilov']) {
       const pts = db.clients.filter((c) => c.ownerId === rep).reduce((s, c) => s + c.points.length, 0);
       expect(pts).toBeGreaterThanOrEqual(25);
       expect(pts).toBeLessThanOrEqual(40);
@@ -229,7 +229,7 @@ describe('объёмы и правила задания', () => {
     expect(db.clients.filter((c) => c.segment === 'retail').every((c) => c.note.includes('Карта'))).toBe(true);
   });
 
-  it('касса: смена каждый день, 25–40 чеков в будни, средний чек 450–1200 ₽, сегодня открыта смена Анны', () => {
+  it('касса: смена каждый день, 25–40 чеков в будни, средний чек 450–1200 ₽, сегодня открыта смена Патимат', () => {
     const days = new Set(db.shifts.map((s) => s.openedAt.slice(0, 10)));
     expect(days.size).toBe(93);
     const per = new Map<string, number>();
@@ -244,7 +244,7 @@ describe('объёмы и правила задания', () => {
     }
     const open = db.shifts.filter((s) => !s.closedAt);
     expect(open.length).toBe(1);
-    expect(open[0].sellerId).toBe('e-orlova');
+    expect(open[0].sellerId).toBe('e-alieva');
     expect(open[0].openedAt.startsWith(T)).toBe(true);
     const today = per.get(T) ?? 0;
     expect(today).toBeGreaterThanOrEqual(16);
@@ -349,7 +349,7 @@ describe('объёмы и правила задания', () => {
     expect(st('delivered')).toBeLessThanOrEqual(5);
     expect(st('failed')).toBeGreaterThanOrEqual(1);
     expect(st('failed')).toBeLessThanOrEqual(2);
-    for (const c of ['e-morozov', 'e-zaytsev', 'e-vlasov']) {
+    for (const c of ['e-musaev', 'e-ramazanov', 'e-daudov']) {
       const mine = today.filter((d) => d.courierId === c);
       expect(mine.length).toBeGreaterThanOrEqual(4);
       expect(mine.length).toBeLessThanOrEqual(6);
@@ -357,7 +357,7 @@ describe('объёмы и правила задания', () => {
       expect(new Set(orders).size).toBe(orders.length);
     }
     expect(db.deliveries.some((d) => d.date > T)).toBe(true);
-    const notHanded = ['e-morozov', 'e-zaytsev', 'e-vlasov'].filter((c) => courierCash(db, c).onHand > 0).length;
+    const notHanded = ['e-musaev', 'e-ramazanov', 'e-daudov'].filter((c) => courierCash(db, c).onHand > 0).length;
     expect(notHanded).toBeGreaterThanOrEqual(1);
     expect(notHanded).toBeLessThanOrEqual(2);
     expect(db.deliveries.some((d) => d.collect > 0)).toBe(true);
@@ -382,7 +382,7 @@ describe('объёмы и правила задания', () => {
       if (v.result === 'refusal') expect(v.refusalReason).toBeTruthy();
       if (v.result === 'order') expect(v.orderId).toBeTruthy();
     }
-    for (const rep of ['e-mironova', 'e-abdullaev', 'e-tarasov']) {
+    for (const rep of ['e-rasulova', 'e-abdullaev', 'e-khalilov']) {
       const today = db.visits.filter((v) => v.repId === rep && v.date === T);
       expect(today.length).toBeGreaterThanOrEqual(6);
       expect(today.length).toBeLessThanOrEqual(8);
@@ -395,8 +395,8 @@ describe('объёмы и правила задания', () => {
   it('планы, акции, цены, чаты, задачи, журнал, настройки', () => {
     for (const m of ['2026-08', '2026-09', '2026-10', '2026-11']) expect(db.plans.some((p) => p.month === m && p.employeeId === null)).toBe(true);
     for (const m of ['2026-08', '2026-09', '2026-10', '2026-11'])
-      for (const e of ['e-sokolov', 'e-petrova', 'e-mironova', 'e-abdullaev', 'e-orlova', 'e-kim']) expect(db.plans.some((p) => p.month === m && p.employeeId === e)).toBe(true);
-    expect(db.plans.some((p) => p.month === '2026-11' && p.employeeId === 'e-tarasov')).toBe(true);
+      for (const e of ['e-omarov', 'e-magomedova', 'e-rasulova', 'e-abdullaev', 'e-alieva', 'e-kurbanova']) expect(db.plans.some((p) => p.month === m && p.employeeId === e)).toBe(true);
+    expect(db.plans.some((p) => p.month === '2026-11' && p.employeeId === 'e-khalilov')).toBe(true);
     for (const m of ['2026-09', '2026-10', '2026-11']) {
       const store = db.plans.find((p) => p.month === m && p.employeeId === null)!.amount;
       expect(db.plans.filter((p) => p.month === m && p.employeeId).reduce((s, p) => s + p.amount, 0)).toBe(store);
@@ -415,14 +415,17 @@ describe('объёмы и правила задания', () => {
     expect(new Set(db.promos.map((p) => p.target.type)).size).toBe(3);
     expect(db.priceChanges.length).toBeGreaterThanOrEqual(30);
     expect(db.priceChanges.length).toBeLessThanOrEqual(60);
-    expect(db.chats.length).toBeGreaterThanOrEqual(10);
-    expect(db.chats.length).toBeLessThanOrEqual(15);
-    const linked = db.chats.filter((c) => c.messages.some((m) => m.orderId)).length;
-    expect(linked).toBeGreaterThanOrEqual(2);
-    expect(linked).toBeLessThanOrEqual(3);
+    // WhatsApp подключён 20 октября: живые переписки и автосообщения о заказах в одних диалогах
+    expect(db.settings.whatsapp.connected).toBe(true);
+    expect(db.settings.whatsapp.since).toBe('2026-10-20');
+    expect(db.chats.length).toBeGreaterThanOrEqual(40);
+    expect(db.chats.length).toBeLessThanOrEqual(110);
+    expect(new Set(db.chats.map((c) => c.clientId)).size).toBe(db.chats.length);
+    const live = db.chats.filter((c) => c.messages.some((m) => m.from === 'client')).length;
+    expect(live).toBeGreaterThanOrEqual(12);
     const unread = db.chats.filter((c) => c.unread > 0).length;
-    expect(unread).toBeGreaterThanOrEqual(3);
-    expect(unread).toBeLessThanOrEqual(4);
+    expect(unread).toBeGreaterThanOrEqual(4);
+    expect(unread).toBeLessThanOrEqual(6);
     for (const e of db.employees) {
       const n = db.tasks.filter((t) => t.assigneeId === e.id && t.due === T).length;
       expect(n).toBeGreaterThanOrEqual(3);
@@ -451,13 +454,13 @@ describe('замечания проверяющих', () => {
     expect(db.quarantine.some((q) => q.reason === 'Брак' && q.state === 'written_off')).toBe(true);
   });
 
-  it('сверка кассы: три смены с расхождением за две недели, 4 ноября у Анны −600 ₽', () => {
+  it('сверка кассы: три смены с расхождением за две недели, 4 ноября у Патимат −600 ₽', () => {
     const diffs = db.shifts.filter((s) => s.closedAt).map((s) => ({ s, d: shiftSummary(db, s.id).difference ?? 0 })).filter((x) => x.d !== 0);
     expect(diffs.map((x) => x.d).sort((a, b) => a - b)).toEqual([-600, -350, 200]);
     for (const x of diffs) expect(x.s.openedAt.slice(0, 10) >= plusDays(T, -14)).toBe(true);
     const nov4 = diffs.find((x) => x.d === -600)!.s;
     expect(nov4.openedAt.slice(0, 10)).toBe('2026-11-04');
-    expect(nov4.sellerId).toBe('e-orlova');
+    expect(nov4.sellerId).toBe('e-alieva');
   });
 
   it('визиты не позже 18:30, отметка — в пределах ±40 минут от плана', () => {
@@ -525,7 +528,7 @@ describe('замечания проверяющих', () => {
     expect(route.size).toBeGreaterThan(100);
   });
 
-  it('пропустили привычный заказ: у Соколова 1–2 клиента, у Петровой хотя бы один', () => {
+  it('пропустили привычный заказ: у Омарова 1–2 клиента, у Магомедовой хотя бы один', () => {
     // правило раздела «Клиенты»: активный, не розница, нет заказа в работе, с последней покупки больше частоты × MISSED_ORDER_FACTOR
     const open = new Set(db.orders.filter((o) => o.state === 'request' || o.state === 'confirmed' || o.state === 'draft').map((o) => o.clientId));
     const missed = (owner: string): string[] =>
@@ -536,9 +539,9 @@ describe('замечания проверяющих', () => {
           return last !== null && diffDays(last.slice(0, 10), T) > c.orderEveryDays! * MISSED_ORDER_FACTOR;
         })
         .map((c) => c.name);
-    expect(missed('e-sokolov').length).toBeGreaterThanOrEqual(1);
-    expect(missed('e-sokolov').length).toBeLessThanOrEqual(2);
-    expect(missed('e-petrova').length).toBeGreaterThanOrEqual(1);
+    expect(missed('e-omarov').length).toBeGreaterThanOrEqual(1);
+    expect(missed('e-omarov').length).toBeLessThanOrEqual(2);
+    expect(missed('e-magomedova').length).toBeGreaterThanOrEqual(1);
   });
 
   it('задачи: имя клиента в кавычках не стоит сразу после глагола или предлога без слова «клиент»', () => {

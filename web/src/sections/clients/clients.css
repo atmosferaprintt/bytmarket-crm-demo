@@ -38,6 +38,9 @@ button.cl-list-row:hover { background: var(--row-hover); }
 /* ---------- карточка клиента ---------- */
 .cl-head-meta { display: flex; align-items: center; gap: 8px 20px; flex-wrap: wrap; font-size: var(--fs-13); }
 .cl-tel { font-weight: 600; color: var(--link); }
+.cl-wa { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: var(--green-700); cursor: pointer; }
+.cl-wa:hover { text-decoration: underline; }
+.cl-wa:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
 
 .cl-money { background: var(--sub); border-radius: var(--r-md); }
 .cl-money-cells { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }

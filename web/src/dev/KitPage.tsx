@@ -84,7 +84,7 @@ function Kit() {
           <div className="col-3">
             <SearchInput value={q} onChange={setQ} placeholder="Найти товар" />
             <div className="grid-2">
-              <Field label="Клиент"><Select options={[{ value: '1', label: 'ИП Соколова · «Чистый дом»' }]} /></Field>
+              <Field label="Клиент"><Select options={[{ value: '1', label: 'ИП Гамзатова · «Чистый дом»' }]} /></Field>
               <Field label="Сумма"><MoneyInput value={sum} onChange={setSum} /></Field>
             </div>
             <div className="row"><QtyInput value={qty} onChange={setQty} /><span className="muted">= {fmt.qty(qty * 12)}</span></div>
@@ -137,13 +137,13 @@ function Kit() {
         ]}
       />
       {modal ? (
-        <Modal title="Принять оплату" sub="ИП Соколова · «Чистый дом»" onClose={() => setModal(false)} footer={<><Button variant="ghost" onClick={() => setModal(false)}>Отмена</Button><Button variant="primary">Принять 12 400 ₽</Button></>}>
+        <Modal title="Принять оплату" sub="ИП Гамзатова · «Чистый дом»" onClose={() => setModal(false)} footer={<><Button variant="ghost" onClick={() => setModal(false)}>Отмена</Button><Button variant="primary">Принять 12 400 ₽</Button></>}>
           <Field label="Сумма"><MoneyInput value={sum} onChange={setSum} size="lg" /></Field>
           <Segmented value="cash" onChange={() => undefined} options={[{ value: 'cash', label: 'Наличные' }, { value: 'card', label: 'Карта' }, { value: 'transfer', label: 'Перевод' }]} />
         </Modal>
       ) : null}
       {drawer ? (
-        <Drawer title="Заказ № 1284" sub="ИП Соколова · «Чистый дом»" head={<div className="chips"><StatusChip s={ORDER_STATE.confirmed} /><StatusChip s={PAY_STATE.partial} /></div>} onClose={() => setDrawer(false)} footer={<><Button>Печать</Button><span className="spacer" /><Button variant="primary">Отгрузить</Button></>}>
+        <Drawer title="Заказ № 1284" sub="ИП Гамзатова · «Чистый дом»" head={<div className="chips"><StatusChip s={ORDER_STATE.confirmed} /><StatusChip s={PAY_STATE.partial} /></div>} onClose={() => setDrawer(false)} footer={<><Button>Печать</Button><span className="spacer" /><Button variant="primary">Отгрузить</Button></>}>
           <StatList><StatRow label="Сумма" value={fmt.money(48300)} /><StatRow label="Осталось" value={fmt.money(12400)} total /></StatList>
         </Drawer>
       ) : null}

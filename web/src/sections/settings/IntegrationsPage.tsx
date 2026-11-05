@@ -1,9 +1,10 @@
 import { useMemo, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, Clock, HardDrive, Landmark, Layers, MessageCircle, RotateCcw, ScanBarcode } from 'lucide-react';
+import { Check, Clock, HardDrive, Landmark, Layers, RotateCcw, ScanBarcode } from 'lucide-react';
 import { PageHeader } from '../../shell/PageHeader';
 import { Button, Card, ConfirmButton, IconTile, StatList, StatRow, StatusChip, cx, fmt, toast, type Tone } from '../../ui';
 import { resetDemo, useDB, useDBVersion } from '../../data/store';
+import { WhatsAppCard } from './WhatsAppCard';
 
 function IntCard({
   icon,
@@ -79,19 +80,16 @@ export function IntegrationsPage() {
         unknownSum += p.amount;
       }
     }
-    const unread = db.chats.reduce((n, c) => n + c.unread, 0);
-    const chat = [...db.chats].reverse().find((c) => c.messages.length >= 4 && c.messages.some((m) => m.from === 'staff') && c.messages.some((m) => m.from === 'client')) ?? db.chats[0];
-    const client = chat ? db.clients.find((c) => c.id === chat.clientId) : undefined;
-    return { sales30, refunds30, pending, pendingSum, unknown, unknownSum, unread, chat, client };
+    return { sales30, refunds30, pending, pendingSum, unknown, unknownSum };
   }, [db, version, today]);
 
-  const emp = (id: string | null) => (id ? db.employees.find((e) => e.id === id)?.short : undefined);
 
   return (
     <div className="set-page">
       <PageHeader section="settings" />
 
       <div className="set-integrations">
+        <WhatsAppCard />
         <div className="set-int-col">
           <IntCard
             icon={<ScanBarcode />}
@@ -110,21 +108,6 @@ export function IntegrationsPage() {
             />
           </IntCard>
 
-          <IntCard icon={<Layers />} title="1С" chip={{ label: 'Не используется', tone: 'neutral' }} what="У магазина нет 1С: товары, остатки, заказы и деньги учитываются здесь.">
-            <StatList>
-              <StatRow label="Где ведётся учёт" value="В этой программе" />
-              <StatRow label="Обмен с 1С" value="Не настроен" />
-            </StatList>
-            <Points
-              label="Если понадобится бухгалтерия в 1С"
-              icon={<Clock />}
-              items={[
-                'Выгрузка продаж, оплат и документов в 1С:Бухгалтерию раз в день',
-                'Остатки и цены ведутся только здесь — двух разных учётов не будет',
-                'Журнал обмена и экран ошибок по каждой выгрузке',
-              ]}
-            />
-          </IntCard>
         </div>
         <div className="set-int-col">
           <IntCard
@@ -141,34 +124,20 @@ export function IntegrationsPage() {
             <Points label="Можно добавить" icon={<Clock />} items={['Загрузку выписки файлом: программа сама найдёт оплату по сумме и ИНН плательщика']} />
           </IntCard>
 
-          <IntCard
-            icon={<MessageCircle />}
-            title="WhatsApp"
-            chip={{ label: 'Внутри программы', tone: 'info' }}
-            what="Переписка с клиентами — в карточке клиента и в «Продажах», вкладка «Чаты». Наружу сообщения не уходят."
-            foot={
-              <>
-                <Button onClick={() => navigate('/sales/chats')}>Открыть чаты</Button>
-                {d.unread ? <span className="t-13 muted">Непрочитанных: {fmt.num(d.unread)}</span> : null}
-              </>
-            }
-          >
-            {d.chat ? (
-              <div className="col" style={{ gap: 6 }}>
-                <span className="set-int-label">{d.client ? d.client.name : 'Пример переписки'}</span>
-                <div className="set-chat">
-                  {d.chat.messages.slice(-3).map((m, i) => (
-                    <div key={i} className={cx('set-bubble', m.from === 'staff' && 'is-staff')}>
-                      {m.text}
-                      <span className="set-bubble-time">
-                        {m.from === 'staff' && emp(m.authorId) ? `${emp(m.authorId)}, ` : ''}
-                        {fmt.relDate(m.at, today)}, {fmt.time(m.at)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
+          <IntCard icon={<Layers />} title="1С" chip={{ label: 'Не используется', tone: 'neutral' }} what="У магазина нет 1С: товары, остатки, заказы и деньги учитываются здесь.">
+            <StatList>
+              <StatRow label="Где ведётся учёт" value="В этой программе" />
+              <StatRow label="Обмен с 1С" value="Не настроен" />
+            </StatList>
+            <Points
+              label="Если понадобится бухгалтерия в 1С"
+              icon={<Clock />}
+              items={[
+                'Выгрузка продаж, оплат и документов в 1С:Бухгалтерию раз в день',
+                'Остатки и цены ведутся только здесь — двух разных учётов не будет',
+                'Журнал обмена и экран ошибок по каждой выгрузке',
+              ]}
+            />
           </IntCard>
         </div>
         <IntCard
