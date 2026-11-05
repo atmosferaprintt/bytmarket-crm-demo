@@ -1,7 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { CalendarPlus, ExternalLink, ListPlus, MapPin, MessageCircle, Pencil, Phone, Plus, ShoppingCart, UserRound, Wallet } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { tabsFor } from '../../shell/nav';
 import type { EntityDrawerProps } from '../../shell/entities';
 import { EntityLink, useOpenEntity } from '../../shell/entities';
 import { TaskModal } from '../../shell/TaskModal';
@@ -47,7 +46,7 @@ type TabKey = 'overview' | 'orders' | 'payments' | 'points' | 'visits' | 'tasks'
 export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
   const db = useDB();
   const version = useDBVersion();
-  const { me, role, can } = useSession();
+  const { me, role, can, sees } = useSession();
   const navigate = useNavigate();
   const scoped = useScoped();
   const phone = useIsPhone();
@@ -97,7 +96,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
   const canEdit = can('editClients');
   const tel = telUrl(c.phone);
   // переписку открывают те, у кого есть вкладка «Чаты»: владелец, менеджер, представитель
-  const canChat = db.settings.whatsapp.connected && !!c.phone && tabsFor('sales', role).some((t) => t.key === 'chats');
+  const canChat = db.settings.whatsapp.connected && !!c.phone && sees('chats');
   const hasChat = db.chats.some((x) => x.clientId === c.id);
 
   const secondary = [
@@ -152,7 +151,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
           </a>
         ) : null}
         {canChat ? (
-          <button type="button" className="row cl-tel cl-wa" style={{ gap: 6 }} onClick={() => navigate(`/sales/chats?client=${c.id}`)}>
+          <button type="button" className="row cl-tel cl-wa" style={{ gap: 6 }} onClick={() => navigate(`/chats?client=${c.id}`)}>
             <MessageCircle size={15} />
             {hasChat ? 'Переписка в WhatsApp' : 'Написать в WhatsApp'}
           </button>

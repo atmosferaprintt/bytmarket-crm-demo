@@ -10,6 +10,7 @@ const SECTION_MODULES: Record<SectionKey, LazyExoticComponent<ComponentType>> = 
   overview: lazy(() => import('./sections/overview')),
   register: lazy(() => import('./sections/register/routes')),
   sales: lazy(() => import('./sections/sales/routes')),
+  chats: lazy(() => import('./sections/sales/chatsRoutes')),
   clients: lazy(() => import('./sections/clients/routes')),
   products: lazy(() => import('./sections/products/routes')),
   stock: lazy(() => import('./sections/stock/routes')),

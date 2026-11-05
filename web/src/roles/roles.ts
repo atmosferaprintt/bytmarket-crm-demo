@@ -5,6 +5,7 @@ export type SectionKey =
   | 'overview'
   | 'register'
   | 'sales'
+  | 'chats'
   | 'clients'
   | 'products'
   | 'stock'
@@ -62,7 +63,7 @@ export interface RoleMeta {
   perms: Perm[];
 }
 
-const ALL_SECTIONS: SectionKey[] = ['overview', 'register', 'sales', 'clients', 'products', 'stock', 'purchases', 'money', 'delivery', 'reports', 'settings'];
+const ALL_SECTIONS: SectionKey[] = ['overview', 'register', 'sales', 'chats', 'clients', 'products', 'stock', 'purchases', 'money', 'delivery', 'reports', 'settings'];
 
 const ALL_PERMS: Perm[] = [
   'seeCost', 'seeProfit', 'editPrices', 'editCatalog', 'editClients', 'allClients', 'createOrder', 'createRequest', 'confirmOrder', 'cancelOrder',
@@ -99,7 +100,7 @@ export const ROLES: Record<RoleKey, RoleMeta> = {
     about: 'Свои оптовые клиенты, заказы, резервы и оплаты',
     sees: 'своих клиентов, их заказы, долги и доставки',
     mobile: false,
-    sections: ['overview', 'sales', 'clients', 'products', 'delivery', 'money'],
+    sections: ['overview', 'sales', 'chats', 'clients', 'products', 'delivery', 'money'],
     perms: ['editClients', 'createOrder', 'createRequest', 'confirmOrder', 'cancelOrder', 'shipOrder', 'acceptPayment', 'planVisits', 'export'],
   },
   rep: {
@@ -109,7 +110,7 @@ export const ROLES: Record<RoleKey, RoleMeta> = {
     about: 'Мой день: визиты по точкам, заявки, долги клиентов',
     sees: 'только закреплённые точки и свои заявки',
     mobile: true,
-    sections: ['overview', 'clients', 'sales', 'products'],
+    sections: ['overview', 'clients', 'sales', 'chats', 'products'],
     perms: ['createRequest', 'planVisits'],
   },
   accountant: {

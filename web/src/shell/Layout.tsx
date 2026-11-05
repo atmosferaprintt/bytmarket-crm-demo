@@ -54,6 +54,10 @@ function useNavBadges(): Partial<Record<SectionKey, { n: number; alert?: boolean
       const pend = db.payments.filter((p) => p.status !== 'posted').length;
       if (pend) res.money = { n: pend };
     }
+    if (['owner', 'manager', 'rep'].includes(role)) {
+      const unread = scoped.chats.filter((c) => c.unread > 0).length;
+      if (unread) res.chats = { n: unread };
+    }
     if (role === 'rep') {
       const left = scoped.visits.filter((v) => v.date === today && v.state === 'planned').length;
       if (left) res.overview = { n: left };

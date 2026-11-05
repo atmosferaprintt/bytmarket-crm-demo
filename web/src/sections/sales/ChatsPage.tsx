@@ -1,7 +1,7 @@
 /* Вкладка «Чаты»: WhatsApp магазина. Живая переписка, автосообщения о заказах, вложения,
    разбор заказа из сообщения клиента. Пример подключения: сообщения хранятся в программе и наружу не уходят. */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, BellRing, Check, CheckCheck, FileSpreadsheet, FileText, ListPlus, MessageCircle, Paperclip, Plus, Send, Store, Zap } from 'lucide-react';
 import type { Chat, ChatMessage, ID } from '../../data/types';
 import { CLIENT_SEGMENT_NAMES } from '../../data/types';
@@ -16,7 +16,6 @@ import { NewOrderDrawer } from './NewOrderDrawer';
 import { useSalesOrders } from './salesScope';
 import { capitalize, fixNo, norm, useIsPhone } from './lib';
 import { shownOverdue } from './parts';
-import { useTabCounts } from './tabCounts';
 import { FileChip, SendInvoiceModal, SendWhatsAppModal, type SendWhatsAppProps } from './SendInvoiceModal';
 import { WA_AUTO_META, actFile, priceFile, textReminder, waReadState } from '../../data/whatsapp';
 import { parseOrderText, type ParsedOrder } from '../../data/orderText';
@@ -40,7 +39,7 @@ export default function ChatsPage() {
   const { me, can, role } = useSession();
   const { chats, isMine } = useScoped();
   const isManager = role === 'manager';
-  const counts = useTabCounts();
+  const navigate = useNavigate();
   const phone = useIsPhone();
   const openEntity = useOpenEntity();
   const [params, setParams] = useSearchParams();
@@ -166,7 +165,17 @@ export default function ChatsPage() {
 
   return (
     <>
-      <PageHeader section="sales" counts={counts} />
+      <PageHeader
+        section="chats"
+        actions={
+          <>
+            <Chip tone="green" icon={<MessageCircle />}>
+              WhatsApp {fmt.phone(wa.phone)}
+            </Chip>
+            {role === 'owner' ? <Button onClick={() => navigate('/settings/integrations')}>Настройки WhatsApp</Button> : null}
+          </>
+        }
+      />
       {!wa.connected ? (
         <Notice tone="warn" title="WhatsApp отключён">
           Новые сообщения не приходят, автосообщения клиентам не отправляются. Подключение — в настройках, раздел «Подключения».

@@ -129,7 +129,7 @@ export function WhatsAppCard() {
         </div>
       </div>
       <div className="set-int-foot">
-        <Button onClick={() => navigate('/sales/chats')}>Открыть чаты</Button>
+        <Button onClick={() => navigate('/chats')}>Открыть чаты</Button>
         {isOwner ? (
           wa.connected ? (
             <ConfirmButton variant="ghost" confirmText="Отключить WhatsApp?" onConfirm={() => connect(false)}>

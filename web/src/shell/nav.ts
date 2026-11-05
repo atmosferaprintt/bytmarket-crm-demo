@@ -1,6 +1,6 @@
-/* Меню: 11 пунктов, вкладки внутри разделов. Утверждено в docs/10-audit-and-plan.md. */
+/* Меню: 12 пунктов, вкладки внутри разделов. Утверждено в docs/10-audit-and-plan.md; «Чаты» вынесены из «Продаж» отдельным пунктом (шаг 6). */
 import type { LucideIcon } from 'lucide-react';
-import { BarChart3, ClipboardList, LayoutDashboard, Package, Receipt, ScanBarcode, Settings, Truck, Users, Wallet, Warehouse } from 'lucide-react';
+import { BarChart3, ClipboardList, LayoutDashboard, MessageCircle, Package, Receipt, ScanBarcode, Settings, Truck, Users, Wallet, Warehouse } from 'lucide-react';
 import type { RoleKey } from '../data/types';
 import type { SectionKey } from '../roles/roles';
 
@@ -53,8 +53,15 @@ export const SECTIONS: SectionDef[] = [
     tabs: [
       { key: 'orders', label: 'Заказы', path: '/sales' },
       { key: 'returns', label: 'Возвраты', path: '/sales/returns', roles: ['owner', 'manager', 'accountant'] },
-      { key: 'chats', label: 'Чаты', path: '/sales/chats', roles: ['owner', 'manager', 'rep'] },
     ],
+  },
+  {
+    key: 'chats',
+    label: 'Чаты',
+    icon: MessageCircle,
+    group: 'Работа',
+    path: '/chats',
+    tabs: [{ key: 'all', label: 'Чаты', path: '/chats' }],
   },
   {
     key: 'clients',

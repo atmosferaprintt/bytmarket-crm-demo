@@ -33,7 +33,7 @@ async (page) => {
     ['14-представитель-мой-день-телефон', 'rep', '/overview', PHONE],
     ['15-курьер-сегодня-телефон', 'courier', '/overview', PHONE],
     ['16-клиенты-1280', 'manager', '/clients', { width: 1280, height: 800 }],
-    ['17-новый-оптовый-заказ', 'manager', '/sales/chats', DESK, async (p) => {
+    ['17-новый-оптовый-заказ', 'manager', '/chats', DESK, async (p) => {
       await p.locator('.wa-parse').first().click();
       await p.waitForTimeout(900);
     }],
@@ -45,7 +45,7 @@ async (page) => {
       await p.locator('.table tbody tr').first().click();
       await p.waitForTimeout(900);
     }],
-    ['20-whatsapp-чаты', 'manager', '/sales/chats'],
+    ['20-whatsapp-чаты', 'manager', '/chats'],
     ['21-whatsapp-подключение', 'owner', '/settings/integrations', { width: 1440, height: 1000 }],
   ];
   const report = [];
