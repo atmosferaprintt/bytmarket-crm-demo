@@ -9,6 +9,7 @@ import { firstOfMonth, lastOfMonth, plusDays, plusMonths, dow } from '../../data
 import { useSession } from '../../roles/session';
 import type { Perm } from '../../roles/roles';
 import { toast } from '../../ui';
+import { rangeFromQuery, rangeText } from '../overview/period';
 
 /* ---------- слова ---------- */
 
@@ -198,7 +199,7 @@ export function clientPayInfo(db: DB): Map<ID, ClientPayInfo> {
 
 /* ---------- периоды ---------- */
 
-export type PeriodKey = 'today' | 'week' | 'month' | 'prev_month' | 'd30' | 'all';
+export type PeriodKey = 'today' | 'week' | 'month' | 'prev_month' | 'd30' | 'all' | 'custom';
 export const PERIOD_OPTIONS: { value: PeriodKey; label: string }[] = [
   { value: 'today', label: 'Сегодня' },
   { value: 'week', label: 'Эта неделя' },
@@ -208,8 +209,11 @@ export const PERIOD_OPTIONS: { value: PeriodKey; label: string }[] = [
   { value: 'all', label: 'Всё время' },
 ];
 
-export function periodBounds(key: PeriodKey, today: ISODate, start: ISODate): { from: ISODate; to: ISODate } {
+export function periodBounds(key: PeriodKey, today: ISODate, start: ISODate, custom?: { from: ISODate; to: ISODate } | null): { from: ISODate; to: ISODate } {
   switch (key) {
+    case 'custom':
+      if (custom) return { from: custom.from < start ? start : custom.from, to: custom.to > today ? today : custom.to };
+      return { from: plusDays(today, -29), to: today };
     case 'today':
       return { from: today, to: today };
     case 'week':
@@ -225,6 +229,18 @@ export function periodBounds(key: PeriodKey, today: ISODate, start: ISODate): { 
     default:
       return { from: start, to: today };
   }
+}
+
+/** Период из адреса (переход с обзора: «?from=…&to=…»): выбор периода и подписи для списка. */
+export function usePeriodFromUrl(fallback: PeriodKey, params: URLSearchParams) {
+  const custom = rangeFromQuery(params);
+  const options = custom ? [{ value: 'custom' as PeriodKey, label: rangeText(custom) }, ...PERIOD_OPTIONS] : PERIOD_OPTIONS;
+  return { custom, initial: custom ? ('custom' as PeriodKey) : fallback, options };
+}
+
+/** «1–31 октября» для имени файла и подписей. */
+export function periodLabel(key: PeriodKey, today: ISODate, start: ISODate, custom?: { from: ISODate; to: ISODate } | null): string {
+  return rangeText(periodBounds(key, today, start, custom));
 }
 
 /** Понедельник недели. */

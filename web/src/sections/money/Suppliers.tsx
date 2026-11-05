@@ -110,7 +110,7 @@ export default function SupplierDebts() {
       render: (r) =>
         r.next ? (
           <span className={narrow ? 'money-next is-stack' : 'money-next'}>
-            <span className="nowrap">{fmt.relDate(r.next.dueDate, today)}</span>
+            <span className="nowrap">{fmt.date(r.next.dueDate)}</span>
             <span className="w-600 num">{fmt.money(r.next.amount)}</span>
             {r.next.dueDate < today ? <StatusChip s={overdueStatus(fmt.daysBetween(r.next.dueDate, today))} /> : null}
           </span>
@@ -175,9 +175,8 @@ export default function SupplierDebts() {
                     <MoneyLi
                       key={x.purchaseId}
                       onClick={() => open('purchase', x.purchaseId)}
-                      lead={<span className="money-sched-date nowrap">{fmt.dateShort(x.dueDate)}</span>}
                       title={x.supplier.name}
-                      sub={`Закупка № ${x.number}`}
+                      sub={`${fmt.date(x.dueDate)} · закупка № ${x.number}`}
                       amount={fmt.money(x.amount)}
                       badge={x.dueDate < today ? <StatusChip s={overdueStatus(fmt.daysBetween(x.dueDate, today))} /> : null}
                     />

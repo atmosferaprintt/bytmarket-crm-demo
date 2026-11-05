@@ -17,7 +17,23 @@ const OPTIONS: { key: VisitResult; label: string; icon: ReactNode }[] = [
 ];
 
 /** Результат визита: заказ (заявка без резерва), перезвонить или отказ с причиной. */
-export function VisitResultSheet({ visit, offline, onClose, onDone }: { visit: Visit; offline: boolean; onClose: () => void; onDone: (r: { result: VisitResult | 'missed'; orderId?: ID }) => void }) {
+export function VisitResultSheet({
+  visit,
+  offline,
+  initialResult,
+  noOrder,
+  onClose,
+  onDone,
+}: {
+  visit: Visit;
+  offline: boolean;
+  /** результат, выбранный кнопкой на карточке визита: «Отказ», «Перезвонить» */
+  initialResult?: VisitResult;
+  /** «Без заказа»: визит был, заказа нет. В данных это отказ с причиной (по умолчанию «Есть запас») */
+  noOrder?: boolean;
+  onClose: () => void;
+  onDone: (r: { result: VisitResult | 'missed'; orderId?: ID }) => void;
+}) {
   const db = useDB();
   const version = useDBVersion();
   const { me } = useSession();
@@ -26,8 +42,8 @@ export function VisitResultSheet({ visit, offline, onClose, onDone }: { visit: V
   const client = idx.clients.get(visit.clientId);
   const point = pointOf(client, visit.pointId);
 
-  const [result, setResult] = useState<VisitResult | null>(null);
-  const [reason, setReason] = useState<string | null>(null);
+  const [result, setResult] = useState<VisitResult | null>(noOrder ? 'refusal' : initialResult ?? null);
+  const [reason, setReason] = useState<string | null>(noOrder ? REFUSAL_REASONS[0] : null);
   const [comment, setComment] = useState('');
   const [callbackTask, setCallbackTask] = useState(true);
   const [callbackDate, setCallbackDate] = useState(fmt.addDays(today, 1));
@@ -78,7 +94,7 @@ export function VisitResultSheet({ visit, offline, onClose, onDone }: { visit: V
         setError('Выберите причину отказа — без неё отказ не сохранить');
         return;
       }
-      complete({ result: 'refusal', refusalReason: reason }, `Отказ записан: ${reason.toLowerCase()}`, 'refusal');
+      complete({ result: 'refusal', refusalReason: reason }, noOrder ? `Записано: без заказа — ${reason.toLowerCase()}` : `Отказ записан: ${reason.toLowerCase()}`, 'refusal');
       return;
     }
     const ok = complete({ result: 'callback' }, 'Записано: перезвонить', 'callback');
@@ -103,11 +119,11 @@ export function VisitResultSheet({ visit, offline, onClose, onDone }: { visit: V
     );
   }
 
-  const primaryLabel = result === 'order' ? 'Оформить заявку' : result === 'refusal' ? 'Сохранить отказ' : result === 'callback' ? 'Сохранить' : 'Сохранить результат';
+  const primaryLabel = result === 'order' ? 'Оформить заявку' : result === 'refusal' ? (noOrder ? 'Сохранить' : 'Сохранить отказ') : result === 'callback' ? 'Сохранить' : 'Сохранить результат';
 
   return (
     <Sheet
-      title="Результат визита"
+      title={noOrder ? 'Визит без заказа' : 'Результат визита'}
       sub={
         <>
           <span className="w-600 ink-2">{client?.name}</span>
@@ -117,7 +133,7 @@ export function VisitResultSheet({ visit, offline, onClose, onDone }: { visit: V
       onClose={onClose}
       footer={
         <>
-          <ConfirmButton variant="ghost" onConfirm={missed} confirmText="Не состоялся?">
+          <ConfirmButton variant="ghost" size="lg" onConfirm={missed} confirmText="Не состоялся?">
             Визит не состоялся
           </ConfirmButton>
           <span className="spacer" />
@@ -129,6 +145,7 @@ export function VisitResultSheet({ visit, offline, onClose, onDone }: { visit: V
     >
       {error ? <Notice tone="bad">{error}</Notice> : null}
 
+      {noOrder ? null : (
       <div className="cl-result-opts" role="radiogroup" aria-label="Чем закончился визит">
         {OPTIONS.map((o) => (
           <button
@@ -147,6 +164,7 @@ export function VisitResultSheet({ visit, offline, onClose, onDone }: { visit: V
           </button>
         ))}
       </div>
+      )}
 
       {result === 'order' ? (
         <div className="col-3">
@@ -174,7 +192,7 @@ export function VisitResultSheet({ visit, offline, onClose, onDone }: { visit: V
 
       {result === 'refusal' ? (
         <div className="col" style={{ gap: 8 }}>
-          <div className="field-label">Причина отказа</div>
+          <div className="field-label">{noOrder ? 'Почему без заказа' : 'Причина отказа'}</div>
           <div className="cl-reasons" role="radiogroup" aria-label="Причина отказа">
             {REFUSAL_REASONS.map((r) => (
               <button
@@ -213,7 +231,7 @@ export function VisitResultSheet({ visit, offline, onClose, onDone }: { visit: V
           value={comment}
           onChange={(e) => setComment(e.target.value)}
           rows={3}
-          placeholder={result === 'refusal' ? 'Например: взяли гели у «Химторга» по акции' : result === 'callback' ? 'Например: хозяин будет после обеда' : 'Что важно передать менеджеру'}
+          placeholder={noOrder ? 'Например: полка полная, заехать через неделю' : result === 'refusal' ? 'Например: взяли гели у «Химторга» по акции' : result === 'callback' ? 'Например: хозяин будет после обеда' : 'Что важно передать менеджеру'}
         />
       </Field>
     </Sheet>

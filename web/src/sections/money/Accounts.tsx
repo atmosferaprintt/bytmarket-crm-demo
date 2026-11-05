@@ -6,9 +6,9 @@ import { ACCOUNT_NAMES } from '../../data/types';
 import { useDB, useDBVersion } from '../../data/store';
 import { accountBalances, courierCash, indexes, shiftSummary } from '../../data/selectors';
 import { PageHeader } from '../../shell/PageHeader';
-import { Button, Card, DataTable, Kpi, MoreMenu, Segmented, Select, StatusChip, fmt, toast, type Column } from '../../ui';
+import { Button, Card, DataTable, Kpi, MoreMenu, Segmented, Select, StatusChip, fmt, type Column } from '../../ui';
 import { MoneyModalHost, useMoneyMenu, type MoneyModal } from './actions';
-import { ACCOUNT_KEYS, PERIOD_OPTIONS, clean, kindLabel, periodBounds, transferText, useMoneyPerms, useRun, type PeriodKey } from './lib';
+import { ACCOUNT_KEYS, PERIOD_OPTIONS, clean, kindLabel, periodBounds, transferText, useMoneyPerms, type PeriodKey } from './lib';
 import { useMoneyCounts } from './counts';
 import { KpiLink, MoneyLi } from './parts';
 
@@ -30,7 +30,6 @@ export default function Accounts() {
   const v = useDBVersion();
   const perms = useMoneyPerms();
   const counts = useMoneyCounts();
-  const run = useRun();
   const [modal, setModal] = useState<MoneyModal>(null);
   const [acc, setAcc] = useState<AccountKey>('shop_cash');
   const [period, setPeriod] = useState<PeriodKey>('d30');
@@ -39,6 +38,13 @@ export default function Accounts() {
 
   const bal = useMemo(() => accountBalances(db), [db, v]);
   const total = bal.shop_cash + bal.courier_cash + bal.bank;
+  // касса магазина: размен лежит в ящике идущей смены, остальное — в сейфе; выручка смены войдёт в остаток при закрытии
+  const drawer = useMemo(() => {
+    const s = db.shifts.find((x) => !x.closedAt);
+    if (!s) return null;
+    const sum = shiftSummary(db, s.id);
+    return { number: s.number, opening: s.openingCash, sales: sum.cash, seller: indexes(db).employees.get(s.sellerId)?.short ?? '' };
+  }, [db, v]);
 
   const moves = useMemo(() => {
     const ix = indexes(db);
@@ -194,10 +200,6 @@ export default function Accounts() {
     },
   ];
 
-  const handIn = (courierId: string, name: string, sum: number) => {
-    const r = run('courier.handIn', { courierId }, `${name}: принято ${fmt.money(sum)} в кассу магазина`);
-    if (!r.ok) toast(r.error, 'error');
-  };
 
   return (
     <>
@@ -218,7 +220,31 @@ export default function Accounts() {
       <div className="grid-4">
         {ACCOUNT_KEYS.map((a) => (
           <KpiLink key={a} label={`Движение: ${ACCOUNT_NAMES[a]}`} onClick={() => setAcc(a)}>
-            <Kpi label={ACCOUNT_NAMES[a]} value={fmt.money(bal[a])} />
+            <Kpi
+              label={ACCOUNT_NAMES[a]}
+              value={fmt.money(bal[a])}
+              extra={
+                a === 'shop_cash' ? (
+                  drawer ? (
+                    <div
+                      className="money-kpi-lines"
+                      title={`Размен в ящике смены № ${drawer.number} (${drawer.seller}). Кроме того, в ящике наличные по чекам этой смены — ${fmt.money(drawer.sales)}: они войдут в остаток кассы при закрытии смены`}
+                    >
+                      <span>
+                        из них в ящике смены <b>{fmt.money(drawer.opening)}</b>
+                      </span>
+                      <span>
+                        остальное в сейфе <b>{fmt.money(bal.shop_cash - drawer.opening)}</b>
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="money-kpi-lines">
+                      <span>смена закрыта — всё в сейфе</span>
+                    </div>
+                  )
+                ) : undefined
+              }
+            />
           </KpiLink>
         ))}
         <Kpi label="Всего денег" value={fmt.money(total)} />
@@ -244,7 +270,7 @@ export default function Accounts() {
                 action={
                   perms.transfer ? (
                     cc.onHand > 0 ? (
-                      <Button size="sm" icon={<HandCoins />} onClick={() => handIn(e.id, e.short, cc.onHand)}>
+                      <Button size="sm" icon={<HandCoins />} onClick={() => setModal({ kind: 'handin', courierId: e.id })} title="Пересчитать и принять в кассу магазина">
                         Принять
                       </Button>
                     ) : (

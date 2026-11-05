@@ -1,13 +1,19 @@
 /* Доставка: общие расчёты раздела — день, опоздание, загрузка курьеров, ссылки на карты. */
-import type { Client, DB, Delivery, DeliveryState, Employee, ID, ISODate, Order, PayMethod } from '../../data/types';
+import type { Client, DB, Delivery, DeliveryState, Employee, ID, ISODate, Order, OrderLine, PackKey, PayMethod } from '../../data/types';
 import { nowDemo } from '../../data/store';
 import { fmt } from '../../ui';
 
 /** Интервалы, которые предлагаем при оформлении и переносе. */
 export const INTERVALS = ['09:00–12:00', '10:00–13:00', '10:00–14:00', '11:00–14:00', '12:00–15:00', '14:00–17:00', '15:00–18:00', '17:00–20:00'];
 
-/** Причины, если курьер получил меньше, чем к получению. */
-export const LESS_REASONS = ['Клиент доплатит позже', 'Часть товара не взяли', 'Скидка по согласованию', 'Не хватило денег у клиента'] as const;
+/** Причины, если курьер получил меньше, чем к получению. «Часть товара не взяли» — отдельный выбор позиций в окне «Вручено». */
+export const LESS_REASONS = ['Клиент доплатит позже', 'Скидка по согласованию', 'Не хватило денег у клиента'] as const;
+
+/** Почему курьер задерживается. */
+export const DELAY_REASONS = ['Пробка', 'Долго у предыдущего клиента', 'Поломка машины', 'Другое'] as const;
+
+/** Почему диспетчер переносит или повторяет доставку. */
+export const RESCHEDULE_REASONS = ['Клиент попросил', 'Не успели', 'Нет машины', 'Другое'] as const;
 
 /** Состояния, которые ещё требуют работы. */
 export const OPEN_STATES: DeliveryState[] = ['waiting', 'assigned', 'on_way', 'failed'];
@@ -65,6 +71,53 @@ export function lateOf(d: Delivery, c: Clock): { label: string; minutes: number 
   return { label: `Опоздание ${durationText(m)}`, minutes: m };
 }
 
+/** Интервал на день уже прошёл: сегодня и его конец раньше «сейчас». */
+export function intervalPassed(iv: string, day: ISODate, c: Clock): boolean {
+  return day === c.today && intervalEnd(iv) <= c.nowMin;
+}
+
+/** Ближайший интервал, в который ещё успеваем сегодня (до конца хотя бы час); null — сегодня уже поздно. */
+export function nearestInterval(c: Clock): string | null {
+  const list = [...INTERVALS].sort((a, b) => intervalStart(a) - intervalStart(b) || intervalEnd(a) - intervalEnd(b));
+  return list.find((iv) => intervalEnd(iv) - c.nowMin >= 60) ?? null;
+}
+
+/** Интервал для дня: прежний, а если сегодня он уже прошёл — ближайший будущий. */
+export function intervalFor(iv: string, day: ISODate, c: Clock): string {
+  if (!intervalPassed(iv, day, c)) return iv;
+  return nearestInterval(c) ?? iv;
+}
+
+/** Время «чч:мм» через n минут от «сейчас», с округлением вверх до 5 минут. */
+export function timeAfter(c: Clock, n: number): string {
+  const m = Math.min(23 * 60 + 55, Math.ceil((c.nowMin + n) / 5) * 5);
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+}
+
+const MONTHS_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+
+/** Пожелание клиента из заметки курьера: «Клиент просит 6 ноября, 10:00–13:00». */
+export function wishOf(d: Delivery, today: ISODate): { date: ISODate; interval: string } | null {
+  if (d.wish !== undefined) return d.wish; // отметка курьера; null — пожелание уже учли при переносе
+  const notes = d.notes ?? [];
+  for (let i = notes.length - 1; i >= 0; i--) {
+    const m = /просит (\d{1,2}) ([а-я]+), (\d{2}:\d{2}–\d{2}:\d{2})/.exec(notes[i].text);
+    if (!m) continue;
+    const month = MONTHS_GEN.indexOf(m[2]);
+    if (month < 0) continue;
+    let year = +today.slice(0, 4);
+    if (month + 1 < +today.slice(5, 7) - 6) year++;
+    const date = `${year}-${String(month + 1).padStart(2, '0')}-${String(+m[1]).padStart(2, '0')}`;
+    return { date, interval: m[3] };
+  }
+  return null;
+}
+
+/** Курьер задерживается — по отметке «Задерживаюсь» у доставки в работе. */
+export function delayOf(d: Delivery): string | null {
+  return d.delayUntil && (d.state === 'assigned' || d.state === 'on_way') ? d.delayUntil : null;
+}
+
 export function durationText(m: number): string {
   if (m < 60) return `${m} мин`;
   const h = Math.floor(m / 60);
@@ -112,6 +165,11 @@ export function couriersOf(db: DB): Employee[] {
   return db.employees.filter((e) => e.active && e.roles.includes('courier'));
 }
 
+/** Диспетчер на связи — кому звонить курьеру. */
+export function dispatcherOf(db: DB): Employee | undefined {
+  return db.employees.find((e) => e.active && e.roles.includes('dispatcher'));
+}
+
 export interface CourierLoad {
   courier: Employee;
   list: Delivery[]; // точки дня по маршруту (без возвращённых на склад)
@@ -137,13 +195,13 @@ export function loadOf(db: DB, courier: Employee, day: ISODate, c: Clock): Couri
   const ds = new Set<string>();
   for (const d of list) {
     places += d.places;
-    kg += d.weightKg;
+    kg += Math.round(d.weightKg); // по каждой доставке — сумма не зависит от порядка точек
     if (d.state !== 'delivered') collect += d.collect;
     if (d.state === 'delivered') done++;
     if (d.state === 'failed') failed++;
     ds.add(shortDistrict(d.district));
   }
-  return { courier, list, points: list.length, places, kg: Math.round(kg), collect, done, failed, left: list.length - done - failed, districts: [...ds] };
+  return { courier, list, points: list.length, places, kg, collect, done, failed, left: list.length - done - failed, districts: [...ds] };
 }
 
 export function loadsOf(db: DB, day: ISODate, c: Clock): CourierLoad[] {
@@ -206,6 +264,23 @@ export function notHandedIn(db: DB, courierId: ID): Delivery[] {
     .sort((a, b) => (deliveredAt(a) ?? '').localeCompare(deliveredAt(b) ?? ''));
 }
 
+/** Несданные наличные курьера: за сегодня и с прошлых дней. */
+export function onHandSplit(db: DB, courierId: ID, today: ISODate): { today: number; older: number } {
+  let t = 0;
+  let o = 0;
+  for (const d of notHandedIn(db, courierId)) {
+    if ((deliveredAt(d) ?? d.date).slice(0, 10) < today) o += d.collected;
+    else t += d.collected;
+  }
+  return { today: t, older: o };
+}
+
+/** Перевод по доставке ещё ждёт подтверждения банка. */
+export function transferPending(db: DB, d: Delivery): boolean {
+  if (d.collectedMethod !== 'transfer' || d.collected <= 0) return false;
+  return db.payments.some((p) => p.deliveryId === d.id && p.kind === 'client' && p.status === 'pending');
+}
+
 /** С какого дня у курьера на руках несданные наличные; null — на руках ничего. */
 export function onHandSince(db: DB, courierId: ID): ISODate | null {
   let since: ISODate | null = null;
@@ -246,6 +321,13 @@ export function telUrl(phone: string): string {
 }
 
 /* ---------- прочее ---------- */
+
+const PACK_SHORT: Record<PackKey, string> = { pcs: 'шт', pack: 'упак.', box: 'кор.' };
+
+/** Количество строки заказа: «24 шт» или «2 кор. · 24 шт». */
+export function packText(l: Pick<OrderLine, 'pack' | 'packQty' | 'qty'>): string {
+  return l.pack === 'pcs' ? fmt.qty(l.qty) : `${l.packQty} ${PACK_SHORT[l.pack]} · ${fmt.qty(l.qty)}`;
+}
 
 export function orderNo(o: Order | undefined): string {
   return o ? `№ ${o.number}` : '—';

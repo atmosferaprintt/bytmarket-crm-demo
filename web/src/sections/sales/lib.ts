@@ -1,7 +1,7 @@
 /* Общие помощники раздела «Продажи»: проверки условий клиента, этапы заказа, подписи упаковок, сумма прописью. */
 import { useEffect, useState } from 'react';
-import type { Client, DB, Order, OrderLine, PackKey, Product } from '../../data/types';
-import { clientBalance, type OrderPayment } from '../../data/selectors';
+import type { Client, DB, Delivery, ID, Order, OrderLine, PackKey, Product, Task } from '../../data/types';
+import { clientBalance, stockIndex, type OrderPayment } from '../../data/selectors';
 import { fmt } from '../../ui';
 
 export function useMedia(q: string): boolean {
@@ -67,8 +67,77 @@ export function capitalize(s: string): string {
 
 export type StepState = 'done' | 'current' | 'todo';
 
+/** Строки заявки, которых не хватает на складе: доступно меньше, чем осталось отгрузить. */
+export function orderShortage(db: DB, o: Order): { productId: ID; need: number; available: number }[] {
+  const need = new Map<ID, number>();
+  for (const l of o.lines) {
+    const rest = l.qty - l.shipped;
+    if (rest > 0) need.set(l.productId, (need.get(l.productId) ?? 0) + rest);
+  }
+  const si = stockIndex(db);
+  const out: { productId: ID; need: number; available: number }[] = [];
+  for (const [productId, q] of need) {
+    const available = si.get(productId)?.[o.location].available ?? 0;
+    if (available < q) out.push({ productId, need: q, available });
+  }
+  return out;
+}
+
+/** Открытая задача владельцу «согласовать заказ»: заказ ждёт решения владельца. */
+export function approvalTask(db: DB, orderId: ID): Task | undefined {
+  return db.tasks.find((t) => t.kind === 'approve_order' && t.state === 'open' && t.link?.type === 'order' && t.link.id === orderId);
+}
+
+/** Начало задачи менеджеру, когда владелец вернул заказ без согласия. По нему карточка заказа находит причину. */
+export const RETURNED_PREFIX = 'Владелец вернул заказ';
+
+/** Открытая задача «владелец вернул заказ» — с причиной в названии. */
+export function returnedTask(db: DB, orderId: ID): Task | undefined {
+  return db.tasks.find((t) => t.state === 'open' && t.link?.type === 'order' && t.link.id === orderId && t.title.startsWith(RETURNED_PREFIX));
+}
+
+/** Кому вернуть заказ без согласия: ответственный клиента, если он менеджер; иначе менеджер, который просил согласие; иначе автор заказа. */
+export function returnToManager(db: DB, o: Order, approval?: Task): ID {
+  const isManager = (id: ID | null | undefined) => !!id && !!db.employees.find((e) => e.id === id && e.active && e.roles.includes('manager') && !e.roles.includes('owner'));
+  const client = db.clients.find((c) => c.id === o.clientId);
+  if (isManager(client?.ownerId)) return client!.ownerId!;
+  if (approval && isManager(approval.authorId)) return approval.authorId;
+  return o.authorId;
+}
+
+/** День отгрузки, от которого считается срок оплаты: дата доставки; доставки ещё нет — ближайший рабочий день; самовывоз — сегодня.
+    Одно правило для карточки заказа и окна заказа. */
+export function shipDateFor(fulfillment: Order['fulfillment'], deliveryDate: string | null | undefined, today: string): string {
+  if (deliveryDate && deliveryDate >= today) return deliveryDate;
+  return fulfillment === 'delivery' ? nextWorkday(today) : today;
+}
+
+/** Срок оплаты по отсрочке клиента от дня отгрузки; null — оплата при получении. */
+export function dueDateFor(client: Pick<Client, 'deferDays'>, shipDate: string): string | null {
+  return client.deferDays > 0 ? fmt.addDays(shipDate, client.deferDays) : null;
+}
+
+/* ---------- этапы «Мои заказы в работе»: одни и те же на рабочем столе и в списке заказов ---------- */
+
+export type WorkStage = 'wait' | 'picking' | 'picked' | 'way' | 'partial' | 'failed' | 'nodelivery';
+
+/** Недоставленный заказ снова в работе: диспетчер назначит повтор или вернёт товар на склад. */
+export function isFailedOrder(o: Order, d: Delivery | undefined): boolean {
+  return (o.state === 'confirmed' || o.state === 'closed') && o.fulfillment === 'delivery' && !!d && d.state === 'failed' && o.ship !== 'delivered';
+}
+
+export const WORK_STAGES: { key: WorkStage; label: string; test: (o: Order, d: Delivery | undefined) => boolean }[] = [
+  { key: 'wait', label: 'Ждут сборки', test: (o) => o.state === 'confirmed' && o.pick === 'none' && o.ship === 'none' },
+  { key: 'picking', label: 'Собираются', test: (o) => o.state === 'confirmed' && o.pick === 'picking' },
+  { key: 'picked', label: 'Собраны, ждут отгрузки', test: (o, d) => o.state === 'confirmed' && o.pick === 'picked' && o.ship === 'none' && !(d && d.state === 'on_way') },
+  { key: 'way', label: 'У курьера в пути', test: (o, d) => o.state === 'confirmed' && !!d && d.state === 'on_way' },
+  { key: 'partial', label: 'Отгружены частично', test: (o) => o.state === 'confirmed' && o.ship === 'partial' },
+  { key: 'failed', label: 'Не доставлены', test: isFailedOrder },
+  { key: 'nodelivery', label: 'Доставка не оформлена', test: (o) => o.state === 'confirmed' && o.fulfillment === 'delivery' && !o.deliveryId && o.ship === 'none' },
+];
+
 /** Этапы заказа: Заказ → Сборка → Отгрузка или доставка → Оплата. */
-export function orderSteps(o: Order, pay: OrderPayment): { label: string; state: StepState }[] {
+export function orderSteps(o: Order, pay: OrderPayment, delivery?: Delivery): { label: string; state: StepState }[] {
   const confirmed = o.state === 'confirmed' || o.state === 'closed';
   const shippedAll = o.ship === 'shipped' || o.ship === 'delivered';
   const picked = o.pick === 'picked' || o.ship !== 'none';
@@ -81,7 +150,7 @@ export function orderSteps(o: Order, pay: OrderPayment): { label: string; state:
   return [
     { label: 'Заказ', state: s1 },
     { label: 'Сборка', state: s2 },
-    { label: o.fulfillment === 'pickup' ? 'Самовывоз' : 'Доставка', state: s3 },
+    { label: o.fulfillment === 'pickup' ? 'Самовывоз' : delivery?.state === 'waiting' && o.ship === 'none' ? 'Ждёт курьера' : 'Доставка', state: s3 },
     { label: 'Оплата', state: s4 },
   ];
 }

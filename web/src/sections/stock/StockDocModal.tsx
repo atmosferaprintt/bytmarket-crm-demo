@@ -1,7 +1,7 @@
 /* Документы склада на несколько строк: приход, перемещение, списание.
    Сканер и поиск сверху, строки в штуках или упаковках «= N шт», итог и «Провести». */
 import { useMemo, useState } from 'react';
-import { ArrowLeftRight, ScanBarcode, X } from 'lucide-react';
+import { ArrowLeftRight, ScanBarcode, Truck, X } from 'lucide-react';
 import type { ID, LocationKey, PackKey, Product, WriteoffReason } from '../../data/types';
 import { WRITEOFF_REASONS } from '../../data/types';
 import { useDB, useDBVersion } from '../../data/store';
@@ -38,7 +38,7 @@ interface Line {
   expiry: string;
 }
 
-const TITLES: Record<DocKind, string> = { income: 'Приход товара', transfer: 'Перемещение', writeoff: 'Списание' };
+const TITLES: Record<DocKind, string> = { income: 'Приход без закупки', transfer: 'Перемещение', writeoff: 'Списание' };
 const POST: Record<DocKind, string> = { income: 'Провести приход', transfer: 'Провести перемещение', writeoff: 'Провести списание' };
 const DONE: Record<DocKind, string> = { income: 'Приход', transfer: 'Перемещение', writeoff: 'Списание' };
 const DONE_VERB: Record<DocKind, string> = { income: 'проведён', transfer: 'проведено', writeoff: 'проведено' };
@@ -46,7 +46,7 @@ const DONE_VERB: Record<DocKind, string> = { income: 'проведён', transfe
 let seq = 0;
 const newKey = () => `l${++seq}`;
 
-export function StockDocModal({ kind, preset, onClose }: { kind: DocKind; preset?: DocPreset; onClose: () => void }) {
+export function StockDocModal({ kind, preset, onClose, onReceive }: { kind: DocKind; preset?: DocPreset; onClose: () => void; onReceive?: () => void }) {
   const db = useDB();
   const version = useDBVersion();
   const { me, can } = useSession();
@@ -88,12 +88,23 @@ export function StockDocModal({ kind, preset, onClose }: { kind: DocKind; preset
   const hasShort = rows.some((r) => r.short);
   const missingReason = kind === 'writeoff' && lines.some((l) => !l.reason);
 
+  // один товар — одна строка: скан коробки и скан штуки складываются в штуки
   const add = (p: Product, packKey: PackKey) => {
     setError(null);
     setLines((ls) => {
-      const i = ls.findIndex((l) => l.productId === p.id && l.pack === packKey);
-      if (i >= 0) return ls.map((l, j) => (j === i ? { ...l, packQty: l.packQty + 1 } : l));
-      return [...ls, { key: newKey(), productId: p.id, pack: packKey, packQty: 1, reason: '', expiry: '' }];
+      const i = ls.findIndex((l) => l.productId === p.id);
+      if (i < 0) return [...ls, { key: newKey(), productId: p.id, pack: packKey, packQty: 1, reason: '', expiry: '' }];
+      return ls.map((l, j) => {
+        if (j !== i) return l;
+        if (l.pack === packKey) return { ...l, packQty: l.packQty + 1 };
+        const total = l.packQty * packOf(p, l.pack).qty + packOf(p, packKey).qty;
+        // остаёмся в той упаковке, в которой ровно делится; иначе — штуками
+        for (const k of [l.pack, packKey]) {
+          const q = packOf(p, k).qty;
+          if (q > 1 && total % q === 0) return { ...l, pack: k, packQty: total / q };
+        }
+        return { ...l, pack: p.packs[0].key, packQty: total };
+      });
     });
   };
   const patch = (key: string, v: Partial<Line>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...v } : l)));
@@ -148,6 +159,18 @@ export function StockDocModal({ kind, preset, onClose }: { kind: DocKind; preset
         </>
       }
     >
+      {kind === 'income' && can('receivePurchase') ? (
+        <Notice tone="warn" title="Приход без закупки не закрывает заказ поставщику">
+          <div className="stock-income-warn">
+            <span className="grow">Если товар приехал по закупке — примите его через «Принять поставку»: закупка закроется, долг поставщику посчитается</span>
+            {onReceive && db.purchases.some((p) => p.state === 'ordered' || p.state === 'partial') ? (
+              <Button size="sm" icon={<Truck />} onClick={onReceive}>
+                Принять поставку
+              </Button>
+            ) : null}
+          </div>
+        </Notice>
+      ) : null}
       <div className={kind === 'transfer' ? 'stock-doc-head is-transfer' : 'stock-doc-head'}>
         {kind === 'transfer' ? (
           <>

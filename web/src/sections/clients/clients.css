@@ -263,8 +263,8 @@ button.cl-list-row:hover { background: var(--row-hover); }
 .cl-day-stat .cl-plan-bar { margin-top: auto; }
 .cl-cell-stack { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 3px; }
 .cl-cell-stack.is-right { align-items: flex-end; }
-/* список клиентов: длинные заголовки переносятся, чтобы таблица помещалась на 1280 */
-.cl-clients-table .table th { white-space: normal; line-height: 1.2; height: 44px; }
+/* список клиентов: заголовки в одну строку; место отдаёт колонка с именем */
+.cl-clients-table .table th { white-space: nowrap; line-height: 1.2; height: 44px; }
 .cl-clients-table .table th .th-inner { align-items: center; }
 .cl-clients-table .table th.num .th-inner { text-align: right; }
 .cl-clients-table .table-toolbar .input-wrap { width: 240px; }
@@ -295,4 +295,57 @@ button.cl-list-row:hover { background: var(--row-hover); }
 @media (max-width: 1360px) {
   .cl-cell-client.is-wide { max-width: 232px; min-width: 180px; }
   .cl-cell-note { max-width: 180px; }
+}
+
+/* карточка клиента: перевод на подтверждении — не звонить за этими деньгами */
+.cl-money-pending { padding: 0 16px 12px; font-size: var(--fs-13); font-weight: 600; color: var(--warn); }
+/* телефон: кнопки карточки клиента не меньше 44 px */
+@media (max-width: 760px) {
+  .cl-drawer-foot > .btn { height: 44px; font-size: var(--fs-14); }
+  .cl-drawer-foot > .btn-icon { flex: 0 0 44px; width: 44px; }
+  .cl-head-meta .cl-tel { min-height: 44px; display: inline-flex; align-items: center; }
+}
+
+/* сообщение с «Отменить» — там же, где общие сообщения */
+.cl-undo { padding-right: 6px; }
+.cl-undo .grow { min-width: 0; }
+.cl-undo-btn {
+  flex: 0 0 auto; min-height: 36px; padding: 0 12px; border: 0; border-radius: var(--r-sm); background: transparent;
+  color: var(--nav-active-icon); font: inherit; font-weight: 700; cursor: pointer;
+}
+.cl-undo-btn:hover { background: var(--nav-hover); }
+@media (max-width: 760px) { .cl-undo-btn { min-height: 44px; } }
+
+/* «Мой день»: идущий визит */
+.cl-route-results { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.cl-route-results .btn { min-width: 0; padding: 0 8px; }
+.cl-pending { font-size: var(--fs-13); font-weight: 600; color: var(--warn); }
+.cl-visit-ctx { display: flex; flex-direction: column; gap: 12px; padding: 12px; background: var(--sub); border-radius: var(--r-sm); }
+.cl-visit-ctx-block { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.cl-visit-ctx-title { font-size: var(--fs-13); font-weight: 700; color: var(--ink-2); }
+.cl-visit-order { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border: 0; width: 100%; text-align: left; font: inherit; cursor: pointer; border-radius: var(--r-sm); background: var(--panel); color: inherit; text-decoration: none; font-size: var(--fs-13); min-height: 44px; }
+.cl-visit-order:hover { text-decoration: none; background: var(--row-hover); }
+.cl-visit-habit { display: flex; align-items: baseline; gap: 10px; font-size: var(--fs-13); padding: 2px 0; min-width: 0; }
+.cl-visit-habit .grow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cl-route-top > .btn-icon { width: 44px; height: 44px; margin: -6px -8px -6px 0; }
+
+/* «Мой день»: задача — отметка только квадратом, текст открывает клиента */
+.cl-task-row { gap: 4px; }
+.cl-task-hit { width: 44px; height: 44px; flex: 0 0 44px; margin: -10px 0 -10px -12px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; border-radius: var(--r-sm); }
+.cl-task-hit:hover { background: var(--row-hover); }
+.cl-task-text { border: 0; background: transparent; padding: 0; text-align: left; color: inherit; font: inherit; cursor: pointer; }
+.cl-task-text:disabled { cursor: default; color: inherit; }
+.cl-task-text:not(:disabled):hover > .w-600 { color: var(--link); }
+@media (max-width: 760px) {
+  .cl-list-row.cl-task-row { display: grid; grid-template-columns: 44px minmax(0, 1fr); column-gap: 4px; row-gap: 6px; }
+  .cl-list-row.cl-task-row > .cl-task-hit { grid-column: 1; grid-row: 1 / span 2; margin: -10px 0 0 -12px; }
+  .cl-list-row.cl-task-row > .cl-list-main { grid-column: 2; grid-row: 1; }
+  .cl-list-row.cl-task-row > .cl-list-chips { grid-column: 2; grid-row: 2; justify-content: flex-start; }
+  .cl-list-row.cl-task-row > .cl-list-chips:empty { display: none; }
+  .cl-route-results .btn { font-size: var(--fs-14); padding: 0 6px; }
+  .cl-route-results .btn svg { display: none; }
+  .cl-sheet-foot > .btn-ghost, .cl-sheet-foot .btn { min-height: 44px; }
+}
+@media (max-width: 760px) {
+  .cl-head-meta { row-gap: 0; }
 }

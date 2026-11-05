@@ -6,8 +6,8 @@ import { useSession } from '../../roles/session';
 import { PageHeader } from '../../shell/PageHeader';
 import { useOpenEntity } from '../../shell/entities';
 import { Button, EmptyState, SearchInput, cx, fmt } from '../../ui';
-import { catalogMode, catalogRows, type CatalogRow } from './lib';
-import { PromoChip, Qty } from './bits';
+import { catalogMode, catalogRows, priceOf, promoFor, type CatalogRow } from './lib';
+import { PromoChip, PromoPriceChip, Qty } from './bits';
 
 const norm = (s: string) => s.toLowerCase().replace(/ё/g, 'е');
 const PAGE = 30;
@@ -24,7 +24,8 @@ export default function PhoneCatalog() {
 
   const all = useMemo(() => catalogRows(db).filter((r) => r.p.active), [db, version]);
   const cats = useMemo(() => db.categories.filter((c) => !c.parentId).sort((a, b) => a.name.localeCompare(b.name, 'ru')), [db, version]);
-  const promoOf = (r: CatalogRow) => (mode === 'seller' ? r.retail.promo : mode === 'sales' ? r.wholesale.promo ?? r.retail.promo : r.promo);
+  // акция — только та, что правда меняет цену этой роли
+  const promoOf = (r: CatalogRow) => promoFor(r, mode);
 
   const list = useMemo(() => {
     const tokens = norm(q.trim()).split(/\s+/).filter(Boolean);
@@ -93,9 +94,9 @@ export default function PhoneCatalog() {
 
 function ProductCard({ row, mode, promo, onOpen }: { row: CatalogRow; mode: ReturnType<typeof catalogMode>; promo: CatalogRow['promo']; onOpen: () => void }) {
   const p = row.p;
-  const seller = mode === 'seller';
-  const info = seller ? row.retail : row.wholesale;
-  const discounted = !!info.promo && info.price < info.base;
+  const sales = mode === 'sales';
+  const info = priceOf(row, mode);
+  const discounted = !!promo && info.price < info.base;
   return (
     <button type="button" className="card prd-m-card" onClick={onOpen}>
       <div className="prd-m-name">{p.name}</div>
@@ -103,32 +104,42 @@ function ProductCard({ row, mode, promo, onOpen }: { row: CatalogRow; mode: Retu
         <span>{p.sku}</span>
         <span>{row.packs}</span>
       </div>
-      <div className="prd-m-bottom">
+      <div className={sales ? 'prd-m-bottom is-two' : 'prd-m-bottom'}>
         <div className="prd-m-col">
-          <span className="prd-m-label">{seller ? 'Цена' : 'Опт за штуку'}</span>
+          <span className="prd-m-label">{sales ? 'Цена для опта' : 'Цена'}</span>
           <span className="prd-m-price">
             {fmt.price(info.price)}
             {discounted ? <s className="prd-old">{fmt.price(info.base)}</s> : null}
           </span>
         </div>
-        <div className="prd-m-col is-right">
-          <span className="prd-m-label" title="Магазин + склад − резерв">
-            Доступно
-          </span>
-          <span className="prd-m-avail">
-            <Qty v={row.available} />
-          </span>
-        </div>
-        <div className="prd-m-col is-right">
-          <span className="prd-m-label">{seller ? 'В магазине' : 'На складе для опта'}</span>
-          <span className="prd-m-avail">
-            <Qty v={seller ? row.stock.shop.available : row.whAvailable} />
-          </span>
-        </div>
+        {sales ? (
+          <div className="prd-m-col is-right">
+            {/* то же число, что берёт заявка: склад минус резерв */}
+            <span className="prd-m-label">Можно заказать</span>
+            <span className="prd-m-avail">
+              <Qty v={row.whAvailable} />
+            </span>
+          </div>
+        ) : (
+          <>
+            <div className="prd-m-col is-right">
+              <span className="prd-m-label">В магазине</span>
+              <span className="prd-m-avail">
+                <Qty v={row.stock.shop.available} />
+              </span>
+            </div>
+            <div className="prd-m-col is-right">
+              <span className="prd-m-label">На складе</span>
+              <span className="prd-m-avail">
+                <Qty v={row.stock.warehouse.available} />
+              </span>
+            </div>
+          </>
+        )}
       </div>
       {promo ? (
         <div className="prd-m-promo">
-          <PromoChip promo={promo} />
+          {sales ? <PromoPriceChip info={info} /> : <PromoChip promo={promo} />}
           <span className="muted t-12">до {fmt.date(promo.end)}</span>
         </div>
       ) : null}

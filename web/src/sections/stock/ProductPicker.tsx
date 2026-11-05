@@ -95,7 +95,13 @@ export function ProductPicker({
       e.preventDefault();
       const m = matches[hi] ?? matches[0];
       if (m) pick(m);
-      else if (q.trim()) setError(/^\d{8,14}$/.test(q.trim()) ? `Штрихкод ${q.trim()} не найден в каталоге` : `Не нашли «${q.trim()}» — проверьте название или артикул`);
+      else if (q.trim()) {
+        // поле очищаем — следующий скан ложится в пустое поле; что не нашли, видно в тексте ошибки
+        const s = q.trim();
+        setError(/^\d{8,14}$/.test(s) ? `Штрихкод ${s} не найден в каталоге. Найдите товар по названию или проверьте этикетку` : `Не нашли «${s}» — проверьте название или артикул`);
+        setQ('');
+        setOpen(false);
+      }
     } else if (e.key === 'Escape' && open) {
       e.stopPropagation();
       setOpen(false);
@@ -156,7 +162,7 @@ export function ProductPicker({
         invalid={!!error}
         onChange={(e) => {
           setQ(e.target.value);
-          setError(null);
+          if (e.target.value) setError(null);
           setOpen(true);
         }}
         onFocus={() => q && setOpen(true)}
@@ -164,7 +170,11 @@ export function ProductPicker({
         onKeyDown={onKey}
         aria-label="Сканер или поиск товара"
       />
-      {error ? <div className="field-error" style={{ marginTop: 6 }}>{error}</div> : null}
+      {error ? (
+        <div className="field-error stock-picker-error" role="alert">
+          {error}
+        </div>
+      ) : null}
       {list}
     </div>
   );

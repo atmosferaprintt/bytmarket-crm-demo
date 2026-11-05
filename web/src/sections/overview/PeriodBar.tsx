@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
-import { ArrowLeftRight, CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Segmented } from '../../ui';
 import type { ISODate } from '../../data/types';
-import { canShift, compareText, hasCompare, periodTitle, PERIOD_KINDS, shiftPeriod, type PeriodState } from './period';
+import { canShift, compareText, fromPick, hasCompare, periodPick, periodTitle, PERIOD_KINDS, shiftPeriod, type PeriodState } from './period';
 
 /** Строка периода: стрелки и название, вид периода, с чем сравниваем, справа — свободное место. */
 export function PeriodBar({
@@ -37,10 +37,9 @@ export function PeriodBar({
           <ChevronRight />
         </button>
       </div>
-      <Segmented ariaLabel="Вид периода" value={value.kind} onChange={(kind) => onChange({ kind, anchor: today })} options={PERIOD_KINDS} />
+      <Segmented ariaLabel="Вид периода" value={periodPick(value, today)} onChange={(v) => onChange(fromPick(v, today))} options={PERIOD_KINDS} />
       {compare ? (
-        <span className="ovp-compare" title={cmp ? 'Изменения считаются к тому же отрезку прошлого периода' : 'История в базе начинается позже — сравнивать не с чем'}>
-          <ArrowLeftRight />
+        <span className="ovp-compare" title={cmp ? 'Изменения в процентах считаются к тому же отрезку прошлого периода' : 'История в базе начинается позже — сравнивать не с чем'}>
           {cmp ? compareText(value, today) : 'Сравнивать не с чем'}
         </span>
       ) : null}

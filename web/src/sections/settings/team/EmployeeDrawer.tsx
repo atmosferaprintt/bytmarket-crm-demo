@@ -21,13 +21,14 @@ export function EmployeeDrawer({ employeeId, onClose }: { employeeId: ID; onClos
   const navigate = useNavigate();
   const e = db.employees.find((x) => x.id === employeeId);
   const [roles, setRoles] = useState<RoleKey[]>(e?.roles ?? []);
-  const [phone, setPhone] = useState(e?.phone ?? '');
+  // телефон — одно поле в привычном виде «+7 917 123-45-67»; сохраняется в базе без пробелов
+  const [phone, setPhone] = useState(e ? fmt.phone(e.phone) : '');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!e) return;
     setRoles(e.roles);
-    setPhone(e.phone);
+    setPhone(fmt.phone(e.phone));
     setError(null);
   }, [employeeId, e?.roles.join(), e?.phone]);
 
@@ -45,7 +46,7 @@ export function EmployeeDrawer({ employeeId, onClose }: { employeeId: ID; onClos
 
   const isOwner = e.roles.includes('owner');
   const phoneNorm = normalizePhone(phone);
-  const phoneChanged = phone.trim() !== e.phone && (phoneNorm ?? phone.trim()) !== e.phone;
+  const phoneChanged = (phoneNorm ?? phone.trim()) !== e.phone;
   const rolesChanged = roles.join() !== e.roles.join();
   const dirty = rolesChanged || phoneChanged;
 
@@ -134,9 +135,11 @@ export function EmployeeDrawer({ employeeId, onClose }: { employeeId: ID; onClos
     >
       <div className="col-4" style={{ gap: 20 }}>
         <StatList>
-          <StatRow label="Телефон" value={fmt.phone(e.phone)} />
           <StatRow label="Работает с" value={fmt.date(e.hiredAt, { year: true })} />
-          <StatRow label="Записей в журнале изменений" value={fmt.num(actions.total)} />
+          <StatRow
+            label={<span title="Цены, товары, клиенты, оплаты, остатки, настройки — всё, что пишется в журнал изменений">Внёс изменений в программе</span>}
+            value={actions.total ? fmt.count(actions.total, 'изменение', 'изменения', 'изменений') : 'пока нет'}
+          />
         </StatList>
 
         <div className="col-3">
@@ -145,7 +148,7 @@ export function EmployeeDrawer({ employeeId, onClose }: { employeeId: ID; onClos
         </div>
 
         <Field label="Телефон">
-          <Input value={phone} onChange={(ev) => setPhone(ev.target.value)} inputMode="tel" />
+          <Input value={phone} onChange={(ev) => setPhone(ev.target.value)} onBlur={() => phoneNorm && setPhone(fmt.phone(phoneNorm))} inputMode="tel" placeholder="+7 917 123-45-67" />
         </Field>
 
         {error ? <Notice tone="bad">{error}</Notice> : null}

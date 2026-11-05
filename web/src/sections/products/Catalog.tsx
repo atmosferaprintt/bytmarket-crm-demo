@@ -11,12 +11,12 @@ import { categoryFamily } from '../../data/selectors';
 import { NO_MOVEMENT_DAYS } from '../../data/thresholds';
 import { useNarrow } from '../stock/useNarrow';
 import { statusRank } from '../stock/StockStatus';
-import { catalogCount, catalogMode, catalogRows, promosToday, type CatalogMode, type CatalogRow } from './lib';
-import { PriceCell, PromoChip, Qty, StockChip } from './bits';
+import { catalogCount, catalogMode, catalogRows, promoFor, promosToday, type CatalogMode, type CatalogRow } from './lib';
+import { PriceCell, PromoChip, PromoPriceChip, Qty, StockChip } from './bits';
 import ProductForm from './ProductForm';
 
 const AVAIL_TITLE = 'Доступно = магазин + склад − резерв';
-const WH_TITLE = 'На складе для опта = склад − резерв: столько можно обещать оптовому клиенту';
+const WH_TITLE = 'Можно заказать = склад − резерв: столько берёт заявка и заказ';
 
 function nameCell(r: CatalogRow) {
   return (
@@ -42,7 +42,7 @@ function stateFilter(mode: CatalogMode): FilterDef<CatalogRow> {
         { value: 'off', label: 'Не продаются', test: (r) => !r.p.active },
       ],
     };
-  const promo = (r: CatalogRow) => (mode === 'seller' ? r.retail.promo : r.wholesale.promo ?? r.retail.promo);
+  const promo = (r: CatalogRow) => promoFor(r, mode);
   return {
     key: 'state',
     label: 'Состояние',
@@ -52,7 +52,7 @@ function stateFilter(mode: CatalogMode): FilterDef<CatalogRow> {
       { value: 'promo', label: 'Акция', test: (r) => !!promo(r) },
       mode === 'seller'
         ? { value: 'have', label: 'Есть в магазине', test: (r) => r.stock.shop.available > 0 }
-        : { value: 'have', label: 'Есть на складе для опта', test: (r) => r.whAvailable > 0 },
+        : { value: 'have', label: 'Можно заказать', test: (r) => r.whAvailable > 0 },
       { value: 'out', label: 'Нет в наличии', test: (r) => r.out },
       { value: 'soon', label: 'Истекает срок', test: (r) => r.expirySoon },
     ],
@@ -134,20 +134,36 @@ function columnsFor(mode: CatalogMode, narrow: boolean): Column<CatalogRow>[] {
         csv: (r) => r.stock.shop.available,
         total: sumOf((r) => r.stock.shop.available),
       },
-      avail,
+      // с кассы продаётся только магазин; склад — чтобы знать, есть ли что перенести
+      {
+        key: 'wh',
+        header: 'На складе',
+        align: 'right',
+        render: (r) => <span className="muted">{fmt.num(r.stock.warehouse.available)}</span>,
+        sort: (r) => r.stock.warehouse.available,
+        csv: (r) => r.stock.warehouse.available,
+        total: sumOf((r) => r.stock.warehouse.available),
+      },
     ];
 
   return [
     ...head,
     packs,
-    { key: 'wholesale', header: 'Опт', align: 'right', render: (r) => <PriceCell info={r.wholesale} strong />, sort: (r) => r.wholesale.price, csv: (r) => r.wholesale.price },
-    { key: 'retail', header: 'Розница', align: 'right', render: (r) => <PriceCell info={r.retail} />, sort: (r) => r.retail.price, csv: (r) => r.retail.price },
-    avail,
+    { key: 'wholesale', header: 'Цена для опта', align: 'right', className: 'prd-col-nowrap', render: (r) => <PriceCell info={r.wholesale} strong />, sort: (r) => r.wholesale.price, csv: (r) => r.wholesale.price },
+    {
+      key: 'promo',
+      header: 'Акция',
+      className: 'prd-col-nowrap',
+      render: (r) => <PromoPriceChip info={r.wholesale} />,
+      sort: (r) => (promoFor(r, 'sales') ? 0 : 1),
+      csv: (r) => promoFor(r, 'sales')?.name ?? '',
+    },
+    { key: 'retail', header: 'Розница', align: 'right', render: (r) => <span className="muted">{fmt.price(r.retail.price)}</span>, sort: (r) => r.retail.price, csv: (r) => r.retail.price },
     {
       key: 'whAvail',
-      header: 'На\u00a0складе для\u00a0опта',
+      header: 'Можно заказать',
       align: 'right',
-      className: 'prd-th-wrap',
+      className: 'prd-col-nowrap',
       render: (r) => (
         <span title={WH_TITLE}>
           <Qty v={r.whAvailable} strong />

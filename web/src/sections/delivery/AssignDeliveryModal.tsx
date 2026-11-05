@@ -5,7 +5,7 @@ import { useDB, useDBVersion } from '../../data/store';
 import { indexes, orderPayment } from '../../data/selectors';
 import { Button, Field, Modal, MoneyInput, Notice, QtyInput, Select, Textarea, fmt } from '../../ui';
 import { DayChoice } from './parts';
-import { INTERVALS, clockOf, dayLabel, loadText, loadsOf, placesText, kgText, shortDistrict, suggestCourier } from './lib';
+import { INTERVALS, clockOf, dayLabel, intervalFor, intervalPassed, loadText, loadsOf, placesText, kgText, shortDistrict, suggestCourier } from './lib';
 import { useRun } from './run';
 import './delivery.css';
 
@@ -47,8 +47,13 @@ export function AssignDeliveryModal({ orderId, deliveryId, onClose, onDone }: As
   const debt = pay ? Math.max(0, pay.due - pay.pending) : 0;
 
   const [pointId, setPointId] = useState<ID>(existing?.pointId ?? order?.pointId ?? client?.points[0]?.id ?? '');
-  const [date, setDate] = useState<ISODate>(existing ? (existing.date < c.today ? c.today : existing.date) : c.nowMin >= 15 * 60 ? c.tomorrow : c.today);
-  const [interval, setIntervalV] = useState(existing?.interval ?? INTERVALS[2]);
+  const [date, setDateV] = useState<ISODate>(existing ? (existing.date < c.today ? c.today : existing.date) : c.nowMin >= 15 * 60 ? c.tomorrow : c.today);
+  // интервал, который сегодня уже прошёл, не предлагаем — подставляем ближайший
+  const [interval, setIntervalV] = useState(() => intervalFor(existing?.interval ?? INTERVALS[2], date, c));
+  const setDate = (d: ISODate) => {
+    setDateV(d);
+    setIntervalV((iv) => intervalFor(iv, d, c));
+  };
   const point = client?.points.find((p) => p.id === pointId);
   const loads = useMemo(() => loadsOf(db, date, c), [db, version, date]);
   const [courierId, setCourierId] = useState<ID | ''>(existing ? existing.courierId ?? '' : '');
@@ -92,7 +97,7 @@ export function AssignDeliveryModal({ orderId, deliveryId, onClose, onDone }: As
         if (courierId) payload.courierId = courierId;
         r = run('delivery.reschedule', payload, `Доставка № ${existing.number}: ${dayLabel(date, c).toLowerCase()}, ${interval}`);
       } else if (courierId !== existing.courierId) {
-        r = run('delivery.assign', { deliveryId: existing.id, courierId, date }, `Доставка № ${existing.number}: курьер ${ix.employees.get(courierId)?.short ?? ''}`);
+        r = run('delivery.assign', { deliveryId: existing.id, courierId, date, interval }, `Доставка № ${existing.number}: курьер ${ix.employees.get(courierId)?.short ?? ''}`);
       } else {
         onClose();
         return;
@@ -166,7 +171,11 @@ export function AssignDeliveryModal({ orderId, deliveryId, onClose, onDone }: As
       </Field>
       <div className="grid-2">
         <Field label="Интервал">
-          <Select value={interval} onChange={(e) => setIntervalV(e.target.value)} options={intervals.map((v) => ({ value: v, label: v }))} />
+          <Select
+            value={interval}
+            onChange={(e) => setIntervalV(e.target.value)}
+            options={intervals.map((v) => ({ value: v, label: intervalPassed(v, date, c) ? `${v} — уже прошёл` : v, disabled: intervalPassed(v, date, c) }))}
+          />
         </Field>
         <Field label="Курьер">
           <Select value={courierId} onChange={(e) => setCourierId(e.target.value)} options={courierOptions} />

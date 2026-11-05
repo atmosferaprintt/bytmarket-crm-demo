@@ -123,7 +123,22 @@ export function MethodField({ value, onChange, label = 'Способ' }: { value
 }
 
 /** Касса или счёт с остатком в подписи. */
-export function AccountField({ value, onChange, label = 'Касса или счёт', exclude, showBalance = true }: { value: AccountKey; onChange: (a: AccountKey) => void; label?: string; exclude?: AccountKey; showBalance?: boolean }) {
+export function AccountField({
+  value,
+  onChange,
+  label = 'Касса или счёт',
+  exclude,
+  only,
+  showBalance = true,
+}: {
+  value: AccountKey;
+  onChange: (a: AccountKey) => void;
+  label?: string;
+  exclude?: AccountKey;
+  /** только эти кассы и счета (например, без денег у курьеров) */
+  only?: AccountKey[];
+  showBalance?: boolean;
+}) {
   const db = useDB();
   const v = useDBVersion();
   const bal = useMemo(() => accountBalances(db), [db, v]);
@@ -132,7 +147,7 @@ export function AccountField({ value, onChange, label = 'Касса или сч�
       <Select
         value={value}
         onChange={(e) => onChange(e.target.value as AccountKey)}
-        options={ACCOUNT_KEYS.filter((a) => a !== exclude).map((a) => ({ value: a, label: showBalance ? `${ACCOUNT_NAMES[a]} · ${fmt.money(bal[a])}` : ACCOUNT_NAMES[a] }))}
+        options={ACCOUNT_KEYS.filter((a) => a !== exclude && (!only || only.includes(a))).map((a) => ({ value: a, label: showBalance ? `${ACCOUNT_NAMES[a]} · ${fmt.money(bal[a])}` : ACCOUNT_NAMES[a] }))}
       />
     </Field>
   );

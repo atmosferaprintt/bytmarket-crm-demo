@@ -271,12 +271,29 @@ export function receiptContents(db: DB, r: Receipt): string {
 /** Строка поиска по чеку: номер и названия товаров. */
 export function receiptSearchText(db: DB, r: Receipt): string {
   const ix = indexes(db);
-  const parts = [`№${r.number}`, `№ ${r.number}`, String(r.number)];
+  // дата в любом виде: «04.11», «04.11.2026», «4 ноября»
+  const parts = [`№${r.number}`, `№ ${r.number}`, String(r.number), fmt.dateShort(r.at, true), fmt.date(r.at), fmt.time(r.at)];
   for (const l of r.lines) {
     const p = ix.products.get(l.productId);
     if (p) parts.push(p.name, p.sku);
   }
   return parts.join(' ');
+}
+
+/** Покупки постоянного покупателя на кассе: сумма за вычетом возвратов и число чеков. */
+export function clientPurchases(db: DB, clientId: ID): { total: number; receipts: number; last: string | null } {
+  let total = 0;
+  let receipts = 0;
+  let last: string | null = null;
+  for (const r of db.receipts) {
+    if (r.clientId !== clientId) continue;
+    if (r.kind === 'sale') {
+      total += r.total;
+      receipts++;
+      if (!last || r.at > last) last = r.at;
+    } else total -= r.total;
+  }
+  return { total, receipts, last };
 }
 
 export function openShift(db: DB): Shift | undefined {

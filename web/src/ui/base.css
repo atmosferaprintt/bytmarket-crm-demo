@@ -394,6 +394,9 @@ button.kpi:hover { background: var(--row-hover); }
 }
 .toast svg { width: 18px; height: 18px; color: var(--nav-active-icon); }
 .toast.is-error svg { color: #FF8A73; }
+.toast-action { flex: 0 0 auto; min-height: 32px; padding: 0 10px; border: 0; border-radius: var(--r-sm); background: rgba(255, 255, 255, 0.12); color: var(--on-dark); font: inherit; font-weight: 700; cursor: pointer; }
+.toast-action:hover { background: rgba(255, 255, 255, 0.2); }
+.toast-action:focus-visible { outline: 2px solid var(--nav-active-icon); outline-offset: 2px; }
 
 /* ---------- мелочи ---------- */
 .avatar {
@@ -477,6 +480,14 @@ button.list-row:hover, a.list-row:hover { background: var(--row-hover); text-dec
 }
 /* телефон: меню снизу, без боковой панели */
 @media (max-width: 760px) {
+  /* под палец: на телефоне вкладки, фильтры, количество и крестики окон не меньше 44 px */
+  .tab { height: 44px; }
+  .seg-item { height: 40px; }
+  .seg { padding: 2px; }
+  .qty { height: 44px; }
+  .qty button { width: 40px; }
+  .modal .btn-icon.btn-sm, .drawer .btn-icon.btn-sm { width: 44px; height: 44px; }
+
   .app, .app.is-collapsed { grid-template-columns: minmax(0, 1fr); }
   .sidebar { display: none; }
   .topbar { padding: 0 16px; height: 56px; }

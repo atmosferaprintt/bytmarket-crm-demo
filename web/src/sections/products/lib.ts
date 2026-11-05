@@ -157,6 +157,24 @@ export function catalogRows(db: DB): CatalogRow[] {
   });
 }
 
+/** Цена, которую видит роль: продавец — розница, менеджер и представитель — цена для опта (она уже учитывает
+    розничную акцию, если та ниже), остальные — розница. */
+export function priceOf(row: CatalogRow, mode: CatalogMode): PriceInfo {
+  return mode === 'sales' ? row.wholesale : row.retail;
+}
+
+/** Акция, которая правда меняет цену этой роли. Для опта — только если цена для опта стала ниже. */
+export function promoFor(row: CatalogRow, mode: CatalogMode): Promo | null {
+  if (mode === 'full') return row.promo;
+  const info = priceOf(row, mode);
+  return info.promo && info.price < info.base ? info.promo : null;
+}
+
+/** Скидка в процентах от обычной цены этой роли: «−9 %». */
+export function offPct(info: PriceInfo): number {
+  return info.base > 0 && info.price < info.base ? Math.round(((info.base - info.price) / info.base) * 100) : 0;
+}
+
 /** Сколько товаров видит роль в каталоге: владелец и склад — все, включая снятые с продажи; остальные — только в продаже.
     Одно число на вкладке «Каталог» и на соседних вкладках. */
 export function catalogCount(db: DB, mode: CatalogMode): number {
@@ -281,6 +299,11 @@ export function moveDoc(db: DB, mv: Movement): { label: string; entity?: { type:
     }
     case 'return': {
       const r = get(db, 'returns', mv.docId);
+      // возврат на кассе: номер тот же, что у чека возврата в «Кассе»
+      if (r && r.source === 'receipt') {
+        const back = db.receipts.find((x) => x.kind === 'refund' && x.refundOf === r.receiptId && x.at === r.at);
+        if (back) return { label: `Возврат № ${back.number}`, entity: { type: 'receipt', id: back.id } };
+      }
       return { label: r ? `Возврат № ${r.number}` : 'Возврат' };
     }
     default: {
@@ -373,29 +396,63 @@ export function useIsPhone(): boolean {
 
 export interface MarginIssue {
   product: Product;
-  priceType: PriceType;
-  price: number; // цена со скидкой
+  /** цены со скидкой ниже допустимой: розница и (или) опт */
+  prices: { priceType: PriceType; price: number }[];
   min: number; // наименьшая допустимая
   belowCost: boolean;
 }
 
-/** Товары, у которых цена со скидкой ниже себестоимости плюс минимальная наценка. */
+/** Цены товара по новой акции: для «Все покупатели» — и розница, и опт; розничная акция опускает и опт,
+    если опт выходит дороже (опт не дороже розничной акции). */
+function promoPrices(p: Product, promo: Pick<Promo, 'kind' | 'value' | 'audience'>): { priceType: PriceType; price: number }[] {
+  const retail = promo.audience === 'wholesale' ? p.retailPrice : promoPrice(promo, p.retailPrice);
+  let wholesale = promo.audience === 'retail' ? p.wholesalePrice : promoPrice(promo, p.wholesalePrice);
+  if (promo.audience !== 'wholesale' && retail < wholesale) wholesale = retail;
+  const out: { priceType: PriceType; price: number }[] = [];
+  if (promo.audience !== 'wholesale') out.push({ priceType: 'retail', price: retail });
+  if (promo.audience !== 'retail' || wholesale < p.wholesalePrice) out.push({ priceType: 'wholesale', price: wholesale });
+  return out;
+}
+
+/** Товары, у которых цена со скидкой ниже себестоимости плюс минимальная наценка — по рознице и по опту. */
 export function promoMarginIssues(db: DB, products: Product[], promo: Pick<Promo, 'kind' | 'value' | 'audience'>): MarginIssue[] {
   const out: MarginIssue[] = [];
-  const types: PriceType[] = promo.audience === 'all' ? ['retail', 'wholesale'] : [promo.audience];
   for (const p of products) {
     const min = minAllowedPrice(p.cost, db.settings.minMarginPct);
     if (min === null || p.cost === null) continue;
-    for (const t of types) {
-      const base = t === 'retail' ? p.retailPrice : p.wholesalePrice;
-      const price = promoPrice(promo, base);
-      if (price < min) {
-        out.push({ product: p, priceType: t, price, min, belowCost: price < p.cost });
-        break;
-      }
-    }
+    const low = promoPrices(p, promo).filter((x) => x.price < min);
+    if (low.length) out.push({ product: p, prices: low, min, belowCost: low.some((x) => x.price < p.cost!) });
   }
   return out;
+}
+
+/** Наибольшая скидка в процентах, при которой наценка ни у одного товара не падает ниже минимальной
+    (по рознице и опту — смотря для кого акция). null — себестоимость не известна ни у одного товара. */
+export function safePromoPct(db: DB, products: Product[], audience: Promo['audience']): number | null {
+  let safe: number | null = null;
+  for (const p of products) {
+    const min = minAllowedPrice(p.cost, db.settings.minMarginPct);
+    if (min === null) continue;
+    const bases = audience === 'retail' ? [p.retailPrice] : audience === 'wholesale' ? [p.wholesalePrice] : [p.retailPrice, p.wholesalePrice];
+    // розничная акция опускает и опт: проверяем, что розница по акции не ниже допустимой — этого достаточно
+    for (const base of bases) {
+      let pct = base > min ? Math.floor(100 - (100 * (min - 0.5)) / base) : 0;
+      while (pct > 0 && Math.round((base * (100 - pct)) / 100) < min) pct--;
+      pct = Math.max(0, Math.min(90, pct));
+      if (safe === null || pct < safe) safe = pct;
+    }
+  }
+  return safe;
+}
+
+/** Самая низкая безопасная цена для акции «цена»: не ниже допустимой ни у одного товара. */
+export function safePromoPrice(db: DB, products: Product[]): number | null {
+  let safe: number | null = null;
+  for (const p of products) {
+    const min = minAllowedPrice(p.cost, db.settings.minMarginPct);
+    if (min !== null && (safe === null || min > safe)) safe = min;
+  }
+  return safe;
 }
 
 /** Продано по акции: штуки и сумма по строкам чеков и заказов. */

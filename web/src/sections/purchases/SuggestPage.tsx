@@ -2,6 +2,7 @@
    ожидаемых поставок, срока поставки и коробки поставщика. Подтверждает закупку владелец. */
 import { useMemo, useState } from 'react';
 import { CheckCircle2, Info, PencilLine, Send } from 'lucide-react';
+import type { Task } from '../../data/types';
 import type { ID } from '../../data/types';
 import type { SuggestionLine } from '../../data/ops';
 import { useDB, useDBVersion } from '../../data/store';
@@ -11,10 +12,10 @@ import { plusDays } from '../../data/dates';
 import { useSession } from '../../roles/session';
 import { PageHeader } from '../../shell/PageHeader';
 import { useOpenEntity } from '../../shell/entities';
-import { Button, Card, Checkbox, Chip, EmptyState, Field, Input, Modal, Notice, QtyInput, StatList, StatRow, PURCHASE_STATE, cx, fmt, toast } from '../../ui';
+import { Button, Card, Checkbox, Chip, EmptyState, Field, Input, Modal, MoreMenu, Notice, QtyInput, Segmented, StatList, StatRow, PURCHASE_STATE, cx, fmt, toast } from '../../ui';
+import { useNarrow } from '../stock/useNarrow';
 import { SALES_WINDOW_DAYS, SUGGEST_SAFETY_DAYS } from '../../data/thresholds';
 import { act } from '../stock/act';
-import { cap } from '../stock/calc';
 import { suggestionAll, usePurchaseCounts } from './counts';
 import { NewPurchaseModal } from './NewPurchaseModal';
 import './purchases.css';
@@ -42,6 +43,9 @@ export default function SuggestPage() {
   const [confirm, setConfirm] = useState(false);
   const [edit, setEdit] = useState(false);
   const [explain, setExplain] = useState(false);
+  const [send, setSend] = useState<'one' | 'all' | null>(null);
+  // «В день» прячем на 1280–1560: число есть в подсказке «Хватит на»
+  const narrow = useNarrow('(max-width: 1560px)');
 
   const groups = useMemo<Group[]>(() => {
     const m = new Map<ID, Group>();
@@ -61,6 +65,8 @@ export default function SuggestPage() {
   const g = groups.find((x) => x.sid === sel) ?? groups[0];
   const s = g ? ix.suppliers.get(g.sid) : undefined;
   const lines = g?.lines ?? [];
+  // «Ожидается» — только если у поставщика что-то уже едет
+  const anyExpected = lines.some((l) => l.expected > 0);
   const boxesOf = (l: SuggestionLine) => boxes[l.productId] ?? l.boxes;
   const on = lines.filter((l) => !off[l.productId]);
   const total = on.reduce((z, l) => z + boxesOf(l) * l.boxSize * l.price, 0);
@@ -70,21 +76,44 @@ export default function SuggestPage() {
   const waiting = g ? db.purchases.filter((p) => p.supplierId === g.sid && (p.state === 'draft' || p.state === 'ordered' || p.state === 'partial')) : [];
   const owner = db.employees.find((e) => e.active && e.roles.includes('owner'));
 
-  const sendToOwner = () => {
-    if (!g || !s || !owner) return;
-    const r = act(
-      'task.create',
-      {
-        title: `Подтвердить закупку у ${s.name}: ${fmt.count(on.length, 'позиция', 'позиции', 'позиций')}, ${fmt.count(totalBoxes, 'коробка', 'коробки', 'коробок')} — по предложению на закупку`,
-        assigneeId: owner.id,
-        due: today,
-        priority: g.urgent ? 'high' : 'normal',
-        link: on[0] ? { type: 'product', id: on[0].productId } : null,
-      },
-      me.id,
-    );
-    if (!r.ok) return toast(r.error, 'error');
-    toast(`Передано владельцу: ${owner.name}`);
+  // что уже передано владельцу: открытая задача «Подтвердить закупку у …» со связью на поставщика
+  const sentTasks = useMemo(() => {
+    const m = new Map<ID, Task>();
+    for (const t of db.tasks) if (t.state === 'open' && t.link?.type === 'supplier' && t.title.startsWith(SEND_PREFIX)) m.set(t.link.id, t);
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [db, version]);
+  const sent = g ? sentTasks.get(g.sid) : undefined;
+  const unsent = groups.filter((x) => !sentTasks.has(x.sid));
+  const pick = (x: Group) => {
+    const ls = x.lines.filter((l) => !off[l.productId]);
+    return { ls, boxes: ls.reduce((z, l) => z + (boxes[l.productId] ?? l.boxes), 0) };
+  };
+
+  const sendToOwner = (list: Group[]): string | null => {
+    if (!owner) return 'В программе нет владельца — некому передать';
+    let done = 0;
+    for (const x of list) {
+      const { ls, boxes: bx } = pick(x);
+      if (!ls.length) continue;
+      const r = act(
+        'task.create',
+        {
+          title: `${SEND_PREFIX}${x.name}: ${fmt.count(ls.length, 'позиция', 'позиции', 'позиций')}, ${fmt.count(bx, 'коробка', 'коробки', 'коробок')} — по предложению на закупку`,
+          assigneeId: owner.id,
+          due: today,
+          priority: x.urgent ? 'high' : 'normal',
+          link: { type: 'supplier', id: x.sid },
+        },
+        me.id,
+      );
+      if (!r.ok) return r.error;
+      done++;
+    }
+    if (!done) return 'Передавать нечего: все строки сняты';
+    toast(list.length === 1 ? `Владельцу передано: ${list[0].name} — ${fmt.count(pick(list[0]).ls.length, 'позиция', 'позиции', 'позиций')}` : `Владельцу передано предложение по ${fmt.count(done, 'поставщику', 'поставщикам', 'поставщикам')}`);
+    setSend(null);
+    return null;
   };
 
   const header = (
@@ -102,9 +131,20 @@ export default function SuggestPage() {
                 Создать закупку
               </Button>
             ) : role === 'warehouse' ? (
-              <Button variant="primary" icon={<Send />} disabled={!on.length} onClick={sendToOwner}>
-                Передать владельцу
-              </Button>
+              <>
+                {unsent.length > 1 ? (
+                  <MoreMenu items={[{ label: `Передать владельцу всех поставщиков: ${unsent.length}`, icon: <Send />, onClick: () => setSend('all') }]} />
+                ) : null}
+                {sent ? (
+                  <Chip tone="ok" title={`${fmt.relDate(sent.createdAt, today)} в ${fmt.time(sent.createdAt)}: ${sent.title}`}>
+                    Передано владельцу
+                  </Chip>
+                ) : (
+                  <Button variant="primary" icon={<Send />} disabled={!on.length} onClick={() => setSend('one')}>
+                    Передать владельцу
+                  </Button>
+                )}
+              </>
             ) : null}
           </>
         ) : null
@@ -138,7 +178,13 @@ export default function SuggestPage() {
                     {fmt.num(x.lines.length)} поз.
                     {seeCost ? ` · ${fmt.money(groupSum(x))}` : ''}
                   </span>
-                  {x.urgent ? <Chip tone="bad" title="Закончится раньше, чем придёт поставка">Срочно {x.urgent}</Chip> : null}
+                  {sentTasks.has(x.sid) ? (
+                    <Chip tone="ok">Передано</Chip>
+                  ) : x.urgent ? (
+                    <Chip tone="bad" title="Закончится раньше, чем придёт поставка">
+                      Срочно {x.urgent}
+                    </Chip>
+                  ) : null}
                 </span>
               </button>
             ))}
@@ -170,6 +216,13 @@ export default function SuggestPage() {
               </>
             }
           >
+            {sent ? (
+              <div style={{ padding: '0 20px 12px' }}>
+                <Notice tone="ok" title={`Передано владельцу ${fmt.relDate(sent.createdAt, today)} в ${fmt.time(sent.createdAt)}`}>
+                  {sent.title.replace(SEND_PREFIX, 'Подтвердить закупку у ')}. Ждёт решения владельца — повторно отправлять не нужно
+                </Notice>
+              </div>
+            ) : null}
             {waiting.length ? (
               <div style={{ padding: '0 20px 12px' }}>
                 <Notice tone="info">
@@ -183,13 +236,22 @@ export default function SuggestPage() {
                   <tr>
                     <th style={{ width: 36 }} aria-label="В закупку" />
                     <th>Товар</th>
-                    <th className="num" title={`Продажи за ${SALES_WINDOW_DAYS} дней на кассе и оптом, в среднем за день`}>
-                      В день
+                    <th className="num" title="Доступно: магазин + склад − резерв под заказы">
+                      Есть
                     </th>
+                    <th className="num" title="Минимальный остаток по магазину и складу вместе">
+                      Мин.
+                    </th>
+                    {!narrow ? (
+                      <th className="num" title={`Продажи за ${SALES_WINDOW_DAYS} дней на кассе и оптом, в среднем за день`}>
+                        В день
+                      </th>
+                    ) : null}
                     <th className="num" title={`Доступное ÷ продажи в день. Поставка от ${s.name} — ${fmt.count(s.leadDays, 'день', 'дня', 'дней')}`}>
                       Хватит на
                     </th>
-                    <th className="num">Ожидается</th>
+                    {anyExpected ? <th className="num">Ожидается</th> : null}
+                    <th>Причина</th>
                     <th style={{ width: 120 }}>Коробок</th>
                     <th className="num" title="Коробок × штук в коробке">Штук</th>
                     {seeCost ? <th className="num">Сумма</th> : null}
@@ -212,15 +274,20 @@ export default function SuggestPage() {
                           />
                         </td>
                         <td>
-                          <button type="button" className="entity-link pur-line-name" title={cap(l.reason)} onClick={() => open('product', l.productId)}>
+                          <button type="button" className="entity-link pur-line-name" onClick={() => open('product', l.productId)}>
                             {l.name}
                           </button>
                         </td>
-                        <td className="num">{l.perDay >= 0.05 ? fmt.num(l.perDay, l.perDay < 10 ? 1 : 0) : <span className="faint">0</span>}</td>
-                        <td className="num" title={cap(l.reason)}>
+                        <td className={cx('num w-700', l.available <= 0 && 'c-bad')}>{fmt.num(Math.max(0, l.available))}</td>
+                        <td className="num muted">{fmt.num(ix.products.get(l.productId)?.minStock ?? 0)}</td>
+                        {!narrow ? <td className="num">{l.perDay >= 0.05 ? fmt.num(l.perDay, l.perDay < 10 ? 1 : 0) : <span className="faint">0</span>}</td> : null}
+                        <td className="num" title={narrow ? `Продаётся в день: ${fmt.num(l.perDay, 1)}` : undefined}>
                           <WhyCell l={l} urgent={urgent} />
                         </td>
-                        <td className="num">{l.expected ? fmt.num(l.expected) : <span className="faint">0</span>}</td>
+                        {anyExpected ? <td className="num">{l.expected ? fmt.num(l.expected) : <span className="faint">0</span>}</td> : null}
+                        <td>
+                          <span className={cx('pur-why-text', urgent && 'c-bad w-600')}>{l.reason}</span>
+                        </td>
                         <td>
                           <QtyInput value={b} min={1} onChange={(v) => setBoxes((x) => ({ ...x, [l.productId]: Math.max(1, v) }))} ariaLabel="Коробок" />
                         </td>
@@ -261,6 +328,9 @@ export default function SuggestPage() {
               const a = act('purchase.approve', { purchaseId: r.id, expectedAt }, me.id);
               if (!a.ok) return `Закупка № ${n} создана черновиком, но не подтверждена: ${a.error}`;
             }
+            // просьба склада «Подтвердить закупку у …» выполнена
+            const st = sentTasks.get(s.id);
+            if (st) act('task.complete', { taskId: st.id }, me.id);
             toast(`Закупка № ${n} ${approve ? 'создана и подтверждена' : 'создана черновиком'}${r.info ? `. ${r.info}` : ''}`);
             setConfirm(false);
             setBoxes({});
@@ -271,6 +341,19 @@ export default function SuggestPage() {
         />
       ) : null}
       {edit ? <NewPurchaseModal supplierId={s.id} lines={on.map((l) => ({ productId: l.productId, boxes: boxesOf(l), boxSize: l.boxSize, price: l.price }))} onClose={() => setEdit(false)} /> : null}
+      {send ? (
+        <SendModal
+          scope={send}
+          setScope={setSend}
+          one={g}
+          all={unsent}
+          pick={pick}
+          ownerName={owner?.name ?? 'владелец'}
+          canAll={unsent.length > 1}
+          onClose={() => setSend(null)}
+          onSend={(list) => sendToOwner(list)}
+        />
+      ) : null}
       {explain ? (
         <Modal title="Как считается предложение" onClose={() => setExplain(false)} footer={<Button variant="primary" onClick={() => setExplain(false)}>Понятно</Button>}>
           <div className="col-3 t-14 ink-2">
@@ -279,7 +362,7 @@ export default function SuggestPage() {
             <p>Предлагаем товар, которого не хватит на срок поставки и ещё {fmt.count(SUGGEST_SAFETY_DAYS, 'день', 'дня', 'дней')} запаса, и товар ниже минимального остатка. Уже заказанное у поставщика вычитаем.</p>
             <p>Недостающее округляем вверх до целой коробки поставщика. Количество можно поправить или снять строку.</p>
             <p>Закупку подтверждает владелец. Пока она черновик, товар не входит в «Ожидается».</p>
-            <p>Причина по каждому товару — в подсказке при наведении на строку.</p>
+            <p>«Есть» — доступно сейчас, «Мин.» — минимальный остаток товара, «Причина» — почему товар попал в предложение.</p>
           </div>
         </Modal>
       ) : null}
@@ -289,8 +372,8 @@ export default function SuggestPage() {
 
 /** «Хватит на»: число дней, а если продаж нет или товар закончился — короткий чип вместо пустоты. */
 function WhyCell({ l, urgent }: { l: SuggestionLine; urgent: boolean }) {
-  if (l.available <= 0) return <Chip tone="bad">Закончился</Chip>;
-  if (l.daysLeft === null) return <Chip tone="warn">Ниже минимума</Chip>;
+  if (l.available <= 0) return <span className="c-bad w-700 nowrap">закончился</span>;
+  if (l.daysLeft === null) return <span className="faint nowrap" title="За 30 дней продаж не было">нет продаж</span>;
   return <span className={urgent ? 'c-bad w-700 nowrap' : 'nowrap'}>{l.daysLeft === 0 ? 'меньше дня' : fmt.count(l.daysLeft, 'день', 'дня', 'дней')}</span>;
 }
 
@@ -360,6 +443,79 @@ function ConfirmModal({
           </div>
         </Notice>
       ) : null}
+      {error ? <Notice tone="bad">{error}</Notice> : null}
+    </Modal>
+  );
+}
+
+const SEND_PREFIX = 'Подтвердить закупку у ';
+
+/** Что уходит владельцу: один поставщик или все, ещё не переданные. */
+function SendModal({
+  scope,
+  setScope,
+  one,
+  all,
+  pick,
+  ownerName,
+  canAll,
+  onSend,
+  onClose,
+}: {
+  scope: 'one' | 'all';
+  setScope: (v: 'one' | 'all') => void;
+  one: Group;
+  all: Group[];
+  pick: (x: Group) => { ls: SuggestionLine[]; boxes: number };
+  ownerName: string;
+  canAll: boolean;
+  onSend: (list: Group[]) => string | null;
+  onClose: () => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const list = scope === 'one' ? [one] : all;
+  return (
+    <Modal
+      title="Передать владельцу"
+      sub={`${ownerName} получит задачу подтвердить закупку`}
+      onClose={onClose}
+      footer={
+        <>
+          <span className="spacer" />
+          <Button variant="ghost" onClick={onClose}>
+            Отмена
+          </Button>
+          <Button variant="primary" icon={<Send />} onClick={() => setError(onSend(list))}>
+            {scope === 'one' ? `Передать: ${one.name}` : `Передать ${fmt.count(list.length, 'поставщика', 'поставщиков', 'поставщиков')}`}
+          </Button>
+        </>
+      }
+    >
+      {canAll ? (
+        <Segmented
+          ariaLabel="Что передать"
+          value={scope}
+          onChange={setScope}
+          options={[
+            { value: 'one', label: `Только ${one.name}` },
+            { value: 'all', label: 'Все поставщики', count: all.length },
+          ]}
+        />
+      ) : null}
+      <div className="stock-unpicked">
+        {list.map((x) => {
+          const { ls, boxes } = pick(x);
+          return (
+            <div key={x.sid} className="stock-unpicked-row">
+              <span className="grow w-600">{x.name}</span>
+              <span className="nowrap ink-2">
+                {fmt.count(ls.length, 'позиция', 'позиции', 'позиций')} · {fmt.count(boxes, 'коробка', 'коробки', 'коробок')}
+              </span>
+              {x.urgent ? <Chip tone="bad">Срочно {x.urgent}</Chip> : null}
+            </div>
+          );
+        })}
+      </div>
       {error ? <Notice tone="bad">{error}</Notice> : null}
     </Modal>
   );

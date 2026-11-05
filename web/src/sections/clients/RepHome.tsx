@@ -1,25 +1,25 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarPlus, CheckCircle2, ListPlus, MapPin, Navigation, Phone, PlayCircle, UserRound, Wifi, WifiOff, XCircle } from 'lucide-react';
+import { CalendarPlus, CheckCircle2, ListPlus, MapPin, Navigation, Phone, PhoneCall, PlayCircle, ShoppingCart, UserRound, Wifi, WifiOff, XCircle } from 'lucide-react';
 import { PageHeader } from '../../shell/PageHeader';
 import { EntityLink, useOpenEntity } from '../../shell/entities';
 import { TaskModal } from '../../shell/TaskModal';
-import type { Client, ClientPoint, ID, Task, Visit } from '../../data/types';
+import type { Client, ClientPoint, ID, Order, Task, Visit, VisitResult } from '../../data/types';
 import { dispatch, nowDemo, useDB, useDBVersion } from '../../data/store';
-import { clientBalances, indexes, type ClientBalance } from '../../data/selectors';
+import { clientBalances, indexes, orderPayment, type ClientBalance } from '../../data/selectors';
 import { useSession } from '../../roles/session';
 import { useScoped } from '../../roles/scope';
 import { Button, Card, Chip, EmptyState, MoreMenu, Notice, ProgressBar, StatusChip, VISIT_RESULT, VISIT_STATE, cx, fmt, overdueStatus, toast, type MenuItem } from '../../ui';
 import { PlanVisitModal } from './PlanVisitModal';
 import { VisitResultSheet } from './VisitResultSheet';
-import { callPhone, lastPurchases, mapUrl, pointOf, repStats, telUrl, useStored } from './lib';
+import { callPhone, deliveriesById, habitualProducts, lastPurchases, mapUrl, ordersByClient, pointOf, repStats, telUrl, useStored } from './lib';
 import { PlanBar, planLabel, planTitle, visitTimes } from './parts';
+import { NewOrderDrawer } from '../sales/NewOrderDrawer';
+import { NOT_SENT, OrderBrief } from '../sales/parts';
+import { productName } from '../sales/lib';
+import { setOffline, useOffline } from '../sales/offline';
+import { UndoToastHost, undoToast } from './UndoToast';
 import './clients.css';
-
-interface OfflineState {
-  on: boolean;
-  queued: ID[];
-}
 
 function clockNow(): string {
   const n: unknown = nowDemo();
@@ -37,9 +37,11 @@ export default function Home() {
   const open = useOpenEntity();
   const today = db.meta.today;
 
-  const [offline, setOffline] = useStored<OfflineState>('bm-rep-offline', { on: false, queued: [] });
+  // «нет связи» — общее хранилище с окном заявки и списком заказов
+  const offline = useOffline();
   const [started, setStarted] = useStored<Record<ID, string>>('bm-rep-started', {});
-  const [sheetFor, setSheetFor] = useState<ID | null>(null);
+  const [sheet, setSheet] = useState<{ id: ID; preset?: VisitResult; noOrder?: boolean } | null>(null);
+  const [orderFor, setOrderFor] = useState<Visit | null>(null);
   const [planning, setPlanning] = useState(false);
   const [taskFor, setTaskFor] = useState<ID | null>(null);
 
@@ -63,7 +65,13 @@ export default function Home() {
   }, [db, version, scoped, today, me]);
 
   const activeId = day.planned.find((v) => started[v.id])?.id ?? day.planned[0]?.id ?? null;
-  const sheetVisit = sheetFor ? day.todays.find((v) => v.id === sheetFor) ?? null : null;
+  const sheetVisit = sheet ? day.todays.find((v) => v.id === sheet.id) ?? null : null;
+  const forget = (visitId: ID) =>
+    setStarted((st) => {
+      const next = { ...st };
+      delete next[visitId];
+      return next;
+    });
   const queued = offline.queued.filter((id) => db.orders.some((o) => o.id === id));
 
   const start = (v: Visit) => {
@@ -83,7 +91,7 @@ export default function Home() {
       toast(n ? `Связь есть: ${fmt.count(n, 'заявка отправлена', 'заявки отправлены', 'заявок отправлено')}, цены и наличие проверены` : 'Связь есть');
     } else {
       setOffline({ on: true, queued: [] });
-      toast('Работаем без связи: заявки встанут в очередь');
+      toast('Работаем без связи: заявки сохранятся в телефоне');
     }
   };
 
@@ -185,7 +193,8 @@ export default function Home() {
                   primary={v.id === activeId}
                   startedAt={started[v.id] ?? null}
                   onStart={() => start(v)}
-                  onResult={() => setSheetFor(v.id)}
+                  onOrder={() => setOrderFor(v)}
+                  onResult={(preset, noOrder) => setSheet({ id: v.id, preset, noOrder })}
                   onOpen={() => open('client', c.id)}
                   onSkip={() => skip(v)}
                   onTask={() => setTaskFor(c.id)}
@@ -231,7 +240,7 @@ export default function Home() {
                             № {o.number} · {fmt.money(o.total)}
                           </EntityLink>
                         ) : null}
-                        {o && queued.includes(o.id) ? <Chip tone="warn">В очереди</Chip> : null}
+                        {o && queued.includes(o.id) ? <StatusChip s={NOT_SENT} /> : null}
                       </span>
                     </div>
                   );
@@ -261,6 +270,7 @@ export default function Home() {
                   <button key={c.id} type="button" className="cl-list-row" onClick={() => open('client', c.id)}>
                     <span className="cl-list-main">
                       <span className="w-600 ellipsis">{c.name}</span>
+                      {b.pending > 0 ? <PendingLine amount={b.pending} /> : null}
                       {b.maxOverdueDays > 0 || (c.creditLimit > 0 && b.debt > c.creditLimit) ? (
                         <span className="chips">
                           {b.maxOverdueDays > 0 ? <StatusChip s={overdueStatus(b.maxOverdueDays)} /> : null}
@@ -279,22 +289,35 @@ export default function Home() {
         </div>
       </div>
 
-      {sheetVisit ? (
+      {sheetVisit && sheet ? (
         <VisitResultSheet
           visit={sheetVisit}
           offline={offline.on}
-          onClose={() => setSheetFor(null)}
-          onDone={({ orderId }) => {
-            setSheetFor(null);
-            setStarted((st) => {
-              const next = { ...st };
-              delete next[sheetVisit.id];
-              return next;
-            });
-            if (orderId && offline.on) setOffline((o) => ({ ...o, queued: [...o.queued, orderId] }));
+          initialResult={sheet.preset}
+          noOrder={sheet.noOrder}
+          onClose={() => setSheet(null)}
+          onDone={() => {
+            // заявку без связи окно заказа само ставит в очередь
+            setSheet(null);
+            forget(sheetVisit.id);
           }}
         />
       ) : null}
+      {orderFor ? (
+        // заявка из визита: клиент и точка уже выбраны, после отправки визит закрывается с результатом «Заказ»
+        <NewOrderDrawer
+          clientId={orderFor.clientId}
+          pointId={orderFor.pointId}
+          visitId={orderFor.id}
+          source="rep"
+          onClose={() => setOrderFor(null)}
+          onCreated={() => {
+            forget(orderFor.id);
+            setOrderFor(null);
+          }}
+        />
+      ) : null}
+      <UndoToastHost />
       {planning ? <PlanVisitModal repId={me.id} onClose={() => setPlanning(false)} /> : null}
       {taskFor !== null ? <TaskModal link={taskFor ? { type: 'client', id: taskFor } : null} onClose={() => setTaskFor(null)} /> : null}
     </>
@@ -314,6 +337,7 @@ function RouteCard({
   primary,
   startedAt,
   onStart,
+  onOrder,
   onResult,
   onOpen,
   onSkip,
@@ -329,13 +353,15 @@ function RouteCard({
   primary: boolean;
   startedAt: string | null;
   onStart: () => void;
-  onResult: () => void;
+  onOrder: () => void;
+  onResult: (preset?: VisitResult, noOrder?: boolean) => void;
   onOpen: () => void;
   onSkip: () => void;
   onTask: () => void;
 }) {
   const tel = telUrl(callPhone(c));
   const over = !!b && c.creditLimit > 0 && b.debt > c.creditLimit;
+  const pending = b?.pending ?? 0;
   return (
     <article className={cx('card cl-route-card', primary && 'is-next')}>
       <div className="cl-route-top">
@@ -350,7 +376,6 @@ function RouteCard({
         ) : null}
         <span className="spacer" />
         <MoreMenu
-          size="sm"
           items={[
             { label: 'Карточка клиента', icon: <UserRound />, onClick: onOpen },
             { label: 'Задача по клиенту', icon: <ListPlus />, onClick: onTask },
@@ -385,11 +410,16 @@ function RouteCard({
           <Chip tone="ok">Без долга</Chip>
         </div>
       )}
+      {pending > 0 ? <PendingLine amount={pending} /> : null}
 
-      <div className="cl-route-last">
-        <span className="muted">Последняя покупка</span>
-        <span className="w-600">{last ? `${fmt.relDate(last.at, today)} · ${fmt.money(last.total)}` : 'Ещё не покупал'}</span>
-      </div>
+      {startedAt ? (
+        <VisitContext c={c} />
+      ) : (
+        <div className="cl-route-last">
+          <span className="muted">Последняя покупка</span>
+          <span className="w-600">{last ? `${fmt.relDate(last.at, today)} · ${fmt.money(last.total)}` : 'Ещё не покупал'}</span>
+        </div>
+      )}
       {v.comment ? <div className="cl-route-note">{v.comment}</div> : null}
 
       <div className="cl-route-actions">
@@ -410,10 +440,85 @@ function RouteCard({
           </a>
         ) : null}
       </div>
-      <Button variant={primary ? 'primary' : 'secondary'} size="lg" block icon={startedAt ? <CheckCircle2 /> : <PlayCircle />} onClick={startedAt ? onResult : onStart}>
-        {startedAt ? 'Записать результат' : 'Начать визит'}
-      </Button>
+      {startedAt ? (
+        <>
+          {/* визит идёт: главное — заявка; отказ, перезвонить и «без заказа» — второстепенные */}
+          <Button variant="primary" size="lg" block icon={<ShoppingCart />} onClick={onOrder}>
+            Оформить заявку
+          </Button>
+          <div className="cl-route-results">
+            <Button size="lg" icon={<XCircle />} onClick={() => onResult('refusal')}>
+              Отказ
+            </Button>
+            <Button size="lg" icon={<PhoneCall />} onClick={() => onResult('callback')}>
+              Перезвонить
+            </Button>
+            <Button size="lg" onClick={() => onResult(undefined, true)}>
+              Без заказа
+            </Button>
+          </div>
+        </>
+      ) : (
+        <Button variant={primary ? 'primary' : 'secondary'} size="lg" block icon={<PlayCircle />} onClick={onStart}>
+          Начать визит
+        </Button>
+      )}
     </article>
+  );
+}
+
+/** Перевод на подтверждении банка: клиент уже заплатил — за этими деньгами не звонить. */
+function PendingLine({ amount }: { amount: number }) {
+  return <div className="cl-pending">Перевод {fmt.money(amount)} ждёт подтверждения</div>;
+}
+
+/** Идёт визит: последние заказы и привычные товары клиента — под рукой, пока говоришь с закупщиком. */
+function VisitContext({ c }: { c: Client }) {
+  const db = useDB();
+  const version = useDBVersion();
+  const { me } = useSession();
+  const data = useMemo(() => {
+    const dl = deliveriesById(db);
+    const orders: Order[] = (ordersByClient(db).get(c.id) ?? []).filter((o) => o.state !== 'cancelled' && (o.state !== 'draft' || o.authorId === me.id)).slice(0, 3);
+    const products = indexes(db).products;
+    const habit = habitualProducts(db, c.id, 4).map((h) => ({ ...h, name: productName(products.get(h.productId)) }));
+    return { orders: orders.map((o) => ({ o, pay: orderPayment(db, o), d: o.deliveryId ? dl.get(o.deliveryId) : undefined })), habit };
+  }, [db, version, c.id, me.id]);
+  return (
+    <div className="cl-visit-ctx">
+      <div className="cl-visit-ctx-block">
+        <div className="cl-visit-ctx-title">Последние заказы</div>
+        {data.orders.length ? (
+          data.orders.map(({ o, pay, d }) => (
+            <EntityLink key={o.id} type="order" id={o.id} className="cl-visit-order">
+              <span className="row" style={{ gap: 8 }}>
+                <span className="w-600">№ {o.number}</span>
+                <span className="muted t-12 grow">{fmt.date(o.createdAt)}</span>
+                <span className="num w-600">{fmt.money(o.total)}</span>
+              </span>
+              <OrderBrief o={o} pay={pay} delivery={d} rep />
+            </EntityLink>
+          ))
+        ) : (
+          <div className="muted t-13">Заказов ещё не было</div>
+        )}
+      </div>
+      <div className="cl-visit-ctx-block">
+        <div className="cl-visit-ctx-title">Привычные товары</div>
+        {data.habit.length ? (
+          data.habit.map((h) => (
+            <div key={h.productId} className="cl-visit-habit">
+              <span className="grow">{h.name}</span>
+              <span className="muted t-12 nowrap">
+                в {h.orders} из {h.total}
+              </span>
+            </div>
+          ))
+        ) : (
+          <div className="muted t-13">Пока мало заказов, чтобы понять привычки</div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -422,35 +527,52 @@ function RouteCard({
 function TasksCard({ tasks, today }: { tasks: Task[]; today: string }) {
   const { me } = useSession();
   const db = useDB();
+  const open = useOpenEntity();
   const idx = indexes(db);
   const toggle = (t: Task) => {
-    const r = dispatch(t.state === 'open' ? 'task.complete' : 'task.reopen', { taskId: t.id }, me.id);
-    if (!r.ok) toast(r.error, 'error');
-    else if (t.state === 'open') toast('Задача выполнена');
+    const wasOpen = t.state === 'open';
+    const r = dispatch(wasOpen ? 'task.complete' : 'task.reopen', { taskId: t.id }, me.id);
+    if (!r.ok) {
+      toast(r.error, 'error');
+      return;
+    }
+    if (wasOpen)
+      undoToast('Задача выполнена', () => {
+        const back = dispatch('task.reopen', { taskId: t.id }, me.id);
+        if (!back.ok) toast(back.error, 'error');
+      });
   };
-  const open = tasks.filter((t) => t.state === 'open').length;
+  // нажатие на текст открывает то, о чём задача: клиента или заказ
+  const openLink = (t: Task) => {
+    if (t.link && (t.link.type === 'client' || t.link.type === 'order' || t.link.type === 'delivery' || t.link.type === 'product')) open(t.link.type, t.link.id);
+  };
+  const openCount = tasks.filter((t) => t.state === 'open').length;
   return (
-    <Card title="Мои задачи на сегодня" actions={<span className="muted t-13">{open ? `осталось ${open}` : 'всё сделано'}</span>} flush>
+    <Card title="Мои задачи на сегодня" actions={<span className="muted t-13">{openCount ? `осталось ${openCount}` : 'всё сделано'}</span>} flush>
       {tasks.length ? (
         <div className="cl-list is-flush">
           {tasks.map((t) => {
             const overdue = t.state === 'open' && t.due < today;
             const client = t.link?.type === 'client' ? idx.clients.get(t.link.id) : undefined;
+            const linked = !!t.link && t.link.type !== 'payment' && t.link.type !== 'purchase' && t.link.type !== 'supplier';
             return (
-              <label key={t.id} className="cl-list-row is-top cl-task">
-                <input type="checkbox" className="task-check" checked={t.state === 'done'} onChange={() => toggle(t)} aria-label="Сделано" />
-                <span className="cl-list-main">
+              <div key={t.id} className="cl-list-row is-top cl-task-row">
+                {/* отметить выполненной — только квадратом (зона нажатия 44 px) */}
+                <label className="cl-task-hit" title={t.state === 'done' ? 'Вернуть в работу' : 'Отметить выполненной'}>
+                  <input type="checkbox" className="task-check" checked={t.state === 'done'} onChange={() => toggle(t)} aria-label={t.state === 'done' ? 'Вернуть в работу' : 'Сделано'} />
+                </label>
+                <button type="button" className="cl-list-main cl-task-text" onClick={() => openLink(t)} disabled={!linked} aria-label={linked ? `${t.title} — открыть` : t.title}>
                   <span className={cx('w-600', t.state === 'done' && 'cl-done')}>{t.title}</span>
                   <span className="muted t-12">
                     {t.dueTime ? `${t.dueTime} · ` : ''}
                     {client ? client.name : fmt.relDate(t.due, today)}
                   </span>
-                </span>
+                </button>
                 <span className="chips cl-list-chips">
                   {overdue ? <Chip tone="bad">Просрочена</Chip> : null}
                   {t.priority === 'high' && t.state === 'open' && !overdue ? <Chip tone="warn">Срочно</Chip> : null}
                 </span>
-              </label>
+              </div>
             );
           })}
         </div>

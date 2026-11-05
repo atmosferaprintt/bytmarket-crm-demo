@@ -5,7 +5,7 @@ import type { ID, Order, PackKey, PriceType } from '../../data/types';
 import { useDB, useDBVersion } from '../../data/store';
 import { indexes, priceFor, stockIndex, type RepeatPreviewResult } from './data';
 import { Button, Checkbox, Chip, Field, Input, Modal, Notice, STOCK_LEVEL, StatusChip, cx, fmt } from '../../ui';
-import { linePackLabel, norm, productName } from './lib';
+import { linePackLabel, norm, productName, useIsPhone } from './lib';
 import { PriceCell, PromoChip } from './parts';
 import { searchProducts } from '../../data/search';
 
@@ -66,6 +66,7 @@ export function ProductSearch({ priceType, onPick, autoFocus }: { priceType: Pri
 
   const si = stockIndex(db);
   const today = db.meta.today;
+  const phone = useIsPhone();
   const shown = open && !!q.trim();
   useEffect(() => {
     if (shown) listRef.current?.scrollIntoView({ block: 'nearest' });
@@ -118,11 +119,27 @@ export function ProductSearch({ priceType, onPick, autoFocus }: { priceType: Pri
                   type="button"
                   role="option"
                   aria-selected={i === active}
-                  className={cx('sales-suggest-row', i === active && 'is-active')}
+                  className={cx('sales-suggest-row', phone && 'is-phone', i === active && 'is-active')}
                   onMouseDown={(e) => e.preventDefault()}
                   onMouseEnter={() => setActive(i)}
                   onClick={() => pick(i)}
                 >
+                  {phone ? (
+                    // телефон: название целиком в две строки, наличие и цена — под ним
+                    <>
+                      <span className="sales-suggest-name">{productName(r.p)}</span>
+                      <span className="muted t-12 ellipsis">{[r.p.sku, r.p.packs.slice(1).map((x) => x.name).join(', ')].filter(Boolean).join(' · ')}</span>
+                      <span className="sales-suggest-foot">
+                        <span className={cx('t-13 num', avail > 0 ? 'ink-2' : 'c-bad w-600')}>{avail > 0 ? `Доступно ${fmt.qty(avail)}` : 'Нет на складе'}</span>
+                        {pr.promo ? <PromoChip promo={pr.promo} today={today} /> : null}
+                        <span className="spacer" />
+                        <span className="w-700">
+                          <PriceCell price={pr.price} base={pr.base} />
+                        </span>
+                      </span>
+                    </>
+                  ) : (
+                  <>
                   <span className="grow">
                     <span className="w-600 ellipsis" style={{ display: 'block' }}>
                       {productName(r.p)}
@@ -138,6 +155,8 @@ export function ProductSearch({ priceType, onPick, autoFocus }: { priceType: Pri
                   <span style={{ minWidth: 64, textAlign: 'right' }}>
                     <PriceCell price={pr.price} base={pr.base} />
                   </span>
+                  </>
+                  )}
                 </button>
               );
             })
@@ -187,6 +206,7 @@ export function HistoryPicker({ clientId, priceType, onClose, onAdd }: { clientI
   const [picked, setPicked] = useState<Set<ID>>(() => new Set());
   const idx = indexes(db);
   const si = stockIndex(db);
+  const phone = useIsPhone();
 
   const toggle = (id: ID) =>
     setPicked((s) => {
@@ -230,7 +250,58 @@ export function HistoryPicker({ clientId, priceType, onClose, onAdd }: { clientI
         </>
       }
     >
-      {data.items.length ? (
+      {data.items.length && phone ? (
+        // телефон: карточки вместо широкой таблицы
+        <div className="sales-hist-cards">
+          {data.items.map((it) => {
+            const p = idx.products.get(it.productId);
+            const off = !p || !p.active;
+            const avail = si.get(it.productId)?.warehouse.available ?? 0;
+            const pr = priceFor(db, it.productId, { priceType, date: today });
+            const on = picked.has(it.productId);
+            return (
+              <div
+                key={it.productId}
+                role="checkbox"
+                aria-checked={on}
+                aria-disabled={off}
+                tabIndex={off ? -1 : 0}
+                className={cx('sales-hist-card', on && 'is-on', off && 'is-off')}
+                onClick={off ? undefined : () => toggle(it.productId)}
+                onKeyDown={(e) => {
+                  if (!off && (e.key === ' ' || e.key === 'Enter')) {
+                    e.preventDefault();
+                    toggle(it.productId);
+                  }
+                }}
+              >
+                <input type="checkbox" className="sales-hist-check" checked={on} disabled={off} readOnly tabIndex={-1} aria-hidden="true" />
+                <span className="sales-hist-main">
+                  <span className="sales-suggest-name">{productName(p)}</span>
+                  <span className="t-12 muted">
+                    {off ? 'Снят с продажи' : `Брали ${fmt.count(it.times, 'раз', 'раза', 'раз')} · в последний раз ${it.pack === 'pcs' ? fmt.qty(it.qty) : `${it.packQty} × ${linePackLabel(it.pack, it.packSize)}`}, ${fmt.date(it.lastAt)}`}
+                  </span>
+                  {!off ? (
+                    <span className="sales-suggest-foot">
+                      <span className={cx('t-13 num', avail < it.qty ? 'c-bad w-600' : 'ink-2')}>{avail > 0 ? `Доступно ${fmt.qty(avail)}` : 'Нет на складе'}</span>
+                      <span className="spacer" />
+                      {pr.price !== it.lastPrice ? (
+                        <span className={cx('sales-was-now t-13', pr.price > it.lastPrice ? 'is-up' : 'is-down')}>
+                          <span className="was">{fmt.price(it.lastPrice)}</span>
+                          <ArrowRight />
+                          <span className="now">{fmt.price(pr.price)}</span>
+                        </span>
+                      ) : (
+                        <span className="w-700 t-13">{fmt.price(pr.price)}</span>
+                      )}
+                    </span>
+                  ) : null}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      ) : data.items.length ? (
         <div className="sales-modal-table">
           <table className="table table-dense">
             <thead>

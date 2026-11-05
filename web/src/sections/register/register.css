@@ -115,7 +115,11 @@
 }
 .reg-paym button:hover { background: var(--sub); }
 .reg-paym button svg { width: 20px; height: 20px; }
+.reg-paym button { position: relative; }
 .reg-paym button.is-active { background: var(--navy); border-color: var(--navy); color: var(--on-dark); }
+.reg-paym button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.reg-paym-kbd { position: absolute; top: 6px; right: 6px; height: 18px; padding: 0 5px; }
+.reg-paym button.is-active .reg-paym-kbd { background: transparent; border-color: var(--on-dark); color: var(--on-dark); }
 .reg-quick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sp-2); }
 .reg-change { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); padding: 12px 14px; border-radius: var(--r-md); background: var(--green-soft); color: var(--green-700); }
 .reg-change.is-short { background: var(--bad-soft); color: var(--bad); }
@@ -258,3 +262,24 @@
   .reg-hint-item:has(.kbd) { display: none; }
   .reg-recent .reg-col-contents { display: none; }
 }
+
+/* постоянный покупатель в чеке */
+.reg-client-bar {
+  flex: 0 0 auto; display: flex; align-items: center; gap: var(--sp-2); margin: 0 20px 4px; padding: 8px 12px;
+  border-radius: var(--r-md); background: var(--green-soft); color: var(--ink-2); font-size: var(--fs-13);
+}
+.reg-client-bar > svg { width: 15px; height: 15px; color: var(--green-700); flex: 0 0 auto; }
+.reg-print-sign { display: flex; justify-content: space-between; gap: 8px; padding-top: 14px; }
+
+/* закрытая смена */
+.reg-closed-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px; border-radius: var(--r-md); overflow: hidden; }
+.reg-closed-tile { background: var(--sub); padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.reg-closed-label { font-size: var(--fs-12); color: var(--muted); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.reg-closed-value { font-size: var(--fs-20); font-weight: 700; white-space: nowrap; }
+.reg-handover { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; padding: 12px 14px; border-radius: var(--r-md); background: var(--green-soft); }
+.reg-handover-text { flex: 1 1 auto; font-size: var(--fs-16); color: var(--ink); }
+.reg-handover-text b { font-weight: 700; }
+@media (max-width: 1360px) { .reg-closed-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.reg-left-btn { align-self: flex-start; margin-top: -8px; }
+.reg-day { display: inline-flex; align-items: center; gap: 4px; }
+.reg-day .input { width: 150px; }

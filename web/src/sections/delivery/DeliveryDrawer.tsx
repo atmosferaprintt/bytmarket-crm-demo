@@ -4,26 +4,50 @@ import type { EntityDrawerProps } from '../../shell/entities';
 import { EntityLink } from '../../shell/entities';
 import { useDB, useDBVersion } from '../../data/store';
 import { indexes, orderPayment } from '../../data/selectors';
-import type { Delivery, PackKey } from '../../data/types';
+import type { Delivery } from '../../data/types';
 import { PAY_METHOD_NAMES } from '../../data/types';
 import { useSession } from '../../roles/session';
 import { useScoped } from '../../roles/scope';
 import { Button, Chip, Drawer, EmptyState, MoreMenu, Notice, Steps, cx, fmt } from '../../ui';
-import { CallButton, LateChip, MapLink, PayChip, StateChip } from './parts';
-import { clockOf, dayLabel, deliveredAt, kgText, lastFail, placesText, telUrl } from './lib';
+import { CallButton, DelayChip, LateChip, MapLink, PayChip, StateChip } from './parts';
+import { clockOf, dayLabel, deliveredAt, kgText, lastFail, packText, placesText, telUrl, transferPending } from './lib';
 import { actsFor, useDeliveryFlow } from './flow';
 import './delivery.css';
 
-const PACK_SHORT: Record<PackKey, string> = { pcs: 'шт', pack: 'упак.', box: 'кор.' };
-
 function stepsOf(d: Delivery): { label: string; state: 'done' | 'current' | 'todo' }[] {
   const s = d.state;
-  const reached = s === 'waiting' ? 0 : s === 'assigned' ? 1 : s === 'on_way' ? 2 : s === 'delivered' ? 3 : 2;
+  // пока курьера нет — первый шаг «Ждёт курьера», а не «Назначена»
+  if (s === 'waiting') return [{ label: 'Ждёт курьера', state: 'current' }, { label: 'Назначена', state: 'todo' }, { label: 'В пути', state: 'todo' }, { label: 'Вручена', state: 'todo' }];
+  const reached = s === 'assigned' ? 1 : s === 'on_way' ? 2 : s === 'delivered' ? 3 : 2;
   const labels = ['Назначена', 'В пути', 'Вручена'];
   return labels.map((label, i) => ({
     label,
     state: i < reached ? 'done' : i === reached && s !== 'failed' && s !== 'returned' ? 'current' : 'todo',
   }));
+}
+
+/** История: попытки курьера и заметки (перенос с причиной, задержка, пожелание клиента) — по времени, свежие сверху. */
+type HistoryItem = { at: string; who: string; text: string | null; chip: { label: string; tone: 'ok' | 'bad' | 'warn' | 'info' | 'neutral' } };
+
+function historyOf(d: Delivery, name: (id: string) => string): HistoryItem[] {
+  const items: HistoryItem[] = d.attempts.map((a) => ({
+    at: a.at,
+    who: name(a.courierId),
+    text: a.reason,
+    chip: a.result === 'delivered' ? { label: 'Вручена', tone: 'ok' } : { label: 'Не удалось', tone: 'bad' },
+  }));
+  for (const n of d.notes ?? []) {
+    const chip: HistoryItem['chip'] = n.text.startsWith('Задерживается')
+      ? { label: 'Задержка', tone: 'warn' }
+      : n.text.startsWith('Перенесена')
+        ? { label: 'Перенос', tone: 'info' }
+        : n.text.startsWith('Клиент просит')
+          ? { label: 'Просьба клиента', tone: 'neutral' }
+          : { label: 'Заметка', tone: 'neutral' };
+    items.push({ at: n.at, who: name(n.actorId), text: n.text, chip });
+  }
+  // заметка с пожеланием пишется в ту же минуту, что и неудачная попытка, — она идёт сразу под ней
+  return items.sort((a, b) => b.at.localeCompare(a.at) || (a.chip.label === 'Не удалось' ? 1 : 0) - (b.chip.label === 'Не удалось' ? 1 : 0));
 }
 
 /** Карточка «Доставка» в боковой панели. Открывается из любого раздела через ?open=delivery:id */
@@ -55,11 +79,45 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
   const pay = order ? orderPayment(db, order) : null;
   const isCourier = role === 'courier';
   const fail = d.state === 'failed' ? lastFail(d) : null;
-  const acts = actsFor(d, can, { prefer: isCourier ? 'courier' : 'dispatch', order });
+  // «Позвонить курьеру» в карточке не нужен: телефон курьера — рядом с его именем
+  const acts0 = actsFor(d, can, { prefer: isCourier ? 'courier' : 'dispatch', order });
+  const allActs = acts0.all.filter((a) => a.key !== 'call');
+  const acts = { main: allActs[0] ?? null, more: allActs.slice(1) };
   const secondary = acts.more.slice(0, 2);
   const rest = acts.more.slice(2);
   const at = deliveredAt(d);
   const showCost = can('assignDelivery') || can('seeCost');
+  const nothingText = client && client.deferDays > 0 ? `Ничего — отсрочка ${client.deferDays} дн.` : pay && pay.due <= 0 ? 'Ничего — заказ оплачен' : 'Ничего';
+  const name = (eid: string) => ix.employees.get(eid)?.short ?? 'Сотрудник';
+  const history = historyOf(d, name);
+  const footer = acts.main ? (
+    isCourier ? (
+      <div className={cx('dl-dfoot', secondary.length === 1 && 'is-one')}>
+        <Button variant="primary" size="lg" block icon={acts.main.icon} onClick={() => flow.act(acts.main!, d)}>
+          {acts.main.label}
+        </Button>
+        {secondary.map((a) => (
+          <Button key={a.key} variant="secondary" size="lg" block icon={a.icon} onClick={() => flow.act(a, d)}>
+            {a.label}
+          </Button>
+        ))}
+      </div>
+    ) : (
+      <>
+        {secondary.map((a) => (
+          <Button key={a.key} variant={a.key === 'return' ? 'danger' : 'secondary'} icon={a.icon} onClick={() => flow.act(a, d)}>
+            {a.label}
+          </Button>
+        ))}
+        <span className="spacer" />
+        <Button variant="primary" icon={acts.main.icon} onClick={() => flow.act(acts.main!, d)}>
+          {acts.main.label}
+        </Button>
+      </>
+    )
+  ) : d.state === 'waiting' && !can('assignDelivery') ? (
+    <span className="t-13 muted">Курьера назначит диспетчер</span>
+  ) : undefined;
 
   return (
     <Drawer
@@ -72,10 +130,11 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
         </>
       }
       head={
-        <div className="col-3">
+        <div className="col-3 dl-dhead">
           <div className="chips">
             <StateChip d={d} size="lg" />
             <LateChip d={d} c={c} />
+            <DelayChip d={d} />
             {order && order.state !== 'cancelled' ? (
               <span className="dl-paychip" title="Доставка и оплата — разные вещи: вручённый заказ может быть не оплачен">
                 <span className="t-12 muted">Оплата заказа</span>
@@ -88,21 +147,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
       }
       actions={rest.length ? <MoreMenu items={flow.menu(rest, d)} /> : undefined}
       onClose={onClose}
-      footer={
-        acts.main ? (
-          <>
-            {secondary.map((a) => (
-              <Button key={a.key} variant={a.key === 'return' ? 'danger' : 'secondary'} icon={a.icon} onClick={() => flow.act(a, d)}>
-                {a.label}
-              </Button>
-            ))}
-            <span className="spacer" />
-            <Button variant="primary" icon={acts.main.icon} onClick={() => flow.act(acts.main!, d)}>
-              {acts.main.label}
-            </Button>
-          </>
-        ) : undefined
-      }
+      footer={footer}
     >
       {fail ? (
         <Notice tone="bad" title={`Не удалось: ${fail.reason}`}>
@@ -164,7 +209,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
         <Fact label="Вес" value={kgText(d.weightKg)} />
         <Fact label="Доставка для клиента" value={d.fee ? fmt.money(d.fee) : 'Бесплатно'} />
         {showCost ? <Fact label="Расход магазина" value={fmt.money(d.cost)} /> : null}
-        <Fact label="К получению" value={<span className={cx(d.collect > 0 && 'dl-strong')}>{d.collect > 0 ? fmt.money(d.collect) : 'Ничего'}</span>} />
+        <Fact label="К получению" value={<span className={cx(d.collect > 0 && 'dl-strong')}>{d.collect > 0 ? fmt.money(d.collect) : nothingText}</span>} />
         {d.state === 'delivered' ? (
           <Fact
             label="Получено"
@@ -174,6 +219,8 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
         {at ? <Fact label="Вручено" value={fmt.dateTime(at)} /> : null}
         {d.collectedMethod === 'cash' && d.collected > 0 ? (
           <Fact label="Деньги" value={d.handedIn ? <Chip tone="ok">Сданы в кассу</Chip> : <Chip tone="warn">На руках у курьера</Chip>} />
+        ) : d.collectedMethod === 'transfer' && d.collected > 0 ? (
+          <Fact label="Деньги" value={transferPending(db, d) ? <Chip tone="warn">Перевод ждёт банка</Chip> : <Chip tone="ok">Перевод пришёл</Chip>} />
         ) : null}
       </div>
 
@@ -200,12 +247,10 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
               return (
                 <div key={`${l.productId}-${i}`} className="dl-lines-row">
                   <span className="grow col" style={{ gap: 0, minWidth: 0 }}>
-                    <span className="w-600 ellipsis">{p?.name ?? 'Товар'}</span>
+                    <span className="w-600 dl-wrap">{p?.name ?? 'Товар'}</span>
                     <span className="t-12 muted">{p?.sku}</span>
                   </span>
-                  <span className="num t-13 nowrap">
-                    {l.pack === 'pcs' ? fmt.qty(l.qty) : `${l.packQty} ${PACK_SHORT[l.pack]} · ${fmt.qty(l.qty)}`}
-                  </span>
+                  <span className="num t-13 nowrap">{packText(l)}</span>
                   {!isCourier ? <span className="num w-600 dl-lines-sum">{fmt.money(l.qty * l.price)}</span> : null}
                 </div>
               );
@@ -222,17 +267,17 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
       ) : null}
 
       <section className="col-3">
-        <h3 className="dl-h3">История попыток</h3>
-        {d.attempts.length ? (
+        <h3 className="dl-h3">История</h3>
+        {history.length ? (
           <div className="dl-attempts">
-            {[...d.attempts].reverse().map((a, i) => (
-              <div key={`${a.at}-${i}`} className="dl-attempt">
-                <span className="num t-13 w-600 nowrap">{fmt.dateTime(a.at)}</span>
-                <span className="grow t-13">
-                  {ix.employees.get(a.courierId)?.short ?? 'Курьер'}
-                  {a.reason ? <span className="muted"> · {a.reason}</span> : null}
+            {history.map((h, i) => (
+              <div key={`${h.at}-${i}`} className="dl-attempt">
+                <span className="num t-13 w-600 nowrap">{fmt.dateTime(h.at)}</span>
+                <span className="grow t-13 dl-wrap">
+                  {h.who}
+                  {h.text ? <span className="muted"> · {h.text}</span> : null}
                 </span>
-                {a.result === 'delivered' ? <Chip tone="ok">Вручена</Chip> : <Chip tone="bad">Не удалось</Chip>}
+                <Chip tone={h.chip.tone}>{h.chip.label}</Chip>
               </div>
             ))}
           </div>

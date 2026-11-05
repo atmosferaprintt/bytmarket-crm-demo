@@ -23,6 +23,7 @@ import {
   minAllowedPrice,
   moveDoc,
   pct1,
+  promoFor,
   movesByProduct,
   promoState,
   promoValueText,
@@ -31,7 +32,7 @@ import {
   type CatalogMode,
   type CatalogRow,
 } from './lib';
-import { Bars, Block, FromTo, PriceCell, PromoChip, Qty, StockChip, Tiles, type BarDatum } from './bits';
+import { Bars, Block, FromTo, PriceCell, PromoChip, PromoPriceChip, Qty, StockChip, Tiles, type BarDatum } from './bits';
 import ProductForm from './ProductForm';
 import PriceModal from './PriceModal';
 
@@ -115,7 +116,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
           <div className="prd-drawer-head">
             <div className="prd-chips">
               <StockChip row={row} />
-              {row.promo && p.active ? <PromoChip promo={row.promo} /> : null}
+              {p.active && promoFor(row, mode) ? mode === 'sales' ? <PromoPriceChip info={row.wholesale} /> : <PromoChip promo={promoFor(row, mode)!} /> : null}
               {row.expirySoon && row.stock.nearestExpiry && !row.status?.label.startsWith('Срок') ? (
                 <Chip tone="warn" icon={<CalendarClock />}>
                   Срок до {fmt.date(row.stock.nearestExpiry)}
@@ -150,12 +151,14 @@ function variantPrice(db: DB, id: ID, mode: CatalogMode): number {
   return mode === 'sales' ? r.wholesale.price : r.retail.price;
 }
 
-function PriceTiles({ row }: { row: CatalogRow }) {
-  const { can } = useSession();
+function PriceTiles({ row, mode }: { row: CatalogRow; mode: CatalogMode }) {
+  const { can, role } = useSession();
   const p = row.p;
+  // представителю — одна цена: для опта, уже с акцией, если она ниже
+  if (role === 'rep') return <Tiles items={[{ label: 'Цена для опта', value: <PriceCell info={row.wholesale} strong /> }]} />;
   const items = [
     { label: 'Розница', value: <PriceCell info={row.retail} /> },
-    { label: 'Опт', value: <PriceCell info={row.wholesale} /> },
+    { label: mode === 'sales' ? 'Цена для опта' : 'Опт', value: <PriceCell info={row.wholesale} /> },
   ];
   if (can('seeCost')) {
     items.push({ label: 'Себестоимость', value: <>{p.cost === null ? 'не известна' : fmt.price(p.cost)}</> });
@@ -167,22 +170,23 @@ function PriceTiles({ row }: { row: CatalogRow }) {
 function StockTiles({ row, mode }: { row: CatalogRow; mode: CatalogMode }) {
   const s = row.stock;
   const availTile = { label: 'Доступно', value: <Qty v={row.available} strong />, title: 'Доступно = магазин + склад − резерв' };
+  // продавцу важно, что можно продать с кассы: магазин отдельно от склада
   if (mode === 'seller')
     return (
       <Tiles
         items={[
-          { label: 'В магазине', value: <Qty v={s.shop.available} /> },
-          availTile,
+          { label: 'В магазине', value: <Qty v={s.shop.available} strong />, title: 'Столько можно продать с кассы' },
+          { label: 'На складе', value: <Qty v={s.warehouse.available} />, title: 'Можно попросить склад перенести в магазин' },
           { label: 'Ожидается', value: fmt.num(s.expected) },
         ]}
       />
     );
+  // менеджеру и представителю — одно число, то же, что берёт заявка: склад минус резерв
   if (mode === 'sales')
     return (
       <Tiles
         items={[
-          availTile,
-          { label: 'На складе для опта', value: <Qty v={row.whAvailable} strong />, title: 'Склад − резерв: столько можно обещать оптом' },
+          { label: 'Можно заказать', value: <Qty v={row.whAvailable} strong />, title: 'Склад − резерв: столько берёт заявка и заказ' },
           { label: 'Ожидается', value: fmt.num(s.expected) },
         ]}
       />
@@ -231,7 +235,7 @@ function MainTab({ row, mode }: { row: CatalogRow; mode: CatalogMode }) {
   return (
     <>
       <Block title="Цены за штуку">
-        <PriceTiles row={row} />
+        <PriceTiles row={row} mode={mode} />
       </Block>
       <Block title="Остатки, шт">
         <StockTiles row={row} mode={mode} />
@@ -331,7 +335,9 @@ function MainTab({ row, mode }: { row: CatalogRow; mode: CatalogMode }) {
 function PricesTab({ row }: { row: CatalogRow }) {
   const db = useDB();
   const version = useDBVersion();
-  const { can } = useSession();
+  const { can, role } = useSession();
+  // представитель видит одну цену — для опта
+  const rep = role === 'rep';
   const seeCost = can('seeCost');
   const p = row.p;
   const ix = indexes(db);
@@ -340,9 +346,9 @@ function PricesTab({ row }: { row: CatalogRow }) {
     const today = db.meta.today;
     return db.promos
       .filter((pr) => promoState(pr, today) === 'active' || promoState(pr, today) === 'future')
-      .filter((pr) => promoApplies(db, pr, p, 'retail') || promoApplies(db, pr, p, 'wholesale'))
+      .filter((pr) => (!rep && promoApplies(db, pr, p, 'retail')) || promoApplies(db, pr, p, 'wholesale') || pr.id === row.wholesale.promo?.id)
       .sort((a, b) => (a.start < b.start ? -1 : 1));
-  }, [db, version, p]);
+  }, [db, version, p, rep, row.wholesale.promo]);
   const minPrice = minAllowedPrice(p.cost, db.settings.minMarginPct);
 
   return (
@@ -354,8 +360,8 @@ function PricesTab({ row }: { row: CatalogRow }) {
               <tr>
                 <th>Единица и штрихкод</th>
                 <th className="num prd-hide-phone">Штук</th>
-                <th className="num">Розница</th>
-                <th className="num">Опт</th>
+                {rep ? null : <th className="num">Розница</th>}
+                <th className="num">{rep ? 'Цена для опта' : 'Опт'}</th>
               </tr>
             </thead>
             <tbody>
@@ -366,7 +372,7 @@ function PricesTab({ row }: { row: CatalogRow }) {
                     <div className="t-12 muted">{pk.barcode}</div>
                   </td>
                   <td className="num prd-hide-phone">{fmt.num(pk.qty)}</td>
-                  <td className="num">{fmt.price(row.retail.price * pk.qty)}</td>
+                  {rep ? null : <td className="num">{fmt.price(row.retail.price * pk.qty)}</td>}
                   <td className="num">{fmt.price(row.wholesale.price * pk.qty)}</td>
                 </tr>
               ))}
@@ -376,8 +382,8 @@ function PricesTab({ row }: { row: CatalogRow }) {
       </Block>
       <Block title="Цены за штуку">
         <StatList>
-          <StatRow label="Розница" value={<PriceCell info={row.retail} />} />
-          <StatRow label="Опт" value={<PriceCell info={row.wholesale} />} />
+          {rep ? null : <StatRow label="Розница" value={<PriceCell info={row.retail} />} />}
+          <StatRow label={rep ? 'Цена для опта' : 'Опт'} value={<PriceCell info={row.wholesale} />} />
           {seeCost ? <StatRow label="Себестоимость" value={p.cost === null ? 'не известна' : fmt.price(p.cost)} /> : null}
           {seeCost ? <StatRow label="Наценка в рознице" value={pct1(markupPct(p.retailPrice, p.cost))} /> : null}
           {seeCost ? <StatRow label="Наценка в опте" value={pct1(markupPct(p.wholesalePrice, p.cost))} /> : null}

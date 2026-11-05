@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowDown,
+  ArrowRightLeft,
   ArrowUp,
   Check,
   ChevronDown,
@@ -39,6 +40,7 @@ import {
   cartName,
   categoryIcon,
   clientByCard,
+  clientPurchases,
   nbUnits,
   newKey,
   norm,
@@ -60,6 +62,7 @@ import { ClientPicker } from './ClientPicker';
 import { ReturnLookup, useOpenRefund } from './ReturnLookup';
 import { OpenShiftCard, ShiftBadge } from './ShiftParts';
 import { usePrintReceipt } from './Print';
+import { moveQty, openMoveTask, requestMoveToShop } from './moveRequest';
 import { PromoChip } from '../sales/parts';
 import { useMedia } from '../sales/lib';
 
@@ -113,6 +116,24 @@ function highlight(text: string, query: string): ReactNode {
   return out;
 }
 
+/** Ошибка у поля поиска: что не добавили и почему; иногда — одно действие, которое решает дело. */
+interface ScanErr {
+  text: string;
+  /** что отсканировали или ввели — показываем, раз поле уже очищено */
+  src?: string;
+  action?: { label: string; icon: ReactNode; run: () => void };
+}
+
+/** «штрихкод 4600…», «артикул БМ-00857», «„тайд“» */
+function srcLabel(src: string): string {
+  if (/^\d{8,14}$/.test(src)) return `штрихкод ${src}`;
+  if (/^бм-?\d+$/i.test(src)) return `артикул ${src.toUpperCase()}`;
+  return `«${src}»`;
+}
+
+const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
+const PRINT_KBD = isMac ? '⌘P' : 'Ctrl+P';
+
 interface Done {
   id: ID;
   number: number;
@@ -153,7 +174,17 @@ export default function SalePage() {
   const [query, setQuery] = useState('');
   const [hl, setHl] = useState(0);
   const [mult, setMult] = useState(1);
-  const [scanError, setScanError] = useState<string | null>(null);
+  const [scanError, setScanErrorState] = useState<ScanErr | null>(null);
+  /** Ошибка у поля: поле очищается, чтобы следующий скан не дописался к отклонённому коду. */
+  const setScanError = useCallback((e: string | ScanErr | null) => {
+    if (e === null) {
+      setScanErrorState(null);
+      return;
+    }
+    setScanErrorState(typeof e === 'string' ? { text: e } : e);
+    setQuery('');
+    setMult(1);
+  }, []);
   const [lineErrors, setLineErrors] = useState<Record<string, string>>({});
   const [lastKey, setLastKey] = useState<string | null>(null);
   const [done, setDone] = useState<Done | null>(null);
@@ -197,7 +228,15 @@ export default function SalePage() {
     [db, version, cart, pctOver, client, isOwner],
   );
   const reasonMissing = cart.discountPct > 0 && !cart.discountReason;
-  const canPay = !!shift && priced.lines.length > 0 && !pctOver && !reasonMissing;
+  const canPay = !!shift && priced.lines.length > 0;
+  const limitText = `Ваш лимит скидки — ${fmt.pct(discountLimit)}. Больше может дать только владелец.`;
+  const focusDiscount = (what: 'input' | 'select') =>
+    window.setTimeout(() => {
+      const el = document.querySelector<HTMLElement>(what === 'input' ? '.reg-disc input' : '.reg-disc select');
+      el?.focus();
+      if (el instanceof HTMLInputElement) el.select();
+    }, 0);
+  const clientStats = useMemo(() => (client ? clientPurchases(db, client.id) : null), [db, version, client]);
   const nextNumber = (db.counters['receipt'] ?? db.receipts.length) + 1;
 
   const inCart = (productId: ID, exceptKey?: string) =>
@@ -208,14 +247,29 @@ export default function SalePage() {
       return s + l.packQty * (pk?.qty ?? 1);
     }, 0);
 
-  const add = (productId: ID, pack: PackKey, n = mult) => {
+  /** Попросить склад перенести товар в магазин — задача сотруднику склада. */
+  const askMove = (productId: ID, want: number) => {
+    const p = indexes(db).products.get(productId);
+    if (!p) return;
+    const r = requestMoveToShop(getDB(), me.id, p, moveQty(getDB(), p, want));
+    if (!r.ok) {
+      toast(r.error, 'error');
+      return;
+    }
+    setScanError(null);
+    toast(r.text);
+    focusSearch();
+  };
+
+  /** Добавить в чек. src — что отсканировали или ввели: при отказе показываем его в тексте ошибки. */
+  const add = (productId: ID, pack: PackKey, n = mult, src?: string): string | undefined => {
     const it = catalog.byId.get(productId);
     if (!it) {
-      setScanError('Товар не найден или снят с продажи');
+      setScanError({ text: 'Товар не найден или снят с продажи', src });
       return;
     }
     if (!shift) {
-      setScanError('Сначала откройте смену — справа');
+      setScanError({ text: 'Смена закрыта — сначала откройте смену справа', src });
       return;
     }
     const pk = it.p.packs.find((x) => x.key === pack) ?? it.p.packs[0];
@@ -223,16 +277,39 @@ export default function SalePage() {
     const have = inCart(productId);
     const need = have + n * pk.qty;
     if (need > st.shop.available) {
+      const name = nbUnits(cartName(it.p));
+      const left = st.shop.available - have; // ещё можно продать из магазина, штук
+      const packWord = pk.key === 'box' ? 'Коробка' : 'Упаковка';
       if (st.shop.available <= 0) {
+        const wh = st.warehouse.available;
         setScanError(
-          st.warehouse.available > 0
-            ? `${it.p.name}: в магазине нет. На складе ${fmt.qty(st.warehouse.available)} — попросите склад перенести.`
-            : `${it.p.name}: нет в наличии ни в магазине, ни на складе.`,
+          wh > 0 && openMoveTask(db, productId)
+            ? { text: `${name}: в магазине нет. На складе ${fmt.qty(wh)} — склад уже попросили перенести.`, src }
+            : wh > 0
+            ? {
+                text: `${name}: в магазине нет. На складе ${fmt.qty(wh)}.`,
+                src,
+                action: { label: 'Попросить склад перенести', icon: <ArrowRightLeft />, run: () => askMove(productId, n * pk.qty) },
+              }
+            : { text: `${name}: нет ни в магазине, ни на складе.`, src },
         );
+      } else if (left <= 0) {
+        setScanError({ text: `${name}: в магазине ${fmt.qty(st.shop.available)}, все уже в чеке.`, src });
       } else {
-        setScanError(
-          `${it.p.name}: в магазине ${fmt.qty(st.shop.available)}${have ? `, в чеке уже ${fmt.qty(have)}` : ''}. Больше продать нельзя.`,
-        );
+        const shop = have ? `в магазине ${fmt.num(st.shop.available)}, в чеке уже ${fmt.num(have)}` : `в магазине ${fmt.num(st.shop.available)}`;
+        const head = pk.qty > 1 ? `${packWord}\u00a0=\u00a0${fmt.qty(pk.qty)}${n > 1 ? ` × ${n}` : ''}, ${shop}` : `${name}: нужно ${fmt.qty(n)}, ${shop}`;
+        setScanError({
+          text: `${pk.qty > 1 ? `${name}. ` : ''}${head}. Можно продать ${fmt.qty(left)}${pk.qty > 1 ? ' поштучно' : ''}.`,
+          src,
+          action: {
+            label: `Продать ${fmt.qty(left)}${pk.qty > 1 ? ' поштучно' : ''}`,
+            icon: <Plus />,
+            run: () => {
+              add(productId, 'pcs', left);
+              focusSearch();
+            },
+          },
+        });
       }
       return;
     }
@@ -365,7 +442,7 @@ export default function SalePage() {
       }
       const it = value ? list[hl] : undefined;
       if (it) {
-        const key = add(it.p.id, 'pcs', 1);
+        const key = add(it.p.id, 'pcs', 1, value);
         if (key) focusLineQty(key);
         return;
       }
@@ -382,28 +459,28 @@ export default function SalePage() {
       if (/^\d{8,14}$/.test(value)) {
         const hit = catalog.byBarcode.get(value);
         if (hit) {
-          add(hit.productId, hit.pack);
+          add(hit.productId, hit.pack, mult, value);
           return;
         }
         const c = clientByCard(db, value);
         if (c) {
-          setCart((x) => ({ ...x, clientId: c.id }));
+          setCart((x) => ({ ...x, clientId: c.id, discountReason: x.discountPct > 0 && !x.discountReason ? 'Постоянный покупатель' : x.discountReason }));
           setQuery('');
           setScanError(null);
-          toast(`Покупатель: ${c.name}`);
+          const st = clientPurchases(db, c.id);
+          toast(`Покупатель: ${c.name}${st.receipts ? ` · покупок на ${fmt.money(st.total)}` : ''}`);
           return;
         }
-        setScanError(`Штрихкод ${value} не найден в каталоге. Найдите товар по названию или артикулу.`);
-        setQuery('');
+        setScanError({ text: `Штрихкод ${value} не найден в каталоге. Найдите товар по названию или артикулу.` });
         return;
       }
       const bySku = catalog.bySku.get(norm(value));
       if (bySku) {
-        add(bySku, 'pcs');
+        add(bySku, 'pcs', mult, value);
         return;
       }
-      if (list[hl]) add(list[hl].p.id, 'pcs');
-      else setScanError(`По запросу «${value}» ничего нет. Проверьте название или отсканируйте штрихкод.`);
+      if (list[hl]) add(list[hl].p.id, 'pcs', mult, value);
+      else setScanError({ text: `По запросу «${value}» ничего нет. Проверьте название или отсканируйте штрихкод.` });
     }
   };
 
@@ -419,7 +496,16 @@ export default function SalePage() {
       focusSearch();
       return;
     }
-    if (pctOver || reasonMissing) return;
+    if (pctOver) {
+      toast(limitText, 'error');
+      focusDiscount('input');
+      return;
+    }
+    if (reasonMissing) {
+      toast('Выберите основание скидки', 'error');
+      focusDiscount('select');
+      return;
+    }
     setPayError(null);
     setPay({ key: newKey() });
   };
@@ -468,6 +554,12 @@ export default function SalePage() {
       return;
     }
     if (layer) return;
+    // «Оплачено»: Ctrl+P (⌘P) печатает этот чек, а не страницу
+    if ((e.metaKey || e.ctrlKey) && e.code === 'KeyP' && done && !cartRef.current.lines.length) {
+      e.preventDefault();
+      print(done.id);
+      return;
+    }
     const a = document.activeElement as HTMLElement | null;
     const typing = !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable);
     if (e.key === 'Escape' && !typing) {
@@ -574,8 +666,20 @@ export default function SalePage() {
               </span>
             </div>
             {scanError ? (
-              <div className="reg-scan-error">
-                <Notice tone="bad">{scanError}</Notice>
+              <div className="reg-scan-error" role="alert">
+                <Notice
+                  tone="bad"
+                  title={scanError.src ? `Не добавлено в чек: ${srcLabel(scanError.src)}` : undefined}
+                  action={
+                    scanError.action ? (
+                      <Button size="sm" icon={scanError.action.icon} onClick={scanError.action.run}>
+                        {scanError.action.label}
+                      </Button>
+                    ) : null
+                  }
+                >
+                  {scanError.text}
+                </Notice>
               </div>
             ) : null}
             {list.length ? (
@@ -690,6 +794,16 @@ export default function SalePage() {
               />
             </div>
 
+            {client && clientStats ? (
+              <div className="reg-client-bar" title={`Карта ${cardNumber(db, client)}`}>
+                <UserRound />
+                <span className="ellipsis">{clientStats.receipts ? 'Покупки по карте' : 'Постоянный покупатель'}</span>
+                <span className="spacer" />
+                <span className="num w-600 nowrap" title="Покупки по карте за вычетом возвратов">
+                  {clientStats.receipts ? `${fmt.money(clientStats.total)} · ${fmt.count(clientStats.receipts, 'чек', 'чека', 'чеков')}` : 'первая покупка'}
+                </span>
+              </div>
+            ) : null}
             <div className="reg-lines" ref={linesRef}>
               {priced.lines.length ? (
                 priced.lines.map((l) => (
@@ -719,7 +833,7 @@ export default function SalePage() {
                     <div className="t-13 muted">{done.card > 0 && done.cash > 0 ? 'Смешанная оплата' : done.card > 0 ? 'Оплачено картой' : 'Без сдачи'}</div>
                   )}
                   <div className="row" style={{ marginTop: 4 }}>
-                    <Button icon={<Printer />} onClick={() => print(done.id)}>
+                    <Button icon={<Printer />} kbd={PRINT_KBD} onClick={() => print(done.id)}>
                       Печать чека
                     </Button>
                     <Button variant="ghost" onClick={() => openEntity('receipt', done.id)}>
@@ -739,8 +853,15 @@ export default function SalePage() {
                 cart={cart}
                 limit={discountLimit}
                 amount={priced.discount}
-                onChange={(patch) => setCart((c) => ({ ...c, ...patch }))}
-                error={pctOver ? `Ваш лимит скидки — ${fmt.pct(discountLimit)}. Больше может дать только владелец.` : reasonMissing ? 'Выберите основание скидки' : null}
+                onChange={(patch) =>
+                  setCart((c) => {
+                    const next = { ...c, ...patch };
+                    // покупатель с картой: основание подставляем само, продавцу остаётся ввести процент
+                    if (next.clientId && next.discountPct > 0 && !next.discountReason && patch.discountReason === undefined) next.discountReason = 'Постоянный покупатель';
+                    return next;
+                  })
+                }
+                error={pctOver ? limitText : reasonMissing ? 'Выберите основание скидки' : null}
                 note={
                   cart.discountPct > 0 && !pctOver && priced.discountEligible === 0
                     ? 'Все товары в чеке уже по акции — скидка к ним не добавляется'
@@ -808,7 +929,9 @@ export default function SalePage() {
       {picker ? (
         <ClientPicker
           current={cart.clientId}
-          onPick={(id) => setCart((c) => ({ ...c, clientId: id }))}
+          onPick={(id) =>
+            setCart((c) => ({ ...c, clientId: id, discountReason: id && c.discountPct > 0 && !c.discountReason ? 'Постоянный покупатель' : c.discountReason }))
+          }
           onClose={() => {
             setPicker(false);
             focusSearch();

@@ -1,6 +1,6 @@
 /* Касса → Чеки: все чеки с поиском по номеру и составу, фильтрами, итогами и выгрузкой. */
-import { useMemo } from 'react';
-import { Printer, Undo2, ReceiptText } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Printer, Undo2, ReceiptText, X } from 'lucide-react';
 import type { Receipt } from '../../data/types';
 import { useDB, useDBVersion } from '../../data/store';
 import { indexes, shiftSummary } from '../../data/selectors';
@@ -8,7 +8,7 @@ import { useSession } from '../../roles/session';
 import { useScoped } from '../../roles/scope';
 import { PageHeader } from '../../shell/PageHeader';
 import { useOpenEntity } from '../../shell/entities';
-import { Chip, DataTable, MoreMenu, fmt, type Column } from '../../ui';
+import { Chip, DataTable, EmptyState, Input, MoreMenu, fmt, type Column, type FilterDef } from '../../ui';
 import { PAY_KIND_NAMES, openShift, payKind, receiptContents, receiptSearchText } from './lib';
 import { ShiftBadge } from './ShiftParts';
 import { useOpenRefund } from './ReturnLookup';
@@ -68,7 +68,12 @@ export default function ReceiptsPage() {
 
   const today = db.meta.today;
   const weekFrom = fmt.addDays(today, -6);
+  const yesterday = fmt.addDays(today, -1);
   const dayOf = (x: Row) => x.r.at.slice(0, 10);
+  // выбранный день: вместо таблеток периода — «Чеки за 4 ноября»
+  const [day, setDay] = useState('');
+  const firstDay = rows.length ? dayOf(rows[rows.length - 1]) : today;
+  const shown = useMemo(() => (day ? rows.filter((x) => dayOf(x) === day) : rows), [rows, day]);
 
   const columns: Column<Row>[] = [
     { key: 'number', header: 'Чек', render: (x) => <span className="cell-title nowrap">№ {x.r.number}</span>, sort: (x) => x.r.number },
@@ -153,20 +158,43 @@ export default function ReceiptsPage() {
       <div className={seeProfit ? 'reg-receipts is-wide' : 'reg-receipts'}>
       <DataTable<Row>
         id="register-receipts"
-        rows={rows}
+        rows={shown}
         columns={columns}
         rowKey={(x) => x.r.id}
-        search={{ placeholder: 'Номер чека или товар', text: (x) => x.text }}
+        search={{ placeholder: 'Номер, товар или дата 04.11', text: (x) => x.text }}
+        toolbar={
+          <span className="reg-day">
+            <Input
+              type="date"
+              aria-label="Чеки за день"
+              title="Чеки за выбранный день"
+              value={day}
+              min={firstDay}
+              max={today}
+              onChange={(e) => setDay(e.target.value)}
+            />
+            {day ? (
+              <button type="button" className="reg-icon-btn" aria-label="Все дни" title="Все дни" onClick={() => setDay('')}>
+                <X />
+              </button>
+            ) : null}
+          </span>
+        }
         filters={[
-          {
-            key: 'period',
-            label: 'Период',
-            options: [
-              { value: 'all', label: 'Все' },
-              { value: 'today', label: 'Сегодня', test: (x) => dayOf(x) === today },
-              { value: 'week', label: 'Неделя', test: (x) => dayOf(x) >= weekFrom },
-            ],
-          },
+          ...(day
+            ? []
+            : [
+                {
+                  key: 'period',
+                  label: 'Период',
+                  options: [
+                    { value: 'all', label: 'Все' },
+                    { value: 'today', label: 'Сегодня', test: (x: Row) => dayOf(x) === today },
+                    { value: 'yesterday', label: 'Вчера', test: (x: Row) => dayOf(x) === yesterday },
+                    { value: 'week', label: 'Неделя', test: (x: Row) => dayOf(x) >= weekFrom },
+                  ],
+                } as FilterDef<Row>,
+              ]),
           {
             key: 'kind',
             label: 'Вид',
@@ -185,7 +213,12 @@ export default function ReceiptsPage() {
         defaultSort={{ key: 'at', dir: 'desc' }}
         onRowClick={(x) => openEntity('receipt', x.r.id)}
         exportName="Чеки"
-        totalLabel={(n) => `Итого · ${fmt.count(n, 'чек', 'чека', 'чеков')}`}
+        totalLabel={(n) => `${day ? `За ${fmt.date(day)}` : 'Итого'} · ${fmt.count(n, 'чек', 'чека', 'чеков')}`}
+        empty={
+          day && !shown.length ? (
+            <EmptyState title={`За ${fmt.date(day)} чеков нет`}>{role === 'seller' ? 'В этот день вы не работали на кассе' : 'В этот день касса не работала'}</EmptyState>
+          ) : undefined
+        }
       />
       </div>
       {printNode}

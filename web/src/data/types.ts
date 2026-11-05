@@ -308,6 +308,7 @@ export interface Shift {
   closedAt: ISODateTime | null;
   openingCash: number; // размен на начало
   countedCash: number | null; // пересчитано при закрытии
+  diffReason?: string; // почему касса не сошлась — со слов продавца
 }
 
 export interface ReceiptLine {
@@ -530,6 +531,8 @@ export interface Delivery {
   notes?: DeliveryNote[];
   /** курьер задерживается: ожидаемое время приезда «15:30» */
   delayUntil?: string | null;
+  /** клиент просил привезти в другой день (отметка курьера при неудаче) */
+  wish?: { date: ISODate; interval: string } | null;
 }
 export interface DeliveryNote {
   at: ISODateTime;
@@ -583,8 +586,9 @@ export type TaskKind =
   | 'pick_order' // собрать заказ
   | 'assign_couriers' // назначить курьеров — когда ожидающих не осталось
   | 'failed_delivery' // решить по неудачной доставке
-  | 'courier_cash'; // принять деньги у курьера
-export const TASK_KINDS: TaskKind[] = ['approve_order', 'confirm_requests', 'send_invoice', 'remind_debt', 'call_debt', 'identify_payment', 'check_transfer', 'pay_supplier', 'move_to_shop', 'pick_order', 'assign_couriers', 'failed_delivery', 'courier_cash'];
+  | 'courier_cash' // принять деньги у курьера
+  | 'order_returned'; // менеджеру: владелец вернул заказ с причиной — закрывается подтверждением, отменой или новым запросом согласия
+export const TASK_KINDS: TaskKind[] = ['approve_order', 'confirm_requests', 'send_invoice', 'remind_debt', 'call_debt', 'identify_payment', 'check_transfer', 'pay_supplier', 'move_to_shop', 'pick_order', 'assign_couriers', 'failed_delivery', 'courier_cash', 'order_returned'];
 export interface Task {
   id: ID;
   title: string;

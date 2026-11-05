@@ -5,11 +5,11 @@ import type { EntityDrawerProps } from '../../shell/entities';
 import { EntityLink } from '../../shell/entities';
 import type { ID, ReturnReason } from '../../data/types';
 import { RETURN_REASONS } from '../../data/types';
-import { dispatch, useDB, useDBVersion } from '../../data/store';
+import { dispatch, getDB, useDB, useDBVersion } from '../../data/store';
 import { indexes, shiftSummary } from '../../data/selectors';
 import { useSession } from '../../roles/session';
 import { Button, Checkbox, Chip, Drawer, EmptyState, Field, Notice, QtyInput, Segmented, Select, StatList, StatRow, Textarea, cx, fmt, toast } from '../../ui';
-import { PAY_KIND_NAMES, SHOP_RETURN_REASONS, cardNumber, fixNo, openShift, packLabel, payKind, refundedByProduct } from './lib';
+import { PAY_KIND_NAMES, SHOP_RETURN_REASONS, cardNumber, fixNo, nbUnits, openShift, packLabel, payKind, refundedByProduct } from './lib';
 import { usePrintReceipt } from './Print';
 import { PromoStateChip } from '../sales/parts';
 import './register.css';
@@ -152,7 +152,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
                   <td>
                     {p ? (
                       <EntityLink type="product" id={p.id}>
-                        {p.name}
+                        {nbUnits(p.name)}
                       </EntityLink>
                     ) : (
                       'Товар'
@@ -269,7 +269,9 @@ function RefundForm({ receiptId, onCancel, onClose, meId }: { receiptId: ID; onC
   }, [db, version, r]);
 
   const [sel, setSel] = useState<Record<ID, number>>(() => (rows.length === 1 && rows[0].left > 0 ? { [rows[0].productId]: rows[0].left } : {}));
-  const [reason, setReason] = useState<ReturnReason>('not_fit');
+  // причину выбирает продавец: по ней склад решает, что делать с товаром
+  const [reason, setReason] = useState<ReturnReason | ''>('');
+  const [tried, setTried] = useState(false);
   const [method, setMethod] = useState<'cash' | 'card'>(r.card >= r.total ? 'card' : 'cash');
   const [comment, setComment] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -294,6 +296,12 @@ function RefundForm({ receiptId, onCancel, onClose, meId }: { receiptId: ID; onC
       setError('Отметьте товары, которые возвращает покупатель');
       return;
     }
+    if (!reason) {
+      setTried(true);
+      setError(null);
+      window.setTimeout(() => document.querySelector<HTMLSelectElement>('.reg-refund-reason select')?.focus(), 0);
+      return;
+    }
     setBusy(true);
     const res = dispatch(
       'receipt.refund',
@@ -310,7 +318,13 @@ function RefundForm({ receiptId, onCancel, onClose, meId }: { receiptId: ID; onC
       setError(fixNo(res.error));
       return;
     }
-    toast(res.info ? fixNo(res.info) : 'Возврат оформлен');
+    // номер возврата — номер чека возврата: тот же, что в карточке, в списке чеков и на печати
+    const back = getDB().receipts.find((x) => x.id === res.id);
+    toast(
+      back
+        ? `Возврат № ${back.number}: ${fmt.money(back.total)} ${back.card > 0 ? 'на карту' : 'наличными'}. Товар ушёл на проверку`
+        : 'Возврат оформлен. Товар ушёл на проверку',
+    );
     onCancel();
   };
 
@@ -359,7 +373,7 @@ function RefundForm({ receiptId, onCancel, onClose, meId }: { receiptId: ID; onC
                     />
                   </td>
                   <td>
-                    <div className="w-600">{p?.name ?? 'Товар'}</div>
+                    <div className="w-600">{p ? nbUnits(p.name) : 'Товар'}</div>
                     <div className="cell-sub">
                       {fmt.price(x.price)} за шт{x.left < x.qty ? ` · уже вернули ${fmt.qty(x.qty - x.left)}` : ''}
                     </div>
@@ -381,8 +395,13 @@ function RefundForm({ receiptId, onCancel, onClose, meId }: { receiptId: ID; onC
       </section>
 
       <div className="grid-2 reg-noshrink">
-        <Field label="Причина">
-          <Select value={reason} onChange={(e) => setReason(e.target.value as ReturnReason)} options={SHOP_RETURN_REASONS.map((k) => ({ value: k, label: RETURN_REASONS[k] }))} />
+        <Field label="Причина" className="reg-refund-reason" error={tried && !reason ? 'Выберите причину возврата' : undefined}>
+          <Select
+            value={reason}
+            placeholder="Выберите причину"
+            onChange={(e) => setReason(e.target.value as ReturnReason | '')}
+            options={SHOP_RETURN_REASONS.map((k) => ({ value: k, label: RETURN_REASONS[k] }))}
+          />
         </Field>
         <Field label="Деньги вернуть" error={methodError ?? undefined}>
           <Segmented<'cash' | 'card'>

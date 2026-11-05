@@ -1,6 +1,6 @@
 /* Карточка «Поставщик» в боковой панели: контакты, условия, закупки, долг и график платежей. */
 import { useMemo, useState } from 'react';
-import { Phone, Plus, Wallet } from 'lucide-react';
+import { FileText, Phone, Plus, Wallet } from 'lucide-react';
 import type { EntityDrawerProps } from '../../shell/entities';
 import { EntityLink, useOpenEntity } from '../../shell/entities';
 import { useDB, useDBVersion } from '../../data/store';
@@ -12,6 +12,7 @@ import { Button, Card, Chip, Drawer, EmptyState, Kpi, StatList, StatRow, StatusC
 import { purchaseRows } from './calc';
 import { PaySupplierModal } from './PaySupplierModal';
 import { NewPurchaseModal } from './NewPurchaseModal';
+import { ActModal } from './ActModal';
 import './purchases.css';
 
 export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
@@ -23,6 +24,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
   const ix = indexes(db);
   const [pay, setPay] = useState(false);
   const [create, setCreate] = useState(false);
+  const [actOpen, setActOpen] = useState(false);
   const s = ix.suppliers.get(id);
   const today = db.meta.today;
 
@@ -62,8 +64,13 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
         ) : undefined
       }
       footer={
-        can('createPurchase') || canPay ? (
+        can('createPurchase') || canPay || seeCost ? (
           <>
+            {seeCost ? (
+              <Button icon={<FileText />} onClick={() => setActOpen(true)}>
+                Акт сверки
+              </Button>
+            ) : null}
             <span className="spacer" />
             {can('createPurchase') ? (
               <Button variant={canPay ? 'secondary' : 'primary'} icon={<Plus />} onClick={() => setCreate(true)}>
@@ -184,6 +191,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
 
       {pay ? <PaySupplierModal supplierId={s.id} onClose={() => setPay(false)} /> : null}
       {create ? <NewPurchaseModal supplierId={s.id} onClose={() => setCreate(false)} /> : null}
+      {actOpen ? <ActModal s={s} onClose={() => setActOpen(false)} /> : null}
     </Drawer>
   );
 }

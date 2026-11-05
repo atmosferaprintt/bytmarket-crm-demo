@@ -1,6 +1,6 @@
 /* Вкладка «Чаты»: WhatsApp магазина. Живая переписка, автосообщения о заказах, вложения,
    разбор заказа из сообщения клиента. Пример подключения: сообщения хранятся в программе и наружу не уходят. */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, BellRing, Check, CheckCheck, FileSpreadsheet, FileText, ListPlus, MessageCircle, Paperclip, Plus, Send, Store, Zap } from 'lucide-react';
 import type { Chat, ChatMessage, ID } from '../../data/types';
@@ -11,11 +11,11 @@ import { useSession } from '../../roles/session';
 import { useScoped } from '../../roles/scope';
 import { EntityLink, useOpenEntity } from '../../shell/entities';
 import { PageHeader } from '../../shell/PageHeader';
-import { Avatar, Button, Card, Checkbox, Chip, EmptyState, MoreMenu, type MenuItem, Notice, ORDER_STATE, PAY_STATE, SearchInput, Segmented, StatList, StatRow, Textarea, cx, fmt, overdueStatus, StatusChip, toast } from '../../ui';
+import { Avatar, Button, Card, Checkbox, Chip, EmptyState, MoreMenu, type MenuItem, Notice, SearchInput, Segmented, StatList, StatRow, Textarea, cx, fmt, overdueStatus, StatusChip, toast } from '../../ui';
 import { NewOrderDrawer } from './NewOrderDrawer';
 import { useSalesOrders } from './salesScope';
-import { capitalize, fixNo, norm, useIsPhone } from './lib';
-import { shownOverdue } from './parts';
+import { approvalTask, capitalize, fixNo, norm, useIsPhone } from './lib';
+import { OrderBrief } from './parts';
 import { FileChip, SendInvoiceModal, SendWhatsAppModal, type SendWhatsAppProps } from './SendInvoiceModal';
 import { WA_AUTO_META, actFile, priceFile, textReminder, waReadState } from '../../data/whatsapp';
 import { parseOrderText, type ParsedOrder } from '../../data/orderText';
@@ -45,7 +45,8 @@ export default function ChatsPage() {
   const [params, setParams] = useSearchParams();
   const [q, setQ] = useState('');
   const [f, setF] = useState<Filter>('all');
-  const [onlyMine, setOnlyMine] = useState(false);
+  // менеджер по умолчанию видит переписку своих клиентов; флажок можно снять. Открыли чужого клиента по ссылке — показываем всех
+  const [onlyMine, setOnlyMine] = useState(() => isManager && !(params.get('client') && !isMine(params.get('client')!)));
   const [creating, setCreating] = useState<null | { lines?: { productId: ID; pack: 'pcs' | 'pack' | 'box'; packQty: number }[]; note?: { found: number; unsure: string[]; missed: string[] } }>(null);
   const [sendDialog, setSendDialog] = useState<null | Omit<SendWhatsAppProps, 'onClose'>>(null);
   const [invoiceFor, setInvoiceFor] = useState<ID | null>(null);
@@ -61,7 +62,9 @@ export default function ChatsPage() {
   const [selClient, setSelClient] = useState<ID | null>(() => {
     if (wantClient) return wantClient;
     if (phone) return null;
-    return (sorted.find((c) => c.unread > 0) ?? sorted[0])?.clientId ?? null;
+    const pool = isManager ? sorted.filter((c) => isMine(c.clientId)) : sorted;
+    const from = pool.length ? pool : sorted;
+    return (from.find((c) => c.unread > 0) ?? from[0])?.clientId ?? null;
   });
   useEffect(() => {
     if (wantClient && wantClient !== selClient) setSelClient(wantClient);
@@ -259,6 +262,14 @@ export default function ChatsPage() {
               attachments={attachments(selClient)}
               onParse={canWrite ? parseInto : undefined}
               onBack={phone ? () => pick(null) : undefined}
+              headAction={
+                phone && canWrite ? (
+                  // на телефоне «Создать заявку» — в шапке диалога: не закрывает поле ввода и «Отправить»
+                  <Button variant="primary" icon={<Plus />} onClick={() => setCreating({})} className="sales-conv-order" aria-label={can('createOrder') ? 'Создать заказ из чата' : 'Создать заявку из чата'}>
+                    {can('createOrder') ? 'Заказ' : 'Заявка'}
+                  </Button>
+                ) : undefined
+              }
             />
           ) : !phone ? (
             <Card>
@@ -296,13 +307,6 @@ export default function ChatsPage() {
         const o = db.orders.find((x) => x.id === invoiceFor);
         return o ? <SendInvoiceModal order={o} onClose={() => setInvoiceFor(null)} /> : null;
       })() : null}
-      {phone && selClient && canWrite ? (
-        <div className="sales-phone-chat-action">
-          <Button variant="primary" size="lg" block icon={<Plus />} onClick={() => setCreating({})}>
-            {can('createOrder') ? 'Создать заказ из чата' : 'Создать заявку из чата'}
-          </Button>
-        </div>
-      ) : null}
     </>
   );
 }
@@ -319,6 +323,7 @@ function Conversation({
   attachments,
   onParse,
   onBack,
+  headAction,
 }: {
   chat: Chat | null;
   clientId: ID;
@@ -326,6 +331,7 @@ function Conversation({
   attachments: MenuItem[];
   onParse?: (p: ParsedOrder) => void;
   onBack?: () => void;
+  headAction?: ReactNode;
 }) {
   const db = useDB();
   const version = useDBVersion();
@@ -399,9 +405,11 @@ function Conversation({
           ) : null}
           <div className="muted t-12 ellipsis">{contact ? `${contact.name}, ${contact.role.toLowerCase()} · ${fmt.phone(contact.phone)}` : fmt.phone(client?.phone)}</div>
         </div>
-        <Chip tone="green" icon={<MessageCircle />}>
-          WhatsApp
-        </Chip>
+        {headAction ?? (
+          <Chip tone="green" icon={<MessageCircle />}>
+            WhatsApp
+          </Chip>
+        )}
       </div>
       <div className="sales-conv-body" ref={scroller}>
         {!messages.length ? <div className="sales-day-sep">Переписки ещё не было — напишите первым</div> : null}
@@ -457,7 +465,7 @@ function Conversation({
               </button>
             ))}
           </div>
-          <div className="row" style={{ alignItems: 'flex-end' }}>
+          <div className="row sales-composer-row" style={{ alignItems: 'flex-end' }}>
             <MoreMenu items={attachments} icon={<Paperclip />} label="Отправить документ" align="start" />
             <Textarea
               className="sales-composer-input"
@@ -501,7 +509,7 @@ function ClientSide({ clientId, canOrder, orderLabel, onOrder, onClient }: { cli
       .map((o) => {
         const pay = orderPayment(db, o);
         const dl = o.deliveryId ? db.deliveries.find((x) => x.id === o.deliveryId) : undefined;
-        return { o, pay, overdue: shownOverdue(o, pay, dl) };
+        return { o, pay, dl, approval: o.state === 'request' && !!approvalTask(db, o.id) };
       });
     return { b, orders };
   }, [db, version, clientId, visible, role]);
@@ -531,17 +539,15 @@ function ClientSide({ clientId, canOrder, orderLabel, onOrder, onClient }: { cli
         <div className="col" style={{ gap: 6 }}>
           <div className="t-13 w-700">Последние заказы</div>
           {data.orders.length ? (
-            data.orders.map(({ o, pay, overdue }) => (
+            data.orders.map(({ o, pay, dl, approval }) => (
               <EntityLink key={o.id} type="order" id={o.id} className="sales-side-order">
                 <span className="row">
                   <span className="w-600">№ {o.number}</span>
                   <span className="muted t-12 grow">{fmt.date(o.createdAt)}</span>
                   <span className="num w-600">{fmt.money(o.total)}</span>
                 </span>
-                <span className="chips sales-chips-compact">
-                  <StatusChip s={ORDER_STATE[o.state]} />
-                  {overdue > 0 ? <StatusChip s={overdueStatus(overdue)} /> : (o.state === 'confirmed' || o.state === 'closed') && pay.amount > 0 ? <StatusChip s={PAY_STATE[pay.state]} /> : null}
-                </span>
+                {/* главный этап заказа и оплата: «Доставлен · Не оплачен», а не «Подтверждён» */}
+                <OrderBrief o={o} pay={pay} delivery={dl} rep={role === 'rep'} approval={approval} />
               </EntityLink>
             ))
           ) : (

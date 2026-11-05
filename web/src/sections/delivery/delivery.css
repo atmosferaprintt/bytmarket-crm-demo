@@ -256,7 +256,9 @@
 .dl-waiting-item:hover { background: var(--sub-hover); }
 
 /* ---------- деньги курьеров ---------- */
-.dl-cash-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: var(--sp-4); align-items: start; }
+.dl-cash-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-4); align-items: start; }
+/* «По курьерам» с колонкой «С прошлых дней» широкая: рядом со «Сдачами в кассу» — только на очень широком экране */
+@media (min-width: 1600px) { .dl-cash-grid { grid-template-columns: minmax(0, 1fr) 320px; } }
 
 /* ---------- рабочий стол диспетчера ---------- */
 .dl-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--sp-4); }
@@ -268,7 +270,6 @@
 .dl-home-sum { min-width: 92px; text-align: right; }
 
 @media (max-width: 1360px) {
-  .dl-cash-grid { grid-template-columns: minmax(0, 1fr) 280px; }
   .dl-kpis { gap: var(--sp-3); }
 }
 
@@ -360,3 +361,85 @@
 
 /* сводка курьера: «На руках, с 4 ноября» — подпись длиннее, колонке денег больше места */
 .dl-sum.is-cash-wide { grid-template-columns: minmax(0, 0.8fr) minmax(0, 0.8fr) minmax(0, 1.4fr); }
+
+/* ---------- доработки: курьер ---------- */
+.dl-wrap { white-space: normal; overflow-wrap: anywhere; }
+.dl-choice-sub { font-size: var(--fs-13); font-weight: 500; color: var(--muted); }
+.dl-choice.is-active .dl-choice-sub { color: var(--on-dark-muted); }
+.dl-nt-toggle.has-value { box-shadow: inset 0 0 0 1.5px var(--warn); }
+.dl-nt { display: flex; flex-direction: column; border-radius: var(--r-md); background: var(--sub); padding: 2px 12px; }
+.dl-nt-row { display: flex; align-items: center; gap: var(--sp-3); padding: 10px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.dl-nt-row:last-child { border-bottom: 0; }
+.dl-nt-name { font-size: var(--fs-14); font-weight: 600; line-height: var(--lh-tight); white-space: normal; overflow-wrap: anywhere; }
+.dl-nt .qty { height: 44px; border-radius: var(--r-sm); background: var(--panel); flex: 0 0 auto; }
+.dl-nt .qty button { width: 44px; }
+.dl-nt .qty input { width: 40px; font-size: var(--fs-16); }
+.dl-wish .dl-day { width: 100%; }
+.dl-wish .dl-day .seg { flex: 1 1 auto; }
+.dl-wish .dl-day .seg-item { flex: 1 1 0; justify-content: center; }
+.dl-wish .select { height: 44px; font-size: var(--fs-14); }
+
+.dl-soon { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sp-2); }
+.dl-soon-item {
+  min-height: 56px; padding: 6px 4px; border: 0; border-radius: var(--r-md); background: var(--field); color: var(--ink);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0;
+}
+.dl-soon-item:hover { background: var(--field-hover); }
+.dl-soon-item.is-active, .dl-soon-item.is-active:hover { background: var(--navy); color: var(--on-dark); }
+.dl-soon-time { font-size: var(--fs-16); font-weight: 700; }
+.dl-soon-sub { font-size: var(--fs-11); font-weight: 600; color: var(--muted); white-space: nowrap; }
+.dl-soon-item.is-active .dl-soon-sub { color: var(--on-dark-muted); }
+
+.dl-lines.is-phone .dl-lines-row { align-items: flex-start; padding: 12px 0; }
+
+.dl-cc-tools { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); }
+.dl-cc-tools.is-two { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.dl-cc-tools .btn-lg { height: 48px; padding: 0 12px; }
+
+.dl-empty-act { padding: 0 20px 20px; }
+.dl-board-toggle { padding-top: 10px; padding-bottom: 10px; }
+.dl-board-toggle-sub { font-size: var(--fs-13); font-weight: 600; color: var(--ink-2); white-space: normal; }
+
+/* сводка курьера: «Осталось · Вручено», ниже на всю ширину — на руках и откуда */
+.dl-sum.is-courier { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); row-gap: 12px; }
+.dl-sum.is-courier .dl-sum-item.is-hand { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--line); padding-top: 12px; margin: 0 14px; padding-left: 0; padding-right: 0; }
+.dl-sum-split { font-size: var(--fs-13); font-weight: 600; color: var(--ink-2); white-space: normal; }
+.dl-sum.is-wrap .dl-sum-item { justify-content: space-between; }
+.dl-sum.is-wrap .dl-sum-label { white-space: normal; line-height: var(--lh-tight); }
+
+/* крупно под палец на телефоне: вкладки, дни, закрыть, ссылки */
+@media (max-width: 760px) {
+  .dl-phone .page-head .tab { height: 44px; padding: 0 16px; font-size: var(--fs-14); }
+  .dl-phone .dl-cday .seg-item, .dl-phone .dl-day .seg-item, .dl-sheet .dl-day .seg-item { height: 44px; font-size: var(--fs-14); }
+  .dl-sheet .dl-day .dl-date { height: 44px; width: 150px; flex: 0 0 auto; }
+  .dl-sheet-close { width: 44px; height: 44px; flex: 0 0 auto; }
+  .dl-sheet-close svg { width: 22px; height: 22px; }
+  .dl-board-link { min-height: 44px; padding-top: 0; }
+  .drawer:has(.dl-dhead) .drawer-head > .btn-icon { width: 44px; height: 44px; flex: 0 0 auto; }
+  .drawer:has(.dl-dhead) .drawer-head > .btn-icon svg { width: 22px; height: 22px; }
+  .drawer:has(.dl-dhead) .drawer-foot { padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
+  .dl-soon-time { font-size: var(--fs-14); }
+}
+.dl-dfoot { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--sp-2); }
+.dl-dfoot > .btn:first-child { grid-column: 1 / -1; }
+.dl-dfoot.is-one > .btn:first-child { grid-column: auto; }
+
+/* ---------- доработки: диспетчер ---------- */
+.dl-when { display: grid; grid-template-columns: minmax(0, 1fr) 190px; gap: var(--sp-3); align-items: end; }
+.dl-when .dl-day { width: 100%; }
+.dl-when .dl-date { flex: 1 1 auto; min-width: 0; }
+.dl-pick-none {
+  width: 32px; height: 32px; border-radius: var(--r-full); flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center; background: var(--panel); color: var(--muted);
+}
+.dl-pick-none svg { width: 16px; height: 16px; }
+.dl-bulk-iv { width: 150px; flex: 0 0 auto; }
+.dl-bulk-iv .select { height: var(--control-h-sm); font-size: var(--fs-12); }
+.dl-home-row.is-top { align-items: flex-start; }
+.dl-home-row.is-top .dl-line-no { padding-top: 2px; }
+.dl-home-chips { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: 0 0 auto; }
+.dl-route-gap { height: 12px; }
+
+@media (max-width: 760px) {
+  .dl-when { grid-template-columns: minmax(0, 1fr); }
+}

@@ -116,10 +116,6 @@
 .sales-saved svg { width: 14px; height: 14px; color: var(--ok); }
 .sales-saved.is-idle svg { color: var(--faint); }
 .sales-editor-foot { display: flex; align-items: center; gap: var(--sp-2); width: 100%; }
-.sales-editor-foot.is-phone { flex-wrap: wrap; }
-.sales-editor-foot.is-phone > .spacer { display: none; }
-.sales-editor-foot.is-phone > .sales-saved { display: none; }
-.sales-editor-foot.is-phone > .btn { flex: 1 1 100%; }
 
 .sales-line-cards { display: flex; flex-direction: column; gap: var(--sp-2); }
 .sales-line-card { background: var(--sub); border-radius: var(--r-md); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
@@ -182,6 +178,9 @@
 .sales-mini-empty { padding-top: 10px; }
 .sales-phone-line { align-items: flex-start; gap: var(--sp-3); }
 .sales-wrap-value { white-space: normal; text-align: right; display: inline-block; }
+.sales-steps-row { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; }
+.sales-reasons { display: flex; flex-wrap: wrap; gap: 8px; }
+.sales-reasons .sales-reason { height: 32px; padding: 0 12px; font-size: var(--fs-13); }
 .sales-history { display: flex; flex-direction: column; }
 .sales-history-row { display: flex; align-items: baseline; gap: var(--sp-3); padding: 7px 0; border-bottom: 1px solid var(--line); font-size: var(--fs-13); }
 .sales-history-row:last-child { border-bottom: 0; }
@@ -234,7 +233,6 @@
   border: 0; text-align: left; color: inherit; width: 100%; cursor: pointer;
 }
 .sales-side-order:hover { background: var(--sub-hover); }
-.sales-phone-chat-action { position: sticky; bottom: 76px; z-index: 2; }
 
 /* ---------- рабочий стол менеджера ---------- */
 .sales-home { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: var(--sp-5); align-items: start; }
@@ -294,3 +292,62 @@
 /* рабочий стол менеджера: «Пропустили привычный заказ» без строк — одна строка */
 .sales-missed-none { display: flex; align-items: center; gap: 10px; padding: 14px 20px; font-size: var(--fs-14); color: var(--ink-2); }
 .sales-missed-none svg { width: 18px; height: 18px; color: var(--ok); flex: 0 0 auto; }
+
+/* выбор клиента: чужой клиент — видно, кто ведёт */
+.sales-picker .list-row.sales-picker-foreign { cursor: default; color: var(--muted); }
+.sales-picker .list-row.sales-picker-foreign:hover { background: transparent; }
+.sales-picker-foreign .w-600 { color: var(--ink-2); }
+.sales-picker-note { padding: 10px 16px 12px; }
+/* точка клиента в окне заказа — целиком, в две строки при длинном адресе */
+.sales-static.sales-static-wrap { white-space: normal; line-height: 1.35; padding-top: 8px; padding-bottom: 8px; }
+/* подвал заявки на телефоне: «⋯», итог и главная кнопка в одну строку */
+.sales-editor-foot.is-phone { flex-wrap: nowrap; gap: 10px; }
+.sales-editor-foot.is-phone > .btn-icon { width: 44px; height: 44px; flex: 0 0 44px; }
+.sales-editor-foot.is-phone > .btn-primary { flex: 1 1 auto; min-width: 0; }
+.sales-foot-total { display: flex; flex-direction: column; gap: 0; line-height: 1.2; white-space: nowrap; }
+
+/* подбор товара на телефоне: название в две строки, наличие и цена под ним */
+.sales-suggest-row.is-phone { flex-direction: column; align-items: stretch; gap: 3px; padding: 10px 10px; border-bottom: 1px solid var(--line); border-radius: 0; }
+.sales-suggest-row.is-phone:last-child { border-bottom: 0; }
+.sales-suggest-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: var(--fs-14); font-weight: 600; line-height: 1.3; color: var(--ink); }
+.sales-suggest-foot { display: flex; align-items: center; gap: 8px; min-height: 22px; }
+.sales-suggest-foot .sales-price { flex-direction: row-reverse; align-items: baseline; gap: 6px; }
+@media (max-width: 760px) { .sales-suggest { max-height: 56vh; } }
+
+/* «Из прошлых заказов» на телефоне */
+.sales-hist-cards { display: flex; flex-direction: column; gap: 8px; }
+.sales-hist-card { display: flex; align-items: flex-start; gap: 12px; padding: 12px; border-radius: var(--r-md); background: var(--sub); cursor: pointer; min-height: 44px; }
+.sales-hist-card.is-on { background: var(--row-selected); }
+.sales-hist-card.is-off { cursor: default; opacity: 0.7; }
+.sales-hist-check { width: 20px; height: 20px; margin: 1px 0 0; accent-color: var(--green-600); pointer-events: none; flex: 0 0 auto; }
+.sales-hist-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1 1 auto; }
+
+/* рабочий стол менеджера: строки-ссылки */
+a.list-row.sales-stage-row { color: inherit; text-decoration: none; }
+a.list-row.sales-stage-row:hover, button.list-row.sales-req-row:hover { background: var(--row-hover); }
+button.list-row.sales-req-row { width: 100%; border: 0; border-bottom: 1px solid var(--line); background: transparent; text-align: left; color: inherit; cursor: pointer; min-width: 0; }
+button.list-row.sales-req-row:last-child { border-bottom: 0; }
+.sales-req-row > .grow { min-width: 0; }
+.sales-req-chips { margin-top: 6px; }
+/* список заказов: открыт с рабочего стола с этапом */
+.sales-stage-filter { display: inline-flex; align-items: center; gap: 6px; }
+
+/* чаты: фильтры списка диалогов во всю ширину колонки — «Ждут ответа» не обрезается на 1280 */
+.sales-chat-list-head .seg { align-self: stretch; display: flex; }
+.sales-chat-list-head .seg-item { flex: 1 1 auto; justify-content: center; padding: 0 8px; }
+@media (max-width: 1360px) {
+  .sales-chat-list-head .seg-item { padding: 0 6px; gap: 4px; }
+}
+/* телефон: «Создать заявку» в шапке диалога, поле ввода и кнопки не меньше 44 px */
+.sales-conv-order { flex: 0 0 auto; height: 44px; }
+.sales-chats.is-phone .sales-conv-head { padding: 10px 12px; gap: 10px; }
+.sales-chats.is-phone .sales-conv-head .btn-icon { width: 44px; height: 44px; flex: 0 0 44px; margin-left: -6px; }
+.sales-chats.is-phone .sales-composer { padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
+.sales-chats.is-phone .sales-composer-row { gap: 8px; }
+.sales-chats.is-phone .sales-composer-row .btn-icon { width: 44px; height: 44px; flex: 0 0 44px; }
+.sales-chats.is-phone .sales-quick .chip { height: 32px; }
+/* телефон: кнопки подвала карточки заказа не меньше 44 px */
+@media (max-width: 760px) {
+  .sales-card-foot .btn { height: 44px; }
+  .sales-card-foot .btn-icon { width: 44px; }
+}

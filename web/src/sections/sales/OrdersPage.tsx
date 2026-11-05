@@ -1,6 +1,7 @@
 /* Вкладка «Заказы»: таблица оптовых заказов, на телефоне представителя — карточки. */
 import { useMemo, useState } from 'react';
-import { Plus, Send } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { Plus, Send, X } from 'lucide-react';
 import type { Client, ClientPoint, Delivery, Employee, Order } from '../../data/types';
 import { useDB, useDBVersion } from '../../data/store';
 import { indexes, orderPayment, type OrderPayment } from './data';
@@ -11,6 +12,7 @@ import { PageHeader } from '../../shell/PageHeader';
 import {
   Button,
   Card,
+  Chip,
   DataTable,
   EmptyState,
   ORDER_STATE,
@@ -27,8 +29,11 @@ import {
   type FilterDef,
 } from '../../ui';
 import { NewOrderDrawer } from './NewOrderDrawer';
-import { Dash, OrderChips, deliveryFailed, shipStatus, shownOverdue } from './parts';
-import { norm, useIsPhone, useMedia } from './lib';
+import { APPROVAL_STATUS, Dash, NOT_SENT, OrderBrief, WAITS_MANAGER, deliveryFailed, shipStatus, shownOverdue } from './parts';
+import { WORK_STAGES, norm, useIsPhone, useMedia } from './lib';
+import { useOffline } from './offline';
+
+const NONE: string[] = [];
 import { useTabCounts } from './tabCounts';
 
 export interface OrderRow {
@@ -41,6 +46,8 @@ export interface OrderRow {
   /** доставка не удалась — заказ не закончен, просрочку не показываем */
   failed: boolean;
   overdue: number;
+  /** ждёт решения владельца: открыта задача «согласовать заказ» */
+  approval: boolean;
   text: string;
 }
 
@@ -53,6 +60,7 @@ export function useOrderRows(): OrderRow[] {
   return useMemo(() => {
     const idx = indexes(db);
     const dById = new Map(db.deliveries.map((d) => [d.id, d]));
+    const approvals = new Set(db.tasks.filter((t) => t.kind === 'approve_order' && t.state === 'open' && t.link?.type === 'order').map((t) => t.link!.id));
     return orders
       .map((o) => {
         const client = idx.clients.get(o.clientId);
@@ -69,6 +77,7 @@ export function useOrderRows(): OrderRow[] {
           delivery,
           failed: deliveryFailed(o, delivery),
           overdue: shownOverdue(o, pay, delivery),
+          approval: o.state === 'request' && approvals.has(o.id),
           text: [`№${o.number}`, `№ ${o.number}`, String(o.number), client?.name ?? '', client?.phone ?? '', point?.name ?? '', point?.address ?? '', owner?.name ?? ''].join(' '),
         };
       })
@@ -107,6 +116,30 @@ export default function OrdersPage() {
   const ownerColumn = showOwner && !narrow;
   const ownerInSub = showOwner && narrow;
   const allLabel = role === 'manager' || role === 'rep' ? 'Все мои' : 'Все';
+  const offline = useOffline();
+  const queued = isRep ? offline.queued : NONE;
+  // заявка у владельца — «На согласовании у владельца», у представителя своя заявка — «Ждёт менеджера»
+  const stateDef = (r: OrderRow) => (r.o.state === 'request' && r.approval ? APPROVAL_STATUS : r.o.state === 'request' && isRep ? WAITS_MANAGER : ORDER_STATE[r.o.state]);
+
+  // ?stage=… — пришли с рабочего стола по строке «Мои заказы в работе»
+  const [params, setParams] = useSearchParams();
+  const stageKey = params.get('stage');
+  const stage = WORK_STAGES.find((x) => x.key === stageKey);
+  const shownRows = useMemo(() => (stage ? rows.filter((r) => stage.test(r.o, r.delivery)) : rows), [rows, stage]);
+  const clearStage = () => {
+    params.delete('stage');
+    setParams(params, { replace: true });
+  };
+  const stageChip = stage ? (
+    <span className="sales-stage-filter">
+      <Chip tone="info">
+        {stage.label} · {fmt.num(shownRows.length)}
+      </Chip>
+      <Button size="sm" variant="ghost" icon={<X />} onClick={clearStage}>
+        Показать все
+      </Button>
+    </span>
+  ) : null;
 
   const filters = useMemo<FilterDef<OrderRow>[]>(() => {
     const opts: FilterDef<OrderRow>['options'] = [{ value: 'all', label: allLabel }];
@@ -191,8 +224,13 @@ export default function OrdersPage() {
         key: 'state',
         header: 'Заказ',
         sort: (r) => ['draft', 'request', 'confirmed', 'closed', 'cancelled'].indexOf(r.o.state),
-        csv: (r) => ORDER_STATE[r.o.state].label,
-        render: (r) => <StatusChip s={ORDER_STATE[r.o.state]} />,
+        csv: (r) => stateDef(r).label,
+        render: (r) => (
+          <span className="chips">
+            <StatusChip s={stateDef(r)} />
+            {queued.includes(r.o.id) ? <StatusChip s={NOT_SENT} /> : null}
+          </span>
+        ),
       },
       {
         key: 'pick',
@@ -233,7 +271,7 @@ export default function OrdersPage() {
         total: (rs) => fmt.money(rs.reduce((s, r) => s + r.pay.debt, 0)),
       },
     ],
-    [ownerColumn, ownerInSub, today, role, me.id],
+    [ownerColumn, ownerInSub, today, role, me.id, queued, isRep],
   );
 
   const search = useMemo(() => ({ placeholder: 'Номер, клиент, телефон или адрес', text: (r: OrderRow) => r.text }), []);
@@ -258,12 +296,14 @@ export default function OrdersPage() {
     <>
       <PageHeader section="sales" actions={actions} counts={counts} />
       {phone ? (
-        <PhoneOrders rows={rows} onOpen={(r) => openEntity('order', r.o.id)} />
+        <PhoneOrders rows={rows} queued={queued} onOpen={(r) => openEntity('order', r.o.id)} />
       ) : (
         <div className="sales-orders">
         <DataTable
+          key={stageKey ?? 'all'}
           id={`sales-orders-${role}`}
-          rows={rows}
+          rows={shownRows}
+          toolbar={stageChip}
           columns={columns}
           rowKey={(r) => r.o.id}
           search={search}
@@ -285,7 +325,7 @@ export default function OrdersPage() {
 
 /* ---------- телефон представителя: карточки ---------- */
 
-function PhoneOrders({ rows, onOpen }: { rows: OrderRow[]; onOpen: (r: OrderRow) => void }) {
+function PhoneOrders({ rows, queued, onOpen }: { rows: OrderRow[]; queued: string[]; onOpen: (r: OrderRow) => void }) {
   const [q, setQ] = useState('');
   const { role } = useSession();
   const [f, setF] = useState<'all' | 'request' | 'work' | 'wait' | 'shipped'>('all');
@@ -332,7 +372,8 @@ function PhoneOrders({ rows, onOpen }: { rows: OrderRow[]; onOpen: (r: OrderRow)
             </div>
             <div className="w-600 t-14 ellipsis">{r.client?.name}</div>
             <div className="muted t-12 ellipsis">{r.point?.address ?? ''}</div>
-            <OrderChips o={r.o} pay={r.pay} delivery={r.delivery} />
+            {/* не больше трёх чипов: этап, оплата или просрочка, «Не отправлена» */}
+            <OrderBrief o={r.o} pay={r.pay} delivery={r.delivery} rep={role === 'rep'} approval={r.approval} extra={queued.includes(r.o.id) ? <StatusChip s={NOT_SENT} /> : null} />
             {r.pay.debt > 0 ? (
               <div className={cx('t-13 w-600', r.overdue > 0 ? 'c-bad' : 'ink-2')}>
                 Долг {fmt.money(r.pay.debt)}

@@ -161,7 +161,7 @@ export function buildChats(db: DB, rng: Rng, metas: ClientMeta[]): void {
         `${first(c)}, добрый день! Напоминаю про оплату${o ? ` по заказу № ${o.number}` : ''}: ${rub(b.overdue)}, срок оплаты прошёл ${b.maxOverdueDays} ${plural(b.maxOverdueDays, 'день', 'дня', 'дней')} назад. Акт сверки во вложении`,
         s,
         o?.id ?? null,
-        i === 0 ? { file: actFile(plusDays(today, -(2 + i))) } : {},
+        i === 0 ? { file: actFile(plusDays(today, -(2 + i))), purpose: 'reminder' as const } : { purpose: 'reminder' as const },
       ),
       msg(t(2 + i, 12 * 60 + 40), 'client', 'Добрый. Да, помню, на этой неделе закроем'),
     ];
@@ -326,6 +326,8 @@ interface TaskDraft {
   kind?: TaskKind;
   /** кто поставил (по умолчанию — владелец или руководитель) */
   author?: ID;
+  /** когда поставили (по умолчанию — вчера вечером или сегодня утром) */
+  at?: ISODateTime;
 }
 
 export function buildTasks(db: DB, rng: Rng, meta: ProdMeta[]): void {
@@ -416,9 +418,10 @@ export function buildTasks(db: DB, rng: Rng, meta: ProdMeta[]): void {
       link: { type: 'order', id: ask.id },
       priority: 'high',
       kind: 'approve_order',
+      // после того как заявку оформили: менеджер посмотрел и запросил согласие
+      at: (() => { const m0 = ask.createdAt.slice(0, 10) === today ? +ask.createdAt.slice(11, 13) * 60 + +ask.createdAt.slice(14, 16) : 9 * 60; return atTime(today, Math.min(13 * 60 + 59, m0 + 12)); })(),
     });
-    const created = ask.createdAt.slice(0, 10) === today ? +ask.createdAt.slice(11, 13) * 60 + +ask.createdAt.slice(14, 16) : 0;
-    ask.history.push({ at: atTime(today, Math.max(11 * 60 + 20, Math.min(13 * 60 + 55, created + 15))), actorId: mgr, text: 'Отправлен владельцу на согласование: у клиента просрочка' });
+    // «Отправлен владельцу на согласование» пишет в историю заказа сама задача вида approve_order
   }
   add(todayTasks, { who: E.owner, title: 'Посмотреть, как идёт акция «Осенняя стирка»: порошки к середине ноября', time: '16:00' });
   add(todayTasks, { who: E.owner, title: 'Подписать продление аренды склада на 2027 год', time: '12:00' });
@@ -554,5 +557,8 @@ export function buildTasks(db: DB, rng: Rng, meta: ProdMeta[]): void {
     });
   }
   for (const t of overdueTasks) create(t, plusDays(today, -rng.int(1, 3)), atTime(plusDays(today, -rng.int(4, 6)), 10 * 60 + i++));
-  for (const t of todayTasks) create(t, today, rng.chance(0.5) ? atTime(yesterday, 17 * 60 + rng.int(0, 60)) : atTime(today, 8 * 60 + rng.int(0, 50)));
+  for (const t of todayTasks) {
+    const when = rng.chance(0.5) ? atTime(yesterday, 17 * 60 + rng.int(0, 60)) : atTime(today, 8 * 60 + rng.int(0, 50));
+    create(t, today, t.at ?? when);
+  }
 }

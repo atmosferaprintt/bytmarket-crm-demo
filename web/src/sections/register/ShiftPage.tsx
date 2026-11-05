@@ -1,16 +1,21 @@
 /* Касса → Смена: текущая смена, закрытие с пересчётом наличных, архив смен. */
 import { useMemo, useState } from 'react';
-import { ReceiptText } from 'lucide-react';
+import { LockKeyholeOpen, Printer, ReceiptText } from 'lucide-react';
 import type { Shift } from '../../data/types';
 import { dispatch, useDB, useDBVersion } from '../../data/store';
 import { indexes, shiftSummary, type ShiftSummary } from '../../data/selectors';
 import { useSession } from '../../roles/session';
 import { PageHeader } from '../../shell/PageHeader';
 import { useOpenEntity } from '../../shell/entities';
-import { Button, Card, Chip, ConfirmButton, DataTable, Drawer, EmptyState, Field, Kpi, MoneyInput, Notice, StatList, StatRow, fmt, toast, type Column } from '../../ui';
+import { Button, Card, Chip, ConfirmButton, DataTable, Drawer, EmptyState, Field, Input, Kpi, MoneyInput, Notice, StatList, StatRow, cx, fmt, toast, type Column } from '../../ui';
 import { OpenShiftCard, ShiftBadge } from './ShiftParts';
 import { useMedia } from '../sales/lib';
 import { PAY_KIND_NAMES, fixNo, openShift, payKind, receiptContents, receiptsOfShift } from './lib';
+import { handOver, usePrintShift } from './Print';
+
+/** Выручка смены — продажи за вычетом возвратов: ровно наличные плюс карта. */
+const netOf = (sum: ShiftSummary) => sum.total - sum.refunds;
+const signed = (d: number) => (d === 0 ? '0 ₽' : `${d > 0 ? '+' : '−'}${fmt.money(Math.abs(d))}`);
 
 interface Row {
   s: Shift;
@@ -32,7 +37,10 @@ export default function ShiftPage() {
   const sum = shift ? shiftSummary(db, shift.id) : null;
   const [counted, setCounted] = useState<number | ''>('');
   const [error, setError] = useState<string | null>(null);
-  const [closed, setClosed] = useState<{ number: number; info: string; diff: number } | null>(null);
+  // только что закрытая смена: показываем итог, новую смену открываем отдельной кнопкой
+  const [closedId, setClosedId] = useState<string | null>(null);
+  const [opening, setOpening] = useState(false);
+  const [printShift, printNode] = usePrintShift();
   const [view, setView] = useState<Shift | null>(null);
   const phone = useMedia('(max-width: 760px)');
 
@@ -53,6 +61,7 @@ export default function ShiftPage() {
     return undefined;
   }, [db, version, role, me.id]);
   const diff = sum && counted !== '' ? Number(counted) - sum.expectedCash : null;
+  const [diffReason, setDiffReason] = useState('');
 
   const close = () => {
     if (!shift || counted === '') {
@@ -60,16 +69,18 @@ export default function ShiftPage() {
       return;
     }
     const n = shift.number;
-    const r = dispatch('shift.close', { shiftId: shift.id, countedCash: Number(counted) }, me.id);
+    const r = dispatch('shift.close', { shiftId: shift.id, countedCash: Number(counted), ...(diffReason.trim() ? { diffReason: diffReason.trim() } : {}) }, me.id);
     if (!r.ok) {
       setError(fixNo(r.error));
       return;
     }
-    const info = r.info ? fixNo(r.info) : 'Смена закрыта';
+    const info = r.info ? fixNo(r.info) : '';
     setError(null);
-    setClosed({ number: n, info, diff: diff ?? 0 });
+    setClosedId(shift.id);
+    setOpening(false);
     setCounted('');
-    toast(`Смена № ${n} закрыта. ${r.info ? info : ''}`.trim());
+    setDiffReason('');
+    toast(`Смена № ${n} закрыта${info ? `. ${info}` : ''}`);
   };
 
   const columns: Column<Row>[] = [
@@ -78,7 +89,19 @@ export default function ShiftPage() {
     { key: 'seller', header: 'Продавец', render: (x) => <span className="nowrap">{x.seller}</span>, sort: (x) => x.seller, hidden: role === 'seller' },
     { key: 'time', header: 'Время', render: (x) => <span className="num nowrap">{fmt.time(x.s.openedAt)}–{x.s.closedAt ? fmt.time(x.s.closedAt) : 'сейчас'}</span>, csv: (x) => `${fmt.time(x.s.openedAt)}–${x.s.closedAt ? fmt.time(x.s.closedAt) : ''}` },
     { key: 'receipts', header: 'Чеков', align: 'right', render: (x) => fmt.num(x.sum.receipts), sort: (x) => x.sum.receipts, total: (rs) => fmt.num(rs.reduce((a, x) => a + x.sum.receipts, 0)) },
-    { key: 'total', header: 'Выручка', align: 'right', render: (x) => <span className="w-600">{fmt.money(x.sum.total)}</span>, sort: (x) => x.sum.total, total: (rs) => fmt.money(rs.reduce((a, x) => a + x.sum.total, 0)) },
+    {
+      key: 'total',
+      header: 'Выручка',
+      align: 'right',
+      render: (x) => (
+        <span className="w-600" title={x.sum.refunds ? `Продажи ${fmt.money(x.sum.total)} − возвраты ${fmt.money(x.sum.refunds)}` : undefined}>
+          {fmt.money(netOf(x.sum))}
+        </span>
+      ),
+      sort: (x) => netOf(x.sum),
+      csv: (x) => netOf(x.sum),
+      total: (rs) => fmt.money(rs.reduce((a, x) => a + netOf(x.sum), 0)),
+    },
     { key: 'cash', header: 'Наличные', align: 'right', render: (x) => fmt.money(x.sum.cash), sort: (x) => x.sum.cash, total: (rs) => fmt.money(rs.reduce((a, x) => a + x.sum.cash, 0)) },
     { key: 'card', header: 'Карта', align: 'right', render: (x) => fmt.money(x.sum.card), sort: (x) => x.sum.card, total: (rs) => fmt.money(rs.reduce((a, x) => a + x.sum.card, 0)) },
     { key: 'refunds', header: 'Возвраты', align: 'right', render: (x) => (x.sum.refunds ? fmt.money(x.sum.refunds) : <span className="faint">—</span>), sort: (x) => x.sum.refunds, total: (rs) => fmt.money(rs.reduce((a, x) => a + x.sum.refunds, 0)) },
@@ -104,18 +127,15 @@ export default function ShiftPage() {
     <>
       <PageHeader section="register" counts={{ receipts: sum?.receipts ?? null }} actions={<ShiftBadge shift={shift} />} />
 
-      {closed ? (
-        <Notice tone={closed.diff === 0 ? 'ok' : 'warn'} title={`Смена № ${closed.number} закрыта`}>
-          {closed.info}. Выручка записана в деньги магазина.
-        </Notice>
-      ) : null}
-
       {shift && sum ? (
         <div className="reg-shift-grid">
           <div className="col-4" style={{ minWidth: 0 }}>
             <div className="grid-4 reg-shift-kpis">
               <Kpi label="Чеков" value={fmt.num(sum.receipts)} />
-              <Kpi label="Выручка" value={fmt.money(sum.total)} />
+              <Kpi
+                label={<span title={`Продажи ${fmt.money(sum.total)} − возвраты ${fmt.money(sum.refunds)} = наличными ${fmt.money(sum.cash)} + картой ${fmt.money(sum.card)}`}>Выручка без возвратов</span>}
+                value={fmt.money(netOf(sum))}
+              />
               <Kpi label="Средний чек" value={fmt.money(sum.receipts ? Math.round(sum.total / sum.receipts) : 0)} />
               <Kpi
                 label={
@@ -138,14 +158,15 @@ export default function ShiftPage() {
                 <StatList>
                   <StatRow label="Продавец" value={seller?.name ?? '—'} />
                   <StatRow label="Открыта" value={fmt.dateTime(shift.openedAt)} />
-                  <StatRow label="Чеков продажи" value={fmt.num(sum.receipts)} />
-                  <StatRow label="Возвраты" value={sum.refundsCount ? `${fmt.count(sum.refundsCount, 'чек', 'чека', 'чеков')} · ${fmt.money(sum.refunds)}` : 'нет'} />
+                  <StatRow label={`Продажи, ${fmt.count(sum.receipts, 'чек', 'чека', 'чеков')}`} value={fmt.money(sum.total)} />
+                  <StatRow label={sum.refundsCount ? `Возвраты, ${fmt.count(sum.refundsCount, 'чек', 'чека', 'чеков')}` : 'Возвраты'} value={sum.refunds ? `−${fmt.money(sum.refunds)}` : 'нет'} />
+                  <StatRow total label="Выручка" value={fmt.money(netOf(sum))} />
                 </StatList>
                 <StatList>
-                  <StatRow label="Выручка наличными" value={fmt.money(sum.cash)} />
-                  <StatRow label="Выручка картой" value={fmt.money(sum.card)} />
+                  <StatRow label="Наличными" value={fmt.money(sum.cash)} />
+                  <StatRow label="Картой" value={fmt.money(sum.card)} />
                   <StatRow label="Размен на начало" value={fmt.money(shift.openingCash)} />
-                  <StatRow total label="Ожидается наличных" value={fmt.money(sum.expectedCash)} />
+                  <StatRow total label="Ожидается наличных в кассе" value={fmt.money(sum.expectedCash)} />
                 </StatList>
               </div>
             </Card>
@@ -180,6 +201,11 @@ export default function ShiftPage() {
                   <span className="reg-change-value num">{fmt.money(Math.abs(diff))}</span>
                 </div>
               )}
+              {diff !== null && diff !== 0 ? (
+                <Field label="Почему не сошлось">
+                  <Input value={diffReason} onChange={(e) => setDiffReason(e.target.value)} placeholder="Например: сдача покупателю без чека" aria-label="Причина расхождения" />
+                </Field>
+              ) : null}
               {error ? <Notice tone="bad">{error}</Notice> : null}
               {diff !== null && diff !== 0 ? (
                 <ConfirmButton variant="primary" size="lg" block onConfirm={close} confirmText="Закрыть с расхождением?" yes="Да, закрыть">
@@ -196,15 +222,36 @@ export default function ShiftPage() {
       ) : (
         <div className="reg-shift-grid">
           {lastClosed ? (
-            <LastShiftCard shift={lastClosed} onOpen={() => setView(lastClosed)} />
+            <ClosedShiftCard
+              shift={lastClosed}
+              justClosed={closedId === lastClosed.id}
+              primary={closedId === lastClosed.id && !opening}
+              onPrint={() => printShift(lastClosed.id)}
+              onOpen={() => setView(lastClosed)}
+            />
           ) : (
             <Card title="Смена не открыта">
               <div className="t-14 ink-2">Продавать и возвращать деньги можно только в открытой смене.</div>
             </Card>
           )}
-          <OpenShiftCard hideLast={!!lastClosed} />
+          {closedId && !opening ? (
+            <Card title="Новая смена">
+              <div className="col-4">
+                <div className="reg-open-icon">
+                  <LockKeyholeOpen />
+                </div>
+                <div className="t-14 ink-2">Сначала сдайте выручку. Новую смену открывают, когда пересчитают размен в кассе.</div>
+                <Button size="lg" block icon={<LockKeyholeOpen />} onClick={() => setOpening(true)}>
+                  Открыть новую смену
+                </Button>
+              </div>
+            </Card>
+          ) : (
+            <OpenShiftCard hideLast={!!lastClosed} title={closedId ? 'Новая смена' : 'Смена закрыта'} />
+          )}
         </div>
       )}
+      {printNode}
 
       <div className="reg-shifts">
       <DataTable<Row>
@@ -247,15 +294,18 @@ export default function ShiftPage() {
   );
 }
 
-/* ---------- прошлая смена, пока новая не открыта ---------- */
+/* ---------- закрытая смена: итог, что сдать, отчёт ---------- */
 
-function LastShiftCard({ shift, onOpen }: { shift: Shift; onOpen: () => void }) {
+function ClosedShiftCard({ shift, justClosed, primary, onPrint, onOpen }: { shift: Shift; justClosed: boolean; primary: boolean; onPrint: () => void; onOpen: () => void }) {
   const db = useDB();
   const sum = shiftSummary(db, shift.id);
   const seller = indexes(db).employees.get(shift.sellerId);
+  const counted = sum.countedCash ?? 0;
+  const ho = handOver(counted, shift.openingCash);
+  const diff = sum.difference ?? 0;
   return (
     <Card
-      title={`Прошлая смена № ${shift.number}`}
+      title={justClosed ? `Смена № ${shift.number} закрыта` : `Прошлая смена № ${shift.number}`}
       actions={
         <>
           {diffChip(sum.difference)}
@@ -265,21 +315,50 @@ function LastShiftCard({ shift, onOpen }: { shift: Shift; onOpen: () => void }) 
         </>
       }
     >
-      <div className="grid-2 reg-shift-stats">
-        <StatList>
-          <StatRow label="Продавец" value={seller?.name ?? '—'} />
-          <StatRow label="Время" value={`${fmt.dateTime(shift.openedAt)}–${fmt.time(shift.closedAt)}`} />
-          <StatRow label="Чеков продажи" value={fmt.num(sum.receipts)} />
-          <StatRow label="Выручка" value={fmt.money(sum.total)} />
-          <StatRow label="Возвраты" value={sum.refundsCount ? `${fmt.count(sum.refundsCount, 'чек', 'чека', 'чеков')} · ${fmt.money(sum.refunds)}` : 'нет'} />
-        </StatList>
-        <StatList>
-          <StatRow label="Наличными" value={fmt.money(sum.cash)} />
-          <StatRow label="Картой" value={fmt.money(sum.card)} />
-          <StatRow label="Ожидалось в кассе" value={fmt.money(sum.expectedCash)} />
-          <StatRow label="Пересчитано" value={fmt.money(sum.countedCash ?? 0)} />
-          <StatRow total label="Расхождение" value={sum.difference ? `${sum.difference > 0 ? '+' : ''}${fmt.money(sum.difference)}` : '0 ₽'} />
-        </StatList>
+      <div className="col-4">
+        <div className="reg-closed-tiles">
+          <div className="reg-closed-tile">
+            <span className="reg-closed-label" title={`Продажи ${fmt.money(sum.total)} − возвраты ${fmt.money(sum.refunds)}`}>
+              Выручка без возвратов
+            </span>
+            <span className="reg-closed-value num">{fmt.money(netOf(sum))}</span>
+          </div>
+          <div className="reg-closed-tile">
+            <span className="reg-closed-label">Наличными</span>
+            <span className="reg-closed-value num">{fmt.money(sum.cash)}</span>
+          </div>
+          <div className="reg-closed-tile">
+            <span className="reg-closed-label">Картой</span>
+            <span className="reg-closed-value num">{fmt.money(sum.card)}</span>
+          </div>
+          <div className="reg-closed-tile">
+            <span className="reg-closed-label">Расхождение</span>
+            <span className={cx('reg-closed-value num', diff < 0 && 'c-bad', diff > 0 && 'c-warn')}>{signed(diff)}</span>
+          </div>
+        </div>
+        <div className="reg-handover">
+          <span className="reg-handover-text">
+            Сдать <b className="num">{fmt.money(ho.handIn)}</b>, оставить на размен <b className="num">{fmt.money(ho.keep)}</b>
+          </span>
+          <Button variant={primary ? 'primary' : 'secondary'} icon={<Printer />} onClick={onPrint}>
+            Печать отчёта смены
+          </Button>
+        </div>
+        <div className="grid-2 reg-shift-stats">
+          <StatList>
+            <StatRow label="Продавец" value={seller?.name ?? '—'} />
+            <StatRow label="Время" value={`${fmt.dateTime(shift.openedAt)}–${fmt.time(shift.closedAt)}`} />
+            <StatRow label={`Продажи, ${fmt.count(sum.receipts, 'чек', 'чека', 'чеков')}`} value={fmt.money(sum.total)} />
+            <StatRow label={sum.refundsCount ? `Возвраты, ${fmt.count(sum.refundsCount, 'чек', 'чека', 'чеков')}` : 'Возвраты'} value={sum.refunds ? `−${fmt.money(sum.refunds)}` : 'нет'} />
+          </StatList>
+          <StatList>
+            <StatRow label="Размен на начало" value={fmt.money(shift.openingCash)} />
+            <StatRow label="Ожидалось в кассе" value={fmt.money(sum.expectedCash)} />
+            <StatRow label="Пересчитано" value={fmt.money(counted)} />
+            <StatRow total label="Расхождение" value={signed(diff)} />
+            {shift.diffReason ? <StatRow label="Причина" value={shift.diffReason} /> : null}
+          </StatList>
+        </div>
       </div>
     </Card>
   );
@@ -305,9 +384,9 @@ function ShiftDrawer({ shift, onClose }: { shift: Shift; onClose: () => void }) 
       <div className="grid-2">
         <section className="card card-pad">
           <StatList>
-            <StatRow label="Чеков продажи" value={fmt.num(sum.receipts)} />
-            <StatRow label="Выручка" value={fmt.money(sum.total)} />
-            <StatRow label="Возвраты" value={sum.refundsCount ? `${sum.refundsCount} · ${fmt.money(sum.refunds)}` : 'нет'} />
+            <StatRow label={`Продажи, ${fmt.count(sum.receipts, 'чек', 'чека', 'чеков')}`} value={fmt.money(sum.total)} />
+            <StatRow label={sum.refundsCount ? `Возвраты, ${fmt.count(sum.refundsCount, 'чек', 'чека', 'чеков')}` : 'Возвраты'} value={sum.refunds ? `−${fmt.money(sum.refunds)}` : 'нет'} />
+            <StatRow total label="Выручка" value={fmt.money(netOf(sum))} />
             <StatRow label="Картой" value={fmt.money(sum.card)} />
           </StatList>
         </section>

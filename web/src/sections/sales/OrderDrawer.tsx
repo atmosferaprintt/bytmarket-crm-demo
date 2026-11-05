@@ -28,10 +28,12 @@ import {
   Button,
   Card,
   Checkbox,
-  ConfirmButton,
   DELIVERY_STATE,
   Drawer,
   EmptyState,
+  Field,
+  Input,
+  Modal,
   Notice,
   PAYMENT_STATUS,
   PAY_STATE,
@@ -52,9 +54,27 @@ import { ReturnModal } from './ReturnModal';
 import { SendInvoiceModal } from './SendInvoiceModal';
 import { PrintDoc, type PrintKind } from './PrintDocs';
 import { TopMenu } from './TopMenu';
-import { ConditionsStrip, Dash, OrderChips, PriceCell, PromoStateChip, deliveryFailed, shipStatus, shownOverdue } from './parts';
-import { capitalize, fixNo, lineQtyLabel, orderProblems, orderSteps, productName, useIsPhone } from './lib';
+import { ConditionsStrip, Dash, NOT_SENT, OrderChips, PriceCell, PromoStateChip, deliveryFailed, shipStatus, shownOverdue } from './parts';
+import {
+  RETURNED_PREFIX,
+  approvalTask,
+  capitalize,
+  dueDateFor,
+  fixNo,
+  lineQtyLabel,
+  orderProblems,
+  orderSteps,
+  productName,
+  returnToManager,
+  returnedTask,
+  shipDateFor,
+  useIsPhone,
+} from './lib';
+import { useOffline } from './offline';
 import './sales.css';
+
+const CANCEL_REASONS = ['Клиент передумал', 'Нет товара', 'Дубль', 'Другое'] as const;
+const RETURN_REASONS_OWNER = ['Сначала погасить просрочку', 'Уменьшить сумму заказа', 'Только по предоплате', 'Другое'] as const;
 
 const SOURCE_NAMES: Record<OrderSource, string> = {
   manager: 'менеджер',
@@ -88,7 +108,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
   return <OrderCard o={o} onClose={onClose} />;
 }
 
-type Dialog = 'pay' | 'delivery' | 'return' | 'task' | 'repeat' | 'edit' | 'send' | null;
+type Dialog = 'pay' | 'delivery' | 'return' | 'task' | 'repeat' | 'edit' | 'send' | 'cancel' | 'backToManager' | null;
 
 function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
   const db = useDB();
@@ -145,6 +165,10 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
   const shortLines = isRequest ? d.lines.filter((x) => x.available < x.l.qty) : [];
   const author = idx.employees.get(o.authorId);
   const owner = o.ownerId ? idx.employees.get(o.ownerId) : undefined;
+  const approval = isRequest ? approvalTask(db, o.id) : undefined;
+  const returned = isRequest && !approval ? returnedTask(db, o.id) : undefined;
+  const offline = useOffline();
+  const notSent = repOnly && offline.queued.includes(o.id);
 
   const run = (act: () => ReturnType<typeof dispatch>, ok: string) => {
     setError(null);
@@ -160,7 +184,9 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
   /* ---------- права ---------- */
   const canConfirm = can('confirmOrder');
   const canCreate = can('createOrder') || can('createRequest');
-  const canReturn = (can('createOrder') || can('inspectQuarantine')) && d.shippedQty - d.returnedQty > 0 && o.state !== 'cancelled';
+  // возврат — только когда товар у клиента: в пути и после неудачной доставки его решает диспетчер
+  const goodsOnWay = o.fulfillment === 'delivery' && !!d.delivery && (d.delivery.state === 'on_way' || d.delivery.state === 'failed');
+  const canReturn = (can('createOrder') || can('inspectQuarantine')) && d.shippedQty - d.returnedQty > 0 && o.state !== 'cancelled' && !goodsOnWay;
   const canShip = can('shipOrder');
   const canPay = can('acceptPayment') && live && pay.due - pay.pending > 0;
   const canDeliver = (can('assignDelivery') || can('confirmOrder')) && live && o.fulfillment === 'delivery' && o.ship !== 'shipped' && o.ship !== 'delivered' && (!d.delivery || d.delivery.state === 'returned');
@@ -183,16 +209,42 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
   const askOwner = () => {
     const ownerEmp = db.employees.find((e) => e.active && e.roles.includes('owner'));
     if (!ownerEmp) return;
-    run(
-      () => dispatch('task.create', { title: `Согласовать заказ № ${o.number}: ${problems.map((p) => p.text).join('; ')}`, assigneeId: ownerEmp.id, due: today, priority: 'high', link: { type: 'order', id: o.id } }, me.id),
+    const ok = run(
+      () =>
+        dispatch(
+          'task.create',
+          { title: `Согласовать заказ № ${o.number}: ${problems.map((p) => p.text).join('; ')}`, assigneeId: ownerEmp.id, due: today, priority: 'high', link: { type: 'order', id: o.id }, kind: 'approve_order' },
+          me.id,
+        ),
       `Владелец получит задачу согласовать заказ № ${o.number}`,
     );
+    // прошлое «вернул без согласия» больше не актуально — заказ снова у владельца
+    if (ok && returned) dispatch('task.complete', { taskId: returned.id }, me.id);
+  };
+  const cancel = (reason: string) => {
+    const ok = run(() => dispatch('order.cancel', { orderId: o.id, reason }, me.id), o.ship === 'partial' ? `Остаток заказа № ${o.number} отменён` : `Заказ № ${o.number} отменён`);
+    if (ok) setDialog(null);
+  };
+  const backToManager = (reason: string) => {
+    const managerId = returnToManager(db, o, approval);
+    const r1 = dispatch(
+      'task.create',
+      { title: `${RETURNED_PREFIX} № ${o.number}: ${reason}`, assigneeId: managerId, due: today, priority: 'high', link: { type: 'order', id: o.id }, kind: 'order_returned' },
+      me.id,
+    );
+    if (!r1.ok) {
+      setError(fixNo(r1.error));
+      return;
+    }
+    if (approval) dispatch('task.complete', { taskId: approval.id }, me.id);
+    setDialog(null);
+    toast(`Заказ № ${o.number} вернули: ${idx.employees.get(managerId)?.short ?? 'менеджер'} получит задачу с причиной`);
   };
 
   /* ---------- главное действие: следующий шаг ---------- */
   type Next = 'confirm' | 'ask' | 'send' | 'delivery' | 'pick' | 'ship' | 'pay' | null;
   let next: Next = null;
-  if (isRequest && canConfirm) next = problems.length > 0 && role !== 'owner' ? 'ask' : 'confirm';
+  if (isRequest && canConfirm) next = problems.length > 0 && role !== 'owner' ? (approval ? null : 'ask') : 'confirm';
   else if (o.state === 'draft' && repOnly && o.authorId === me.id) next = 'send';
   else if (canDeliver) next = 'delivery';
   else if (o.state === 'confirmed' && o.fulfillment === 'pickup' && canShip) next = o.pick === 'picked' || o.ship === 'partial' ? 'ship' : 'pick';
@@ -249,9 +301,15 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
       </Button>
     );
 
-  const secondaryKind: 'pay' | 'edit' | null = canPay && next !== 'pay' ? 'pay' : canEdit ? 'edit' : null;
+  // владелец по заказу сверх условий: подтвердить сам или вернуть менеджеру с причиной
+  const canBack = role === 'owner' && isRequest && (!!approval || problems.length > 0);
+  const secondaryKind: 'pay' | 'edit' | 'back' | null = canBack ? 'back' : canPay && next !== 'pay' ? 'pay' : canEdit ? 'edit' : null;
   const secondary =
-    secondaryKind === 'pay' ? (
+    secondaryKind === 'back' ? (
+      <Button icon={<Undo2 />} onClick={() => setDialog('backToManager')}>
+        Вернуть менеджеру
+      </Button>
+    ) : secondaryKind === 'pay' ? (
       <Button icon={<Wallet />} onClick={() => setDialog('pay')}>
         Принять оплату
       </Button>
@@ -285,9 +343,11 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
   const title = (
     <span className="row-3" style={{ flexWrap: 'wrap' }}>
       Заказ № {o.number}
-      <OrderChips o={o} pay={pay} delivery={d.delivery} />
+      <OrderChips o={o} pay={pay} delivery={d.delivery} approval={!!approval} rep={repOnly} />
+      {notSent ? <StatusChip s={NOT_SENT} /> : null}
     </span>
   );
+  const waitingCourier = o.fulfillment === 'delivery' && d.delivery?.state === 'waiting' && o.ship === 'none';
   const head = (
     <div className="col-3">
       <div className="sales-client-line">
@@ -306,14 +366,21 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
           </div>
         </div>
       </div>
-      {o.state !== 'cancelled' ? <Steps items={orderSteps(o, pay)} /> : null}
+      {o.state !== 'cancelled' ? (
+        <div className="sales-steps-row">
+          <Steps items={orderSteps(o, pay, d.delivery)} />
+          {waitingCourier ? <span className="muted t-12">Курьера назначит диспетчер</span> : null}
+        </div>
+      ) : null}
     </div>
   );
 
+  // срок оплаты до отгрузки — оценка от дня отгрузки, тем же расчётом, что в окне заказа
+  const dueGuess = client && o.state !== 'cancelled' && !o.dueDate ? dueDateFor(client, shipDateFor(o.fulfillment, d.delivery?.date, today)) : null;
   const dueLabel = o.dueDate ? (
     fmt.date(o.dueDate)
-  ) : client && client.deferDays > 0 && o.state !== 'cancelled' ? (
-    <span title="Срок считается от дня отгрузки">≈ {fmt.date(fmt.addDays(d.delivery?.date && d.delivery.date > today ? d.delivery.date : today, client.deferDays))}</span>
+  ) : dueGuess ? (
+    <span title="Срок считается от дня отгрузки">≈ {fmt.date(dueGuess)}</span>
   ) : client && client.deferDays > 0 ? (
     '—'
   ) : (
@@ -330,9 +397,9 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
       footer={
         <div className="sales-card-foot">
           {canCancel ? (
-            <ConfirmButton variant="ghost" icon={<Ban />} confirmText={o.ship === 'partial' ? 'Отменить остаток?' : 'Отменить заказ?'} onConfirm={() => run(() => dispatch('order.cancel', { orderId: o.id }, me.id), o.ship === 'partial' ? `Остаток заказа № ${o.number} отменён` : `Заказ № ${o.number} отменён`)}>
+            <Button variant="ghost" icon={<Ban />} onClick={() => setDialog('cancel')}>
               {o.ship === 'partial' ? 'Отменить остаток' : 'Отменить'}
-            </ConfirmButton>
+            </Button>
           ) : null}
           <TopMenu items={menu} align="start" />
           <span className="spacer" />
@@ -345,7 +412,22 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
       {o.state === 'cancelled' ? (
         <Notice title="Заказ отменён">{lastEvent ? `${capitalize(fixNo(lastEvent.text))}, ${fmt.dateTime(lastEvent.at)}` : null}</Notice>
       ) : null}
-      {isRequest ? (
+      {notSent ? (
+        <Notice tone="warn" title="Заявка не отправлена — нет связи">
+          Сохранена в телефоне, отправим, когда появится связь. Цены и наличие проверим заново.
+        </Notice>
+      ) : null}
+      {approval ? (
+        <Notice tone="warn" title={`На согласовании у владельца с ${fmt.dateTime(approval.createdAt)}`}>
+          {role === 'owner'
+            ? `Запросил ${idx.employees.get(approval.authorId)?.name ?? 'менеджер'}. Подтвердите заказ сверх условий или верните менеджеру с причиной — он получит задачу.`
+            : `Товар не зарезервирован, пока владелец не решит. Запросил ${idx.employees.get(approval.authorId)?.short ?? 'менеджер'}`}
+        </Notice>
+      ) : returned ? (
+        <Notice tone="bad" title="Владелец не согласовал заказ">
+          {capitalize(returned.title.replace(new RegExp(`^${RETURNED_PREFIX} № \\d+:\\s*`), ''))}. Измените заявку или договоритесь с клиентом и запросите согласие снова.
+        </Notice>
+      ) : isRequest ? (
         <Notice tone="info" title={o.state === 'draft' ? 'Черновик — товар не зарезервирован' : 'Заявка ждёт подтверждения — товар не зарезервирован'}>
           {o.state === 'draft'
             ? 'Черновик видят только вы и менеджер. Отправьте его, когда состав будет готов.'
@@ -366,7 +448,8 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
             ) : undefined
           }
         >
-          {capitalize(problems.map((p) => p.text).join('; '))}. {role === 'owner' ? 'Вы можете подтвердить под свою ответственность.' : 'Подтвердить сверх условий может только владелец.'}
+          {capitalize(problems.map((p) => p.text).join('; '))}.{' '}
+          {role === 'owner' ? 'Вы можете подтвердить под свою ответственность.' : approval ? 'Решение — за владельцем.' : 'Подтвердить сверх условий может только владелец.'}
         </Notice>
       ) : null}
       {shortLines.length ? (
@@ -544,7 +627,7 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
                 />
                 <StatRow label="Когда" value={`${fmt.date(d.delivery.date)}, ${d.delivery.interval}`} />
                 <StatRow label="Адрес" value={<span className="sales-wrap-value">{d.delivery.address}</span>} />
-                <StatRow label="Курьер" value={d.delivery.courierId ? idx.employees.get(d.delivery.courierId)?.name ?? '—' : 'Не назначен'} />
+                <StatRow label="Курьер" value={d.delivery.courierId ? idx.employees.get(d.delivery.courierId)?.name ?? '—' : d.delivery.state === 'waiting' ? 'Назначит диспетчер' : 'Не назначен'} />
                 <StatRow label="Мест" value={fmt.num(d.delivery.places)} />
                 {d.delivery.collect > 0 ? <StatRow label="К получению" value={fmt.money(d.delivery.collect)} /> : null}
               </StatList>
@@ -618,9 +701,96 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
         />
       ) : null}
       {dialog === 'edit' ? <OrderEditor editId={o.id} onClose={() => setDialog(null)} onCreated={() => setDialog(null)} /> : null}
+      {dialog === 'cancel' ? (
+        <ReasonModal
+          title={o.ship === 'partial' ? `Отменить остаток заказа № ${o.number}` : `Отменить заказ № ${o.number}`}
+          sub={o.state === 'confirmed' ? 'Резерв товара снимется. Причина сохранится в истории заказа.' : 'Причина сохранится в истории заказа.'}
+          reasons={CANCEL_REASONS}
+          okLabel={o.ship === 'partial' ? 'Отменить остаток' : 'Отменить заказ'}
+          cancelLabel="Не отменять"
+          danger
+          error={error}
+          onClose={() => setDialog(null)}
+          onOk={cancel}
+        />
+      ) : null}
+      {dialog === 'backToManager' ? (
+        <ReasonModal
+          title={`Вернуть заказ № ${o.number} менеджеру`}
+          sub={`${idx.employees.get(returnToManager(db, o, approval))?.name ?? 'Менеджер'} получит задачу с причиной. Заказ останется заявкой без резерва.`}
+          reasons={RETURN_REASONS_OWNER}
+          okLabel="Вернуть менеджеру"
+          cancelLabel="Отмена"
+          error={error}
+          onClose={() => setDialog(null)}
+          onOk={backToManager}
+        />
+      ) : null}
       </div>
       {printing ? <PrintDoc kind={printing} order={o} onDone={() => setPrinting(null)} /> : null}
     </Drawer>
+  );
+}
+
+/** Окно с причиной: выбор из списка и комментарий. «Другое» — только с комментарием. */
+function ReasonModal({
+  title,
+  sub,
+  reasons,
+  okLabel,
+  cancelLabel,
+  danger,
+  error,
+  onClose,
+  onOk,
+}: {
+  title: string;
+  sub?: string;
+  reasons: readonly string[];
+  okLabel: string;
+  cancelLabel: string;
+  danger?: boolean;
+  error?: string | null;
+  onClose: () => void;
+  onOk: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState<string | null>(null);
+  const [comment, setComment] = useState('');
+  const other = reason === 'Другое';
+  const text = comment.trim();
+  const ready = !!reason && (!other || !!text);
+  const value = !reason ? '' : other ? text : text ? `${reason.toLowerCase()}, ${text}` : reason.toLowerCase();
+  return (
+    <Modal
+      title={title}
+      sub={sub}
+      onClose={onClose}
+      footer={
+        <>
+          <span className="spacer" />
+          <Button variant="ghost" onClick={onClose}>
+            {cancelLabel}
+          </Button>
+          <Button variant={danger ? 'danger' : 'primary'} disabled={!ready} onClick={() => onOk(value)} title={!reason ? 'Выберите причину' : other && !text ? 'Напишите причину в комментарии' : undefined}>
+            {okLabel}
+          </Button>
+        </>
+      }
+    >
+      <Field label="Причина">
+        <div className="sales-reasons" role="radiogroup" aria-label="Причина">
+          {reasons.map((r) => (
+            <button key={r} type="button" role="radio" aria-checked={reason === r} className={cx('chip', 'sales-chip-btn', 'sales-reason', reason === r && 'chip-info')} onClick={() => setReason(r)}>
+              {r}
+            </button>
+          ))}
+        </div>
+      </Field>
+      <Field label={other ? 'Комментарий — обязательно' : 'Комментарий'}>
+        <Input value={comment} onChange={(e) => setComment(e.target.value)} placeholder={other ? 'Напишите, в чём дело' : 'Например: перезаказал через чат'} autoFocus={other} />
+      </Field>
+      {error ? <Notice tone="bad">{error}</Notice> : null}
+    </Modal>
   );
 }
 

@@ -215,3 +215,7 @@
 
 /* числа и короткие колонки — по ширине содержимого, всё остальное место отдаём названию */
 .prd-catalog .table th.num, .prd-catalog .table td.num, .prd-catalog .table .prd-col-nowrap { width: 1%; white-space: nowrap; }
+.prd-m-bottom.is-two { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.prd-issues-foot { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; margin-top: 6px; }
+.prd-promo-now { display: flex; gap: 6px; align-items: flex-start; }
+.prd-promo-now > svg { width: 14px; height: 14px; flex: 0 0 auto; margin-top: 3px; color: var(--green-700); }

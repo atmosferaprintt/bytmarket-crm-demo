@@ -1,6 +1,6 @@
 /* Клиенты и представители: общие расчёты раздела. Считаются один раз на версию базы. */
 import { useCallback, useEffect, useState } from 'react';
-import type { Client, ClientPoint, DB, Employee, ID, ISODate, Order, Visit } from '../../data/types';
+import type { Client, ClientPoint, DB, Delivery, Employee, ID, ISODate, Order, Visit } from '../../data/types';
 import { CLIENT_KIND_NAMES, CLIENT_SEGMENT_NAMES } from '../../data/types';
 import { clientBalances, indexes, orderReturns, type ClientBalance } from '../../data/selectors';
 import { diffDays, firstOfMonth, plusDays } from '../../data/dates';
@@ -162,6 +162,32 @@ export function ordersByClient(db: DB): Map<ID, Order[]> {
     }
     for (const a of m.values()) a.sort((x, y) => y.createdAt.localeCompare(x.createdAt));
     return m;
+  });
+}
+
+/** Доставки по номеру — для этапа заказа в списках. */
+export function deliveriesById(db: DB): Map<ID, Delivery> {
+  return memoDB(db, 'deliveriesById', () => new Map(db.deliveries.map((d) => [d.id, d])));
+}
+
+/** Привычные товары клиента: что брал чаще всего (минимум в двух заказах, если заказов много). */
+export function habitualProducts(db: DB, clientId: ID, limit = 6): { productId: ID; orders: number; qty: number; total: number }[] {
+  return memoDB(db, `habitual|${clientId}|${limit}`, () => {
+    const real = (ordersByClient(db).get(clientId) ?? []).filter((o) => o.state !== 'cancelled' && o.state !== 'draft');
+    const m = new Map<ID, { productId: ID; orders: number; qty: number; total: number }>();
+    for (const o of real) {
+      const seen = new Set<ID>();
+      for (const l of o.lines) {
+        let x = m.get(l.productId);
+        if (!x) m.set(l.productId, (x = { productId: l.productId, orders: 0, qty: 0, total: real.length }));
+        x.qty += l.qty;
+        if (!seen.has(l.productId)) {
+          x.orders++;
+          seen.add(l.productId);
+        }
+      }
+    }
+    return [...m.values()].filter((x) => x.orders >= 2 || real.length < 3).sort((a, b) => b.orders - a.orders || b.qty - a.qty).slice(0, limit);
   });
 }
 

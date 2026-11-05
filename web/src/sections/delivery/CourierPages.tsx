@@ -13,8 +13,8 @@ import { useSession } from '../../roles/session';
 import { useScoped } from '../../roles/scope';
 import { Chip, EmptyState, Notice, Segmented, cx, fmt } from '../../ui';
 import { RouteButton } from './CourierBoard';
-import { LateChip, StateChip, useDayParam } from './parts';
-import { byRoute, clockOf, dayLabel, deliveredAt, deliveredMoneyText, forDay, lastFail, moneyOfDay, notHandedIn, type Clock } from './lib';
+import { DelayChip, LateChip, StateChip, useDayParam } from './parts';
+import { byRoute, clockOf, dayLabel, deliveredAt, deliveredMoneyText, forDay, lastFail, moneyOfDay, notHandedIn, onHandSplit, transferPending, type Clock } from './lib';
 
 /* ---------- «Доставки»: выбор дня и вручённые по дням ---------- */
 
@@ -170,6 +170,7 @@ function DayRow({ d, pos, c, onOpen }: { d: Delivery; pos: number; c: Clock; onO
         <span className="chips">
           <StateChip d={d} />
           <LateChip d={d} c={c} />
+          <DelayChip d={d} label="Задержка до" />
         </span>
       </span>
       {delivered ? null : d.collect ? (
@@ -198,6 +199,7 @@ export function CourierCash() {
   // не сданные с прошлых дней; сегодняшние не сданные видны в «Получено сегодня» с отметкой «На руках»
   const older = useMemo(() => notHandedIn(db, me.id).filter((d) => (deliveredAt(d) ?? d.date).slice(0, 10) < c.today), [db, version, me.id]);
   const olderSum = older.reduce((z, d) => z + d.collected, 0);
+  const split = onHandSplit(db, me.id, c.today);
 
   return (
     <div className="dl-phone">
@@ -205,6 +207,11 @@ export function CourierCash() {
       <div className="card dl-cash-hero">
         <span className="dl-sum-label">На руках</span>
         <span className="dl-cash-hero-value">{fmt.money(cash.onHand)}</span>
+        {split.older > 0 ? (
+          <span className="dl-sum-split">
+            сегодня {fmt.money(split.today)} · с прошлых дней {fmt.money(split.older)}
+          </span>
+        ) : null}
         {cash.onHand > 0 ? (
           <Notice tone="warn" title={`Сдать в кассу: ${fmt.money(cash.onHand)}`}>
             В конце дня отдайте наличные диспетчеру или продавцу магазина
@@ -216,13 +223,13 @@ export function CourierCash() {
 
       <section className="col-3">
         <h2 className="dl-board-title">Получено сегодня · {today.list.length}</h2>
-        <div className="card dl-sum">
+        <div className="card dl-sum is-wrap">
           <div className="dl-sum-item">
             <span className="dl-sum-label">Наличными</span>
             <span className="dl-sum-value">{fmt.money(today.cash)}</span>
           </div>
           <div className="dl-sum-item">
-            <span className="dl-sum-label">На счёт</span>
+            <span className="dl-sum-label">Картой и переводом</span>
             <span className="dl-sum-value">{fmt.money(today.card)}</span>
           </div>
           <div className="dl-sum-item">
@@ -241,7 +248,13 @@ export function CourierCash() {
               </span>
               <span className="col" style={{ gap: 4, alignItems: 'flex-end' }}>
                 <span className="num w-700 t-16">{fmt.money(d.collected)}</span>
-                {d.collectedMethod === 'cash' ? <Chip tone={d.handedIn ? 'ok' : 'warn'}>{d.handedIn ? 'Сдано' : 'На руках'}</Chip> : <Chip tone="info">На счёт</Chip>}
+                {d.collectedMethod === 'cash' ? (
+                  <Chip tone={d.handedIn ? 'ok' : 'warn'}>{d.handedIn ? 'Сдано' : 'На руках'}</Chip>
+                ) : transferPending(db, d) ? (
+                  <Chip tone="warn">Ждёт банка</Chip>
+                ) : (
+                  <Chip tone="info">{d.collectedMethod === 'transfer' ? 'Переводом' : 'Картой'}</Chip>
+                )}
               </span>
             </button>
           ))

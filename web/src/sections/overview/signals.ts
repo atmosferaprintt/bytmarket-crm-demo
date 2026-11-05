@@ -1,7 +1,7 @@
 /* «Требует внимания»: объяснимые сигналы по §13. Каждый — что случилось, подтверждающие цифры,
    ответственный сотрудник и одно действие. Чистый расчёт без React:
    computeSignals(db) — все сигналы; signalsForRole — что видит роль; arrangeSignals — главное на виду, однотипное мелкое — группами. */
-import type { DB, ID, ISODate, RoleKey, TaskLink } from '../../data/types';
+import type { DB, ID, ISODate, RoleKey, TaskKind, TaskLink } from '../../data/types';
 import type { EntityType } from '../../shell/entities';
 import { clientBalances, courierCash, indexes, shiftSummary, stockIndex } from '../../data/selectors';
 import { diffDays, plusDays } from '../../data/dates';
@@ -27,6 +27,7 @@ import {
 } from './analytics';
 
 export type SignalKind =
+  | 'approve'
   | 'stock_low'
   | 'dead_stock'
   | 'overdue'
@@ -41,6 +42,7 @@ export type SignalKind =
 
 /** Виды сигналов: подпись фильтра и подсказка, что внутри. */
 export const SIGNAL_KINDS: { key: SignalKind; label: string; hint: string }[] = [
+  { key: 'approve', label: 'Ждёт вашего решения', hint: 'Сотрудник запросил ваше согласие: заказ сверх условий клиента' },
   { key: 'overdue', label: 'Просрочка оплаты', hint: 'Покупатели не оплатили в срок' },
   { key: 'payment', label: 'Ждут подтверждения', hint: 'Переводы покупателей: долг уменьшится после проверки по выписке банка' },
   { key: 'unknown_payment', label: 'Не опознаны', hint: 'Деньги пришли на счёт, но плательщик не ясен' },
@@ -54,10 +56,19 @@ export const SIGNAL_KINDS: { key: SignalKind; label: string; hint: string }[] = 
   { key: 'dead_stock', label: 'Без движения', hint: `Товары без продаж ${DEAD_DAYS} дней и дольше` },
 ];
 
+/** Окно, которое сигнал открывает сразу: опознать платёж, проверить перевод, оплатить поставщику, принять деньги у курьера. */
+export type SignalModal =
+  | { kind: 'identify'; paymentId: ID }
+  | { kind: 'confirm'; paymentId: ID }
+  | { kind: 'supplier'; supplierId: ID; amount: number }
+  | { kind: 'handin'; courierId: ID };
+
 export type SignalAction =
   | { type: 'open'; entity: EntityType; id: ID; label: string }
   | { type: 'go'; to: string; label: string; fallback: SignalAction }
-  | { type: 'task'; link: TaskLink | null; title: string; assigneeId: ID | null; label: string };
+  | { type: 'task'; link: TaskLink | null; title: string; assigneeId: ID | null; label: string; kind?: TaskKind }
+  /** окно действия; roles — кому оно по делу (остальным — запасной вариант) */
+  | { type: 'modal'; modal: SignalModal; label: string; roles?: RoleKey[]; fallback: SignalAction };
 
 export interface SignalFact {
   label: string;
@@ -81,6 +92,10 @@ export interface Signal {
   tag?: 'pending' | 'unidentified'; // для платежей: ждёт подтверждения или не опознан
   count?: number; // сколько случаев за сигналом (сводный «ещё N товаров»), по умолчанию 1
   members?: Signal[]; // для группы однотипных: что внутри
+  /** запись, по которой ставят задачу: по ней видно «Поручено: Аминат Р., сегодня» */
+  taskLink?: TaskLink;
+  /** клиент, которому можно напомнить об оплате в WhatsApp */
+  remindClientId?: ID;
 }
 
 const SEV: Record<Signal['severity'], number> = { high: 0, medium: 1, low: 2 };
@@ -142,6 +157,7 @@ function people(db: DB) {
 export function computeSignals(db: DB, today: ISODate = db.meta.today, now: string = nowAt()): Signal[] {
   return memoDB(db, `signals|${today}|${now}`, () => {
     const out: Signal[] = [];
+    approveSignals(db, out);
     stockSignals(db, today, out);
     deadStockSignals(db, today, out);
     overdueSignals(db, today, out);
@@ -156,7 +172,44 @@ export function computeSignals(db: DB, today: ISODate = db.meta.today, now: stri
   });
 }
 
-const bySeverity = (a: Signal, b: Signal) => SEV[a.severity] - SEV[b.severity] || b.amount - a.amount;
+/** «Ждёт вашего решения» — всегда первым, дальше по важности и сумме. */
+const bySeverity = (a: Signal, b: Signal) => (a.kind === 'approve' ? 0 : 1) - (b.kind === 'approve' ? 0 : 1) || SEV[a.severity] - SEV[b.severity] || b.amount - a.amount;
+
+/** Владельцу: сотрудник запросил согласие на заказ (задача «согласовать заказ»). Решается в карточке заказа:
+    подтвердить или отменить — задача закроется сама. */
+function approveSignals(db: DB, out: Signal[]) {
+  const ix = indexes(db);
+  const owners = new Set(db.employees.filter((e) => e.roles.includes('owner')).map((e) => e.id));
+  const bal = clientBalances(db);
+  for (const t of db.tasks) {
+    if (t.state !== 'open' || t.kind !== 'approve_order' || !owners.has(t.assigneeId) || t.link?.type !== 'order') continue;
+    const o = ix.orders.get(t.link.id);
+    if (!o || o.state === 'cancelled') continue;
+    const c = ix.clients.get(o.clientId);
+    const b = bal.get(o.clientId);
+    const author = t.authorId !== t.assigneeId ? ix.employees.get(t.authorId) : undefined;
+    const facts: SignalFact[] = [
+      { label: 'Клиент', value: c?.name ?? '—' },
+      { label: 'Сумма заказа', value: rub(o.total) },
+    ];
+    if (b && b.overdue > 0) facts.push({ label: 'Просрочено', value: `${rub(b.overdue)}, ${days(b.maxOverdueDays)}`, tone: 'bad' });
+    if (b && b.creditLimit > 0) facts.push({ label: 'Остаток лимита', value: rub(b.creditLeft), tone: b.creditLeft < o.total ? 'bad' : undefined });
+    out.push({
+      id: 'approve:' + t.id,
+      kind: 'approve',
+      severity: 'high',
+      title: `Заказ ${N(o.number)} ждёт вашего решения`,
+      reason: `${author ? `${author.name} просит согласовать` : 'Нужно согласовать'}${b && b.overdue > 0 ? ': у клиента просрочка оплаты' : ''}. Подтвердите или отмените заказ в его карточке`,
+      facts,
+      amount: o.total,
+      responsibleId: author?.id ?? null,
+      action: { type: 'open', entity: 'order', id: o.id, label: 'Решить' },
+      subject: { type: 'order', id: o.id },
+      date: t.createdAt.slice(0, 10),
+      money: false,
+    });
+  }
+}
 
 function stockSignals(db: DB, today: ISODate, out: Signal[]) {
   const ix = indexes(db);
@@ -189,6 +242,7 @@ function stockSignals(db: DB, today: ISODate, out: Signal[]) {
       subject: { type: 'product', id: p.id },
       date: today,
       money: false,
+      taskLink: { type: 'product', id: p.id },
     });
   }
 }
@@ -242,7 +296,7 @@ function deadStockSignals(db: DB, today: ISODate, out: Signal[]) {
       facts: [{ label: 'По себестоимости', value: rub(sum) }],
       amount: Math.round(sum),
       responsibleId: owner,
-      action: { type: 'go', to: '/reports?list=dead', label: 'Открыть отчёт', fallback: { type: 'task', link: null, title: 'Разобрать товары без движения', assigneeId: owner, label: 'Задача' } },
+      action: { type: 'go', to: '/reports?list=dead', label: 'Открыть отчёт', fallback: { type: 'task', link: null, title: 'Разобрать товары без движения', assigneeId: owner, label: 'Поручить' } },
       subject: null,
       date: today,
       money: false,
@@ -282,10 +336,12 @@ function overdueSignals(db: DB, today: ISODate, out: Signal[]) {
       facts,
       amount: b.overdue,
       responsibleId: c.ownerId,
-      action: { type: 'task', link: { type: 'client', id: cid }, title: `Напомнить об оплате: просрочено ${rub(b.overdue)}`, assigneeId: c.ownerId, label: 'Напомнить' },
+      action: { type: 'task', link: { type: 'client', id: cid }, title: `Напомнить об оплате: ${c.name}, просрочено ${rub(b.overdue)}`, assigneeId: c.ownerId, label: 'Поручить', kind: 'remind_debt' },
       subject: { type: 'client', id: cid },
       date: today,
       money: true,
+      taskLink: { type: 'client', id: cid },
+      remindClientId: cid,
     });
   }
 }
@@ -319,13 +375,14 @@ function missedOrderSignals(db: DB, today: ISODate, out: Signal[]) {
       action: {
         type: 'task',
         link: { type: 'client', id: c.id },
-        title: isRep ? 'Визит: давно не заказывал, узнать причину' : 'Позвонить: давно не заказывал, предложить заказ',
+        title: isRep ? `Визит: ${c.name} давно не заказывал, узнать причину` : `Позвонить: ${c.name} давно не заказывал, предложить заказ`,
         assigneeId: c.ownerId,
         label: isRep ? 'Визит' : 'Позвонить',
       },
       subject: { type: 'client', id: c.id },
       date: today,
       money: false,
+      taskLink: { type: 'client', id: c.id },
     });
   }
 }
@@ -394,7 +451,7 @@ function marginSignals(db: DB, today: ISODate, out: Signal[]) {
       ],
       amount: Math.round(Math.abs((drop / 100) * a.revenue)),
       responsibleId: owner,
-      action: { type: 'go', to: `/reports?cat=${catId}`, label: 'Разобрать', fallback: { type: 'task', link: null, title: `Разобрать маржу: ${cat?.name ?? ''}`, assigneeId: owner, label: 'Задача' } },
+      action: { type: 'go', to: `/reports?cat=${catId}`, label: 'Разобрать', fallback: { type: 'task', link: null, title: `Разобрать маржу: ${cat?.name ?? ''}`, assigneeId: owner, label: 'Поручить' } },
       subject: null,
       date: today,
       money: false,
@@ -443,6 +500,7 @@ function delaySignals(db: DB, now: string, out: Signal[]) {
       subject: { type: 'order', id: o.id },
       date: db.meta.today,
       money: false,
+      taskLink: { type: 'order', id: o.id },
     });
   }
 }
@@ -476,7 +534,7 @@ function reconcileSignals(db: DB, today: ISODate, out: Signal[]) {
         type: 'go',
         to: '/register/shift',
         label: 'Сверить',
-        fallback: { type: 'task', link: null, title: `Разобрать расхождение смены №${NB}${s.number} за ${fmtDay(date)}`, assigneeId: s.sellerId, label: 'Задача' },
+        fallback: { type: 'task', link: null, title: `Разобрать расхождение смены №${NB}${s.number} за ${fmtDay(date)}`, assigneeId: s.sellerId, label: 'Поручить' },
       },
       subject: null,
       date,
@@ -503,11 +561,18 @@ function reconcileSignals(db: DB, today: ISODate, out: Signal[]) {
       ],
       amount: cc.onHand,
       responsibleId: e.id,
+      // бухгалтер принимает деньги сразу; владельцу — сверка в доставке
       action: {
-        type: 'go',
-        to: '/delivery/cash',
-        label: 'Сверить',
-        fallback: { type: 'task', link: null, title: `Принять деньги у курьера: ${e.name}, ${rub(cc.onHand)}`, assigneeId: dispatcher, label: 'Задача' },
+        type: 'modal',
+        modal: { kind: 'handin', courierId: e.id },
+        label: 'Принять',
+        roles: ['accountant'],
+        fallback: {
+          type: 'go',
+          to: '/delivery/cash',
+          label: 'Сверить',
+          fallback: { type: 'task', link: null, title: `Принять деньги у курьера: ${e.name}, ${rub(cc.onHand)}`, assigneeId: dispatcher, label: 'Поручить' },
+        },
       },
       subject: null,
       date: oldest,
@@ -551,6 +616,7 @@ function reconcileSignals(db: DB, today: ISODate, out: Signal[]) {
       subject: { type: 'purchase', id: pu.id },
       date: pu.receivedAt.slice(0, 10),
       money: false,
+      taskLink: { type: 'purchase', id: pu.id },
     });
   }
 }
@@ -577,10 +643,16 @@ function paymentSignals(db: DB, today: ISODate, out: Signal[]) {
         ],
         amount: p.amount,
         responsibleId: accountant,
-        action: { type: 'go', to: '/money', label: 'Проверить', fallback: { type: 'task', link: { type: 'payment', id: p.id }, title: 'Проверить перевод по выписке', assigneeId: accountant, label: 'Задача' } },
+        action: {
+          type: 'modal',
+          modal: { kind: 'confirm', paymentId: p.id },
+          label: 'Проверить',
+          fallback: { type: 'task', link: { type: 'payment', id: p.id }, title: `Проверить перевод ${rub(p.amount)}${c ? ` от ${c.name}` : ''} по выписке`, assigneeId: accountant, label: 'Поручить', kind: 'check_transfer' },
+        },
         subject: c ? { type: 'client', id: c.id } : null,
         date,
         money: true,
+        taskLink: { type: 'payment', id: p.id },
       });
     } else {
       out.push({
@@ -589,14 +661,23 @@ function paymentSignals(db: DB, today: ISODate, out: Signal[]) {
         severity: p.amount >= 10000 || age >= 3 ? 'high' : 'medium',
         tag: 'unidentified',
         title: `Поступление ${rub(p.amount)} не опознано`,
-        reason: `Плательщик не ясен — долг никому не уменьшен${p.comment ? `. Назначение: «${p.comment}»` : ''}`,
-        facts: [{ label: 'Пришло на счёт', value: when(date, today) }],
+        reason: p.payer ? `В выписке плательщик ${p.payer.name}, а назначения нет — долг никому не уменьшен` : `Плательщик не ясен — долг никому не уменьшен${p.comment ? `. Назначение: «${p.comment}»` : ''}`,
+        facts: [
+          { label: 'Пришло на счёт', value: when(date, today) },
+          ...(p.payer ? [{ label: 'ИНН плательщика', value: p.payer.inn }] : []),
+        ],
         amount: p.amount,
         responsibleId: accountant,
-        action: { type: 'go', to: '/money', label: 'Разнести', fallback: { type: 'task', link: { type: 'payment', id: p.id }, title: 'Определить плательщика', assigneeId: accountant, label: 'Задача' } },
+        action: {
+          type: 'modal',
+          modal: { kind: 'identify', paymentId: p.id },
+          label: 'Разнести',
+          fallback: { type: 'task', link: { type: 'payment', id: p.id }, title: `Разнести поступление ${rub(p.amount)}${p.payer ? ` от ${p.payer.name}` : ''}`, assigneeId: accountant, label: 'Поручить', kind: 'identify_payment' },
+        },
         subject: null,
         date,
         money: true,
+        taskLink: { type: 'payment', id: p.id },
       });
     }
   }
@@ -607,7 +688,7 @@ function supplierSignals(db: DB, today: ISODate, out: Signal[]) {
   const ix = indexes(db);
   const { accountant } = people(db);
   const w = supplierWeek(db);
-  const go = (label: string, title: string): SignalAction => ({ type: 'go', to: '/money/suppliers', label, fallback: { type: 'task', link: null, title, assigneeId: accountant, label: 'Задача' } });
+  const go = (label: string, title: string): SignalAction => ({ type: 'go', to: '/money/suppliers', label, fallback: { type: 'task', link: null, title, assigneeId: accountant, label: 'Поручить' } });
   const bySup = new Map<ID, { sum: number; n: number; oldest: ISODate }>();
   for (const u of w.overdue) {
     const x = bySup.get(u.supplierId) ?? { sum: 0, n: 0, oldest: u.dueDate };
@@ -632,10 +713,16 @@ function supplierSignals(db: DB, today: ISODate, out: Signal[]) {
       ],
       amount: x.sum,
       responsibleId: accountant,
-      action: go('Оплатить', `Оплатить поставщику: ${s?.name ?? ''}, ${rub(x.sum)}`),
+      action: {
+        type: 'modal',
+        modal: { kind: 'supplier', supplierId: sid, amount: x.sum },
+        label: 'Оплатить',
+        fallback: { type: 'task', link: { type: 'supplier', id: sid }, title: `Оплатить поставщику: ${s?.name ?? ''}, ${rub(x.sum)}`, assigneeId: accountant, label: 'Поручить', kind: 'pay_supplier' },
+      },
       subject: { type: 'supplier', id: sid },
       date: x.oldest,
       money: true,
+      taskLink: { type: 'supplier', id: sid },
     });
   }
   if (w.thisWeekSum > 0) {
@@ -678,11 +765,12 @@ export function kindsForRole(role: RoleKey): typeof SIGNAL_KINDS {
 /** Сколько по-настоящему важных сигналов держим на виду. */
 export const IMPORTANT_MAX = 14;
 /** Сколько сигналов одного вида на виду; остальные этого вида — одной строкой-группой. */
-const KIND_CAP: Record<SignalKind, number> = { overdue: 5, payment: 3, unknown_payment: 2, supplier: 2, reconcile: 2, receiving: 1, order_delay: 3, stock_low: 2, missed_order: 1, margin_drop: 1, dead_stock: 1 };
+const KIND_CAP: Record<SignalKind, number> = { approve: 9, overdue: 5, payment: 3, unknown_payment: 2, supplier: 2, reconcile: 2, receiving: 1, order_delay: 3, stock_low: 2, missed_order: 1, margin_drop: 1, dead_stock: 1 };
 
 const sizeOf = (s: Signal) => s.count ?? 1;
 
 const GROUP_NOUN: Record<SignalKind, (n: number, more: boolean) => string> = {
+  approve: (n, m) => `${m ? 'Ещё ' : ''}${cnt(n, 'заказ ждёт', 'заказа ждут', 'заказов ждут')} вашего решения`,
   overdue: (n, m) => `${m ? 'Ещё ' : ''}${cnt(n, 'клиент', 'клиента', 'клиентов')} с просрочкой оплаты`,
   payment: (n, m) => `${m ? 'Ещё ' : ''}${cnt(n, 'перевод ждёт', 'перевода ждут', 'переводов ждут')} подтверждения`,
   unknown_payment: (n, m) => `${m ? 'Ещё ' : ''}${cnt(n, 'поступление не опознано', 'поступления не опознаны', 'поступлений не опознаны')}`,
@@ -707,49 +795,33 @@ function groupFact(kind: SignalKind, members: Signal[]): SignalFact {
 }
 
 export interface Arranged {
-  important: Signal[]; // «Срочно» и «Важно», не больше IMPORTANT_MAX
+  important: Signal[]; // «Срочно» и «Важно» по одному: не больше KIND_CAP одного вида
+  urgentRest: Signal[]; // срочное сверх KIND_CAP — строками-группами в «Срочно», чтобы срочное не пряталось в «Остальном»
   rest: Signal[]; // «Остальное»: группы однотипных и одиночные мелкие
 }
 
-/** Главное на виду: по важности и сумме, не больше KIND_CAP одного вида и IMPORTANT_MAX всего.
-    Остальное однотипное сворачивается в одну строку-группу на вид. */
-export function arrangeSignals(list: Signal[]): Arranged {
-  const sorted = [...list].sort(bySeverity);
-  const important: Signal[] = [];
-  const per = new Map<SignalKind, number>();
-  const restBy = new Map<SignalKind, Signal[]>();
-  for (const s of sorted) {
-    const n = per.get(s.kind) ?? 0;
-    if (s.severity !== 'low' && !s.count && important.length < IMPORTANT_MAX && n < KIND_CAP[s.kind]) {
-      important.push(s);
-      per.set(s.kind, n + 1);
-    } else {
-      const a = restBy.get(s.kind) ?? [];
-      a.push(s);
-      restBy.set(s.kind, a);
-    }
-  }
-  const rest: Signal[] = [];
+function groupUp(by: Map<SignalKind, Signal[]>, per: Map<SignalKind, number>, severity: Signal['severity'], prefix: string): Signal[] {
+  const out: Signal[] = [];
   for (const k of SIGNAL_KINDS) {
-    const members = restBy.get(k.key);
+    const members = by.get(k.key);
     if (!members?.length) continue;
     if (members.length === 1) {
-      rest.push({ ...members[0], severity: 'low' });
+      out.push({ ...members[0], severity });
       continue;
     }
     const n = members.reduce((z, s) => z + sizeOf(s), 0);
     const sum = members.reduce((z, s) => z + s.amount, 0);
     const resp = new Set(members.map((s) => s.responsibleId));
-    rest.push({
-      id: 'group:' + k.key,
+    out.push({
+      id: prefix + k.key,
       kind: k.key,
-      severity: 'low',
+      severity,
       title: GROUP_NOUN[k.key](n, (per.get(k.key) ?? 0) > 0),
       reason: '',
       facts: [groupFact(k.key, members)],
       amount: sum,
       responsibleId: resp.size === 1 ? [...resp][0] : null,
-      action: { type: 'go', to: `/overview/attention?kind=${k.key}`, label: 'Показать', fallback: { type: 'task', link: null, title: `Разобрать: ${k.label.toLowerCase()}`, assigneeId: null, label: 'Задача' } },
+      action: { type: 'go', to: `/overview/attention?kind=${k.key}`, label: 'Показать', fallback: { type: 'task', link: null, title: `Разобрать: ${k.label.toLowerCase()}`, assigneeId: null, label: 'Поручить' } },
       subject: null,
       date: members[0].date,
       money: members.every((s) => s.money),
@@ -757,8 +829,35 @@ export function arrangeSignals(list: Signal[]): Arranged {
       members,
     });
   }
-  rest.sort((a, b) => b.amount - a.amount);
-  return { important, rest };
+  return out.sort((a, b) => b.amount - a.amount);
+}
+
+/** Главное на виду: по важности и сумме, не больше KIND_CAP одного вида; важного — не больше IMPORTANT_MAX.
+    Срочное сверх этого — строкой-группой в «Срочно» (число «Срочно» — все срочные), остальное однотипное — группой в «Остальном». */
+export function arrangeSignals(list: Signal[]): Arranged {
+  const sorted = [...list].sort(bySeverity);
+  const important: Signal[] = [];
+  const per = new Map<SignalKind, number>();
+  const urgentBy = new Map<SignalKind, Signal[]>();
+  const restBy = new Map<SignalKind, Signal[]>();
+  const put = (m: Map<SignalKind, Signal[]>, s: Signal) => {
+    const a = m.get(s.kind) ?? [];
+    a.push(s);
+    m.set(s.kind, a);
+  };
+  for (const s of sorted) {
+    const n = per.get(s.kind) ?? 0;
+    const room = n < KIND_CAP[s.kind];
+    if (!s.count && s.severity === 'high' && room) {
+      important.push(s);
+      per.set(s.kind, n + 1);
+    } else if (!s.count && s.severity === 'high') put(urgentBy, s);
+    else if (!s.count && s.severity === 'medium' && room && important.length < IMPORTANT_MAX) {
+      important.push(s);
+      per.set(s.kind, n + 1);
+    } else put(restBy, s);
+  }
+  return { important, urgentRest: groupUp(urgentBy, per, 'high', 'ugroup:'), rest: groupUp(restBy, per, 'low', 'group:') };
 }
 
 /* ---------- «Разобрано»: хранится у пользователя, чтобы не шуметь ---------- */
@@ -780,4 +879,92 @@ export function saveResolved(v: Record<string, string>): void {
   } catch {
     /* хранилище недоступно — отметка живёт до перезагрузки */
   }
+}
+
+/* ---------- сколько проблем и что разобрано сегодня ---------- */
+
+/** Сколько проблем за строками: группа «Ещё 5 заказов» — это пять проблем, а не одна строка. */
+export function problemCount(list: Signal[]): number {
+  return list.reduce((z, s) => z + (s.members ? s.members.length : 1), 0);
+}
+
+/** Число на вкладке «Требует внимания»: сколько проблем в работе (без отмеченных «Разобрано»). */
+export function attentionCount(signals: Signal[], resolved: Record<string, string>): number {
+  let n = 0;
+  for (const s of signals) if (!resolved[s.id]) n++;
+  return n;
+}
+
+export interface GoneSignal {
+  id: string;
+  title: string;
+  kind: SignalKind;
+  at: string; // «14:32» — когда заметили, что сигнала больше нет
+}
+
+interface SeenStore {
+  day: ISODate;
+  items: Record<string, { title: string; kind: SignalKind }>;
+  gone: Record<string, GoneSignal>;
+  important: string[];
+  active: string[];
+  raised: string[];
+}
+
+const SEEN_KEY = 'bm-attention-seen-v2';
+
+function loadSeen(role: RoleKey, today: ISODate): SeenStore {
+  const empty: SeenStore = { day: today, items: {}, gone: {}, important: [], active: [], raised: [] };
+  try {
+    const raw = localStorage.getItem(`${SEEN_KEY}|${role}`);
+    const v = raw ? (JSON.parse(raw) as SeenStore) : null;
+    return v && v.day === today && v.items ? { ...empty, ...v } : empty;
+  } catch {
+    return empty;
+  }
+}
+
+/** Сигналы, которые были сегодня и пропали, потому что дело сделали (платёж разнесли, поставщику заплатили),
+    и строки, которые поднялись в «Срочно» и «Важно» на место разобранных. Хранится у пользователя по роли и дню. */
+export function trackAttention(role: RoleKey, today: ISODate, time: string, all: Signal[], active: Signal[], important: Signal[]): { gone: GoneSignal[]; raised: Set<string> } {
+  const st = loadSeen(role, today);
+  const ids = new Set(all.map((s) => s.id));
+  let changed = false;
+  for (const [id, it] of Object.entries(st.items)) {
+    if (ids.has(id)) continue;
+    st.gone[id] = { id, title: it.title, kind: it.kind, at: time };
+    delete st.items[id];
+    changed = true;
+  }
+  for (const s of all) {
+    if (st.gone[s.id]) {
+      delete st.gone[s.id];
+      changed = true;
+    }
+    if (!st.items[s.id] || st.items[s.id].title !== s.title) {
+      st.items[s.id] = { title: s.title, kind: s.kind };
+      changed = true;
+    }
+  }
+  const imp = important.map((s) => s.id);
+  const act = active.map((s) => s.id);
+  const raised = new Set(st.raised);
+  if (st.important.length) {
+    const prevImp = new Set(st.important);
+    const prevAct = new Set(st.active);
+    for (const id of imp) if (!prevImp.has(id) && prevAct.has(id)) raised.add(id);
+  }
+  const impSet = new Set(imp);
+  for (const id of [...raised]) if (!impSet.has(id)) raised.delete(id);
+  if (changed || st.important.join() !== imp.join() || st.active.join() !== act.join() || st.raised.join() !== [...raised].join()) {
+    st.important = imp;
+    st.active = act;
+    st.raised = [...raised];
+    try {
+      localStorage.setItem(`${SEEN_KEY}|${role}`, JSON.stringify(st));
+    } catch {
+      /* хранилище недоступно — счёт живёт до перезагрузки */
+    }
+  }
+  return { gone: Object.values(st.gone).sort((a, b) => b.at.localeCompare(a.at)), raised };
 }

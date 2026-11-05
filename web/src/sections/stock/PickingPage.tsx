@@ -1,10 +1,10 @@
 /* Склад → Сборка: очередь подтверждённых заказов, лист сборки, «Начать сборку → Собрано», выдача самовывозом. */
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ExternalLink, PackageCheck, Play, Printer } from 'lucide-react';
+import { ArrowRight, ExternalLink, PackageCheck, Play, Printer } from 'lucide-react';
 import type { Delivery } from '../../data/types';
 import { LOCATION_NAMES } from '../../data/types';
-import { useDB, useDBVersion } from '../../data/store';
+import { nowDemo, useDB, useDBVersion } from '../../data/store';
 import { indexes } from '../../data/selectors';
 import { useSession } from '../../roles/session';
 import { PageHeader } from '../../shell/PageHeader';
@@ -13,7 +13,6 @@ import {
   Button,
   Card,
   Chip,
-  ConfirmButton,
   DataTable,
   EmptyState,
   MoreMenu,
@@ -30,8 +29,15 @@ import {
   type FilterDef,
 } from '../../ui';
 import { pickQueue, stockTabCounts, type PickItem } from './picking';
+import { HandOverModal, UnpickedModal, Waybill, restSum } from './PickingModals';
 import { act } from './act';
 import { usePrint } from './print';
+
+/** Порядок очереди: сегодняшнее и самовывоз — сверху, потом на будущие дни, собранные — в конце. */
+function pickRank(x: PickItem): number {
+  if (x.o.pick === 'picked') return 2;
+  return x.forToday || x.o.fulfillment === 'pickup' ? 0 : 1;
+}
 
 function whenText(x: PickItem, today: string): string {
   if (x.o.fulfillment === 'pickup') return 'Самовывоз';
@@ -119,15 +125,24 @@ export default function PickingPage() {
   const printer = usePrint();
   const ix = indexes(db);
   const today = db.meta.today;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const queue = useMemo(() => pickQueue(db), [db, version]);
+  // сначала то, что нужно собрать (не собран / собирается), собранные — ниже; внутри — по сроку
+  const queue = useMemo(
+    () => [...pickQueue(db)].sort((a, b) => pickRank(a) - pickRank(b)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [db, version],
+  );
   const [params] = useSearchParams();
   const [sel, setSel] = useState<string | null>(() => params.get('order'));
-  const [checked, setChecked] = useState<Record<string, Set<number>>>({});
-  const current = queue.find((x) => x.id === sel) ?? queue[0];
+  const [askPicked, setAskPicked] = useState<PickItem | null>(null);
+  const [handOver, setHandOver] = useState<PickItem | null>(null);
+  // выданный заказ уходит из очереди — показываем итог выдачи, а не переключаемся молча на другой
+  const [handed, setHanded] = useState<{ x: PickItem; at: string; info: string } | null>(null);
+  const firstOpen = queue.find((x) => x.o.pick !== 'picked') ?? queue[0];
+  const showHanded = handed !== null && handed.x.id === sel && !queue.some((x) => x.id === sel);
+  const current = showHanded ? undefined : queue.find((x) => x.id === sel) ?? firstOpen;
   useEffect(() => {
-    if (current && current.id !== sel) setSel(current.id);
-  }, [current, sel]);
+    if (!showHanded && current && current.id !== sel) setSel(current.id);
+  }, [current, sel, showHanded]);
 
   const canWork = can('shipOrder');
   const clientName = (x: PickItem) => x.client?.name ?? 'Клиент';
@@ -210,6 +225,19 @@ export default function PickingPage() {
     toast(r.info ? `${ok}. ${r.info}` : ok);
   };
 
+  const markPicked = (x: PickItem) => run('order.pick', { orderId: x.o.id, stage: 'picked' }, `Заказ № ${x.o.number} собран`);
+
+  const doHandOver = (x: PickItem, print: boolean): string | null => {
+    const r = act('order.ship', { orderId: x.o.id }, me.id);
+    if (!r.ok) return r.error;
+    const at = nowDemo();
+    setHanded({ x, at, info: r.info ?? '' });
+    setHandOver(null);
+    toast(`Заказ № ${x.o.number} выдан клиенту`);
+    if (print) printer.print(<Waybill x={x} at={at} />);
+    return null;
+  };
+
   const todays = queue.filter((x) => x.forToday);
   const printToday = () => {
     const list = todays.length ? todays : queue;
@@ -228,16 +256,21 @@ export default function PickingPage() {
       const x = current;
       // собранный заказ — все галочки стоят; при сборке отмечает кладовщик; до начала — пусто
       const picked = x.o.pick === 'picked';
-      const done = picked ? new Set(x.lines.map((_, i) => i)) : checked[x.id] ?? new Set<number>();
-      const allDone = done.size >= x.lines.length;
+      // отметки хранятся в заказе (order.pickChecked): ушёл на другой экран и вернулся — прогресс на месте
+      const checkedIds = new Set(x.o.pickChecked ?? []);
+      const isChecked = (pid: string) => picked || checkedIds.has(pid);
+      const doneCount = picked ? x.lines.length : x.lines.filter((l) => checkedIds.has(l.line.productId)).length;
+      const allDone = doneCount >= x.lines.length;
       const courier = x.delivery?.courierId ? ix.employees.get(x.delivery.courierId)?.name ?? null : null;
-      const toggle = (i: number) =>
-        setChecked((c) => {
-          const s = new Set(c[x.id] ?? []);
-          if (s.has(i)) s.delete(i);
-          else s.add(i);
-          return { ...c, [x.id]: s };
-        });
+      const toggle = (pid: string) => {
+        const next = new Set(checkedIds);
+        if (next.has(pid)) next.delete(pid);
+        else next.add(pid);
+        const starting = x.o.pick === 'none' && next.size > 0;
+        const r = act('order.pickProgress', { orderId: x.o.id, checked: [...next] }, me.id);
+        if (!r.ok) return toast(r.error, 'error');
+        if (starting) toast(`Сборка заказа № ${x.o.number} начата`);
+      };
       return (
         <Card
           className="stock-pick-side"
@@ -263,22 +296,11 @@ export default function PickingPage() {
                     Начать сборку
                   </Button>
                 ) : x.o.pick === 'picking' ? (
-                  allDone ? (
-                    <Button variant="primary" icon={<PackageCheck />} onClick={() => run('order.pick', { orderId: x.o.id, stage: 'picked' }, `Заказ № ${x.o.number} собран`)}>
-                      Собрано
-                    </Button>
-                  ) : (
-                    <ConfirmButton
-                      variant="primary"
-                      icon={<PackageCheck />}
-                      confirmText={`Отмечено ${done.size} из ${x.lines.length}. Собрано?`}
-                      onConfirm={() => run('order.pick', { orderId: x.o.id, stage: 'picked' }, `Заказ № ${x.o.number} собран`)}
-                    >
-                      Собрано
-                    </ConfirmButton>
-                  )
+                  <Button variant="primary" icon={<PackageCheck />} onClick={() => (allDone ? markPicked(x) : setAskPicked(x))}>
+                    Собрано
+                  </Button>
                 ) : x.o.fulfillment === 'pickup' ? (
-                  <Button variant="primary" icon={<PackageCheck />} onClick={() => run('order.ship', { orderId: x.o.id }, `Заказ № ${x.o.number} выдан клиенту`)}>
+                  <Button variant="primary" icon={<PackageCheck />} onClick={() => setHandOver(x)}>
                     Выдать самовывозом
                   </Button>
                 ) : null}
@@ -303,10 +325,10 @@ export default function PickingPage() {
               <div className="row t-12">
                 <span className="grow muted">Отобрано</span>
                 <span className="w-700">
-                  {done.size} из {x.lines.length}
+                  {doneCount} из {x.lines.length}
                 </span>
               </div>
-              <ProgressBar value={done.size} max={x.lines.length} thin />
+              <ProgressBar value={doneCount} max={x.lines.length} thin />
             </div>
           ) : null}
           <div className="stock-pick-sum" style={{ marginTop: 12, marginBottom: 8 }}>
@@ -317,12 +339,13 @@ export default function PickingPage() {
           </div>
           <div className="stock-pick-lines">
             {x.lines.map((l, i) => {
-              const isDone = done.has(i);
+              const isDone = isChecked(l.line.productId);
               const pk = packText(l.rest, l.line.pack, l.line.packSize);
-              const locked = x.o.pick !== 'picking';
+              // отмечать можно и до «Начать сборку»: первая отметка сама начинает сборку
+              const locked = picked || !canWork;
               return (
-                <label key={i} className={cx('stock-pick-line', isDone && x.o.pick === 'picking' && 'is-done', locked && 'is-locked')}>
-                  <input type="checkbox" checked={isDone} disabled={locked} onChange={() => toggle(i)} aria-label="Отобрано" />
+                <label key={i} className={cx('stock-pick-line', isDone && !picked && 'is-done', locked && 'is-locked')}>
+                  <input type="checkbox" checked={isDone} disabled={locked} onChange={() => toggle(l.line.productId)} aria-label="Отобрано" />
                   <span style={{ minWidth: 0 }}>
                     <span className="stock-pick-name">{l.p.name}</span>
                     <span className="stock-pick-sku">{l.p.sku}</span>
@@ -343,6 +366,32 @@ export default function PickingPage() {
         </Card>
       );
     })()
+  ) : handed && showHanded ? (
+    <Card
+      className="stock-pick-side"
+      title={
+        <EntityLink type="order" id={handed.x.o.id}>
+          Заказ № {handed.x.o.number}
+        </EntityLink>
+      }
+      sub={clientName(handed.x)}
+      foot={
+        <div className="stock-pick-actions" style={{ width: '100%' }}>
+          {firstOpen ? (
+            <Button variant="primary" iconRight={<ArrowRight />} onClick={() => setSel(firstOpen.id)}>
+              Следующий: № {firstOpen.o.number}
+            </Button>
+          ) : null}
+          <Button icon={<Printer />} onClick={() => printer.print(<Waybill x={handed.x} at={handed.at} />)}>
+            Накладная
+          </Button>
+        </div>
+      }
+    >
+      <Notice tone="ok" title={`Выдан клиенту в ${fmt.time(handed.at)}`}>
+        {fmt.count(handed.x.positions, 'позиция', 'позиции', 'позиций')} · {fmt.qty(handed.x.qty)} на {fmt.money(restSum(handed.x))}. {handed.info}
+      </Notice>
+    </Card>
   ) : null;
 
   return (
@@ -356,7 +405,7 @@ export default function PickingPage() {
           </Button>
         }
       />
-      {queue.length === 0 ? (
+      {queue.length === 0 && !showHanded ? (
         <Card>
           <EmptyState icon={<PackageCheck />} title="Собирать нечего">
             Все подтверждённые заказы собраны и отгружены
@@ -380,6 +429,18 @@ export default function PickingPage() {
           {side}
         </div>
       )}
+      {askPicked ? (
+        <UnpickedModal
+          x={askPicked}
+          onClose={() => setAskPicked(null)}
+          onConfirm={() => {
+            const x = askPicked;
+            setAskPicked(null);
+            markPicked(x);
+          }}
+        />
+      ) : null}
+      {handOver ? <HandOverModal x={handOver} onClose={() => setHandOver(null)} onDone={(print) => doHandOver(handOver, print)} /> : null}
       {printer.element}
     </>
   );

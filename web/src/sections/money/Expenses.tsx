@@ -1,5 +1,6 @@
 /* Расходы: помесячно по категориям и список записей. */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Receipt } from 'lucide-react';
 import type { Payment } from '../../data/types';
 import { ACCOUNT_NAMES, EXPENSE_CATEGORIES, PAY_METHOD_NAMES } from '../../data/types';
@@ -9,7 +10,7 @@ import { plusMonths } from '../../data/dates';
 import { PageHeader } from '../../shell/PageHeader';
 import { Button, DataTable, Kpi, MoreMenu, Select, cx, fmt, type Column } from '../../ui';
 import { MoneyModalHost, useMoneyMenu, type MoneyModal } from './actions';
-import { PERIOD_OPTIONS, clean, periodBounds, useMoneyPerms, type PeriodKey } from './lib';
+import { clean, periodBounds, periodLabel, useMoneyPerms, usePeriodFromUrl, type PeriodKey } from './lib';
 import { useMoneyCounts } from './counts';
 
 /** Месяц в предложном падеже: «в октябре». */
@@ -33,7 +34,16 @@ export default function Expenses() {
   const counts = useMoneyCounts();
   const [modal, setModal] = useState<MoneyModal>(null);
   const [cat, setCat] = useState('');
-  const [period, setPeriod] = useState<PeriodKey>('all');
+  const [params] = useSearchParams();
+  const fromUrl = usePeriodFromUrl('all', params);
+  const custom = fromUrl.custom;
+  const [periodRaw, setPeriod] = useState<PeriodKey>(fromUrl.initial);
+  // пришли по ссылке с другим периодом — показываем его; ушли со ссылки — обычный выбор
+  const customKey = custom ? `${custom.from}|${custom.to}` : '';
+  useEffect(() => {
+    if (customKey) setPeriod('custom');
+  }, [customKey]);
+  const period: PeriodKey = periodRaw === 'custom' && !custom ? 'all' : periodRaw;
   const menu = useMoneyMenu(setModal, ['expense']);
   const today = db.meta.today;
 
@@ -94,11 +104,11 @@ export default function Expenses() {
     },
   ];
 
-  const { from, to } = periodBounds(period, today, db.meta.startDate);
+  const { from, to } = periodBounds(period, today, db.meta.startDate, custom);
   const shown = useMemo(() => list.filter((r) => (!cat || r.p.expenseCategory === cat) && r.p.at.slice(0, 10) >= from && r.p.at.slice(0, 10) <= to), [list, cat, from, to]);
 
   const listCols: Column<ExpRow>[] = [
-    { key: 'at', header: 'Дата', sort: (r) => r.p.at, csv: (r) => r.p.at.slice(0, 10), width: 120, render: (r) => <span className="nowrap">{fmt.relDate(r.p.at, today)}</span> },
+    { key: 'at', header: 'Дата', sort: (r) => r.p.at, csv: (r) => `${r.p.at.slice(8, 10)}.${r.p.at.slice(5, 7)}.${r.p.at.slice(0, 4)}`, width: 120, render: (r) => <span className="nowrap">{fmt.relDate(r.p.at, today)}</span> },
     { key: 'cat', header: 'Категория', sort: (r) => r.p.expenseCategory ?? '', csv: (r) => r.p.expenseCategory ?? '', width: 200, render: (r) => <span className="w-600">{r.p.expenseCategory}</span> },
     {
       key: 'amount',
@@ -179,11 +189,11 @@ export default function Expenses() {
               aria-label="Категория"
               style={{ width: 210 }}
             />
-            <Select size="sm" value={period} onChange={(e) => setPeriod(e.target.value as PeriodKey)} options={PERIOD_OPTIONS} aria-label="Период" style={{ width: 170 }} />
+            <Select size="sm" value={period} onChange={(e) => setPeriod(e.target.value as PeriodKey)} options={fromUrl.options} aria-label="Период" style={{ width: 170 }} />
           </>
         }
         defaultSort={{ key: 'at', dir: 'desc' }}
-        exportName="Расходы"
+        exportName={`Расходы ${periodLabel(period, today, db.meta.startDate, custom)}`}
         totalLabel={(n) => `Итого · ${fmt.num(n)}`}
         pageSize={20}
       />

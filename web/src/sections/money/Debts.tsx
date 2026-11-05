@@ -16,14 +16,15 @@ import { MoneyModalHost, useMoneyMenu, type MoneyModal } from './actions';
 import { clientPayInfo, useMoneyPerms, type ClientPayInfo } from './lib';
 import { useMoneyCounts } from './counts';
 import { PhoneStats, useNarrow, usePhone } from './parts';
-import { SendWhatsAppModal } from '../sales/SendInvoiceModal';
-import { actFile, textReminder } from '../../data/whatsapp';
+import { RemindModal, remindersIndex, reminderText } from './remind';
 
 interface DRow {
   c: Client;
   b: ClientBalance;
   owner: string;
   last: ClientPayInfo | undefined;
+  /** когда последний раз напоминали об оплате в WhatsApp */
+  reminded: string | null;
 }
 
 export default function Debts() {
@@ -48,11 +49,12 @@ export default function Debts() {
     const bal = clientBalances(db);
     const info = clientPayInfo(db);
     const ix = indexes(db);
+    const rem = remindersIndex(db);
     const out: DRow[] = [];
     for (const c of clients) {
       const b = bal.get(c.id);
       if (!b || (b.debt <= 0 && b.advance <= 0 && b.pending <= 0)) continue;
-      out.push({ c, b, owner: c.ownerId ? ix.employees.get(c.ownerId)?.short ?? '—' : 'Без ответственного', last: info.get(c.id) });
+      out.push({ c, b, owner: c.ownerId ? ix.employees.get(c.ownerId)?.short ?? '—' : 'Без ответственного', last: info.get(c.id), reminded: rem.get(c.id) ?? null });
     }
     return out;
   }, [db, v, clients]);
@@ -95,7 +97,12 @@ export default function Debts() {
       sort: (r) => r.b.debt,
       csv: (r) => r.b.debt,
       width: 96,
-      render: (r) => (r.b.debt ? <span className="w-700">{fmt.money(r.b.debt)}</span> : <span className="faint">—</span>),
+      render: (r) => (
+        <div>
+          {r.b.debt ? <span className="w-700">{fmt.money(r.b.debt)}</span> : <span className="faint">—</span>}
+          {narrow && r.b.advance > 0 ? <div className="cell-sub money-adv nowrap">аванс {fmt.money(r.b.advance)}</div> : null}
+        </div>
+      ),
       total: (rs) => fmt.money(rs.reduce((s, r) => s + r.b.debt, 0)),
     },
     {
@@ -104,17 +111,14 @@ export default function Debts() {
       align: 'right',
       sort: (r) => r.b.overdue,
       csv: (r) => r.b.overdue,
-      width: narrow ? 136 : 100,
+      width: 136,
+      // сумма и чип «Просрочка N дн.» в одной ячейке: место для колонки «Напомнили»
       render: (r) =>
         r.b.overdue ? (
-          narrow ? (
-            <div className="money-stack-r">
-              <span className="w-700 c-bad">{fmt.money(r.b.overdue)}</span>
-              {r.b.maxOverdueDays > 0 ? <StatusChip s={overdueStatus(r.b.maxOverdueDays)} /> : null}
-            </div>
-          ) : (
+          <div className="money-stack-r">
             <span className="w-700 c-bad">{fmt.money(r.b.overdue)}</span>
-          )
+            {r.b.maxOverdueDays > 0 ? <StatusChip s={overdueStatus(r.b.maxOverdueDays)} /> : null}
+          </div>
         ) : (
           <span className="faint">—</span>
         ),
@@ -123,7 +127,8 @@ export default function Debts() {
     {
       key: 'days',
       header: 'Дней просрочки',
-      hidden: narrow,
+      // на экране — чипом в «Просрочено», в выгрузке для Excel — отдельной колонкой
+      className: 'money-csv-only',
       sort: (r) => r.b.maxOverdueDays,
       csv: (r) => r.b.maxOverdueDays || '',
       width: 130,
@@ -132,6 +137,8 @@ export default function Debts() {
     {
       key: 'advance',
       header: 'Аванс',
+      // на 1280 аванс — второй строкой в колонке «Долг»
+      hidden: narrow,
       align: 'right',
       sort: (r) => r.b.advance,
       csv: (r) => r.b.advance,
@@ -173,6 +180,22 @@ export default function Debts() {
         ),
     },
     {
+      key: 'reminded',
+      header: 'Напомнили',
+      sort: (r) => r.reminded ?? '',
+      csv: (r) => (r.reminded ? r.reminded.replace('T', ' ') : ''),
+      width: 92,
+      render: (r) =>
+        r.reminded ? (
+          <div title={`Напоминание в WhatsApp: ${reminderText(r.reminded, today)}`}>
+            <div className="nowrap">{fmt.relDate(r.reminded, today)}</div>
+            <div className="cell-sub">в {fmt.time(r.reminded)}</div>
+          </div>
+        ) : (
+          <span className="faint">—</span>
+        ),
+    },
+    {
       key: 'actions',
       header: '',
       width: 1,
@@ -186,9 +209,14 @@ export default function Debts() {
           <MoreMenu
             size="sm"
             items={[
-              { label: 'Напомнить в WhatsApp', icon: <MessageCircle />, onClick: () => setRemind(r.c.id), hidden: !waOn || r.b.debt <= 0 || !(r.c.contacts[0]?.phone ?? r.c.phone) },
+              {
+                label: r.reminded && r.reminded.slice(0, 10) === today ? 'Напомнить ещё раз в WhatsApp' : 'Напомнить в WhatsApp',
+                icon: <MessageCircle />,
+                onClick: () => setRemind(r.c.id),
+                hidden: !waOn || r.b.debt <= 0 || !(r.c.contacts[0]?.phone ?? r.c.phone),
+              },
               { label: 'Акт сверки', icon: <FileText />, onClick: () => setModal({ kind: 'act', clientId: r.c.id }) },
-              { label: 'Задача: напомнить об оплате', icon: <ListChecks />, onClick: () => setTask(r.c.id) },
+              { label: 'Поручить напомнить об оплате', icon: <ListChecks />, onClick: () => setTask(r.c.id) },
             ]}
           />
         </div>
@@ -239,7 +267,7 @@ export default function Debts() {
               { label: 'Авансы', value: <span className={kpi.advance ? 'money-adv' : undefined}>{fmt.money(kpi.advance)}</span> },
             ]}
           />
-          <PhoneDebts rows={rows} canAccept={perms.accept} onOpen={(r) => open('client', r.c.id)} onAccept={(r) => setModal({ kind: 'accept', clientId: r.c.id })} />
+          <PhoneDebts today={today} rows={rows} canAccept={perms.accept} onOpen={(r) => open('client', r.c.id)} onAccept={(r) => setModal({ kind: 'accept', clientId: r.c.id })} />
         </>
       ) : (
         <>
@@ -267,33 +295,24 @@ export default function Debts() {
         </>
       )}
       <MoneyModalHost modal={modal} onClose={() => setModal(null)} onOpen={setModal} />
-      {task ? <TaskModal link={{ type: 'client', id: task }} defaultTitle="Напомнить об оплате долга" onClose={() => setTask(null)} /> : null}
+      {task
+        ? (() => {
+            const r = rows.find((x) => x.c.id === task);
+            const what = r ? (r.b.overdue > 0 ? `просрочено ${fmt.money(r.b.overdue)}` : `долг ${fmt.money(r.b.debt)}`) : '';
+            return (
+              <TaskModal
+                title="Поручить напомнить об оплате"
+                link={{ type: 'client', id: task }}
+                assigneeId={r?.c.ownerId ?? null}
+                kind="remind_debt"
+                defaultTitle={`Напомнить об оплате: ${r?.c.name ?? 'клиент'}${what ? ', ' + what : ''}`}
+                onClose={() => setTask(null)}
+              />
+            );
+          })()
+        : null}
       {remind ? <RemindModal clientId={remind} onClose={() => setRemind(null)} /> : null}
     </>
-  );
-}
-
-/** Напоминание о долге в WhatsApp: сумма, просрочка, акт сверки во вложении. Перед отправкой видно текст. */
-function RemindModal({ clientId, onClose }: { clientId: ID; onClose: () => void }) {
-  const db = useDB();
-  const c = db.clients.find((x) => x.id === clientId);
-  const b = clientBalances(db).get(clientId);
-  const [text] = useState(() => textReminder(db, clientId, c?.contacts[0]?.name.split(' ')[0] ?? ''));
-  if (!c || !b) return null;
-  return (
-    <SendWhatsAppModal
-      clientId={clientId}
-      title="Напомнить об оплате"
-      initialText={text}
-      file={actFile(db.meta.today)}
-      rows={[
-        { label: 'Долг', value: fmt.money(b.debt) },
-        { label: 'Просрочено', value: b.overdue > 0 ? <span className="c-bad">{fmt.money(b.overdue)}</span> : fmt.money(0) },
-      ]}
-      okText="Напоминание отправлено клиенту в WhatsApp"
-      purpose="reminder"
-      onClose={onClose}
-    />
   );
 }
 
@@ -308,7 +327,7 @@ const PHONE_TESTS: Record<PhoneFilter, (r: DRow) => boolean> = {
 };
 const norm = (x: string) => x.toLowerCase().replace(/ё/g, 'е');
 
-function PhoneDebts({ rows, canAccept, onOpen, onAccept }: { rows: DRow[]; canAccept: boolean; onOpen: (r: DRow) => void; onAccept: (r: DRow) => void }) {
+function PhoneDebts({ rows, canAccept, onOpen, onAccept, today }: { rows: DRow[]; canAccept: boolean; onOpen: (r: DRow) => void; onAccept: (r: DRow) => void; today: string }) {
   const [q, setQ] = useState('');
   const [f, setF] = useState<PhoneFilter>('all');
   const [limit, setLimit] = useState(30);
@@ -356,6 +375,7 @@ function PhoneDebts({ rows, canAccept, onOpen, onAccept }: { rows: DRow[]; canAc
               {r.b.creditLimit > 0 && r.b.creditLeft < 0 ? <StatusChip s={{ label: `Сверх лимита на ${fmt.money(-r.b.creditLeft)}`, tone: 'warn' }} /> : null}
               {r.b.debt > 0 && r.b.advance > 0 ? <StatusChip s={{ label: `Аванс ${fmt.money(r.b.advance)}`, tone: 'info' }} /> : null}
               {r.b.debt > 0 && r.b.overdue === 0 ? <span className="t-13 ink-2 nowrap">{r.c.deferDays > 0 ? `Отсрочка ${r.c.deferDays} дн.` : 'Без отсрочки'}</span> : null}
+              {r.reminded ? <span className="t-13 ink-2 nowrap">Напомнили {reminderText(r.reminded, today)}</span> : null}
             </div>
             {canAccept && r.b.debt > 0 ? (
               <div onClick={(e) => e.stopPropagation()}>

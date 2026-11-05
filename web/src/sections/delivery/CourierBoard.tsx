@@ -1,6 +1,7 @@
 /* Телефон курьера: крупные карточки заявок по порядку маршрута. Без таблиц, всё по ширине экрана. */
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronUp, Clock as ClockIcon, ListOrdered, MessageSquare, Navigation, Package } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ChevronDown, ChevronUp, Clock as ClockIcon, HandCoins, ListOrdered, MessageSquare, Navigation, Package, Timer } from 'lucide-react';
 import type { Delivery, ISODate } from '../../data/types';
 import { useDB, useDBVersion } from '../../data/store';
 import { courierCash, indexes } from '../../data/selectors';
@@ -8,8 +9,8 @@ import { useSession } from '../../roles/session';
 import { useScoped } from '../../roles/scope';
 import { useOpenEntity } from '../../shell/entities';
 import { Button, EmptyState, cx, fmt } from '../../ui';
-import { CallButton, LateChip, StateChip } from './parts';
-import { byRoute, clockOf, dayLabel, deliveredAt, deliveredMoneyText, forDay, kgText, lastFail, mapUrl, notHandedIn, onHandLabel, onHandSince, placesText, routeUrl, type Clock } from './lib';
+import { CallButton, DelayChip, LateChip, StateChip } from './parts';
+import { byRoute, clockOf, dayLabel, deliveredAt, deliveredMoneyText, forDay, kgText, lastFail, mapUrl, onHandLabel, onHandSince, onHandSplit, placesText, routeUrl, type Clock } from './lib';
 import { actsFor, useDeliveryFlow } from './flow';
 
 /** Мои доставки на день по маршруту. */
@@ -29,19 +30,16 @@ export function useMyDay(day: ISODate) {
   }, [db, version, scoped, day]);
 }
 
-/** «Осталось 4 из 7 · Вручено 3 · На руках, с 4 ноября 8 450 ₽»: на руках — все несданные наличные, не только за сегодня. */
+/** «Осталось 3 из 5 · Вручено 2», ниже — на руках: все несданные наличные и сколько из них с прошлых дней. */
 export function CourierSummary({ day }: { day: ISODate }) {
   const db = useDB();
   const { me } = useSession();
   const { list, active, done, c } = useMyDay(day);
   const cash = courierCash(db, me.id);
   const since = onHandSince(db, me.id);
-  const todayCash = notHandedIn(db, me.id)
-    .filter((d) => (deliveredAt(d) ?? d.date).slice(0, 10) >= c.today)
-    .reduce((z, d) => z + d.collected, 0);
-  const onHandTitle = since && since < c.today ? `За сегодня ${fmt.money(todayCash)}, с прошлых дней ${fmt.money(cash.onHand - todayCash)}` : undefined;
+  const split = onHandSplit(db, me.id, c.today);
   return (
-    <div className="card dl-sum is-cash-wide">
+    <div className="card dl-sum is-courier">
       <div className="dl-sum-item">
         <span className="dl-sum-label">Осталось</span>
         <span className="dl-sum-value">
@@ -52,9 +50,14 @@ export function CourierSummary({ day }: { day: ISODate }) {
         <span className="dl-sum-label">Вручено</span>
         <span className="dl-sum-value">{done.length}</span>
       </div>
-      <div className="dl-sum-item" title={onHandTitle}>
+      <div className="dl-sum-item is-hand">
         <span className="dl-sum-label">{onHandLabel(since, c.today)}</span>
         <span className="dl-sum-value">{fmt.money(cash.onHand)}</span>
+        {split.older > 0 ? (
+          <span className="dl-sum-split">
+            сегодня {fmt.money(split.today)} · с прошлых дней {fmt.money(split.older)}
+          </span>
+        ) : null}
       </div>
     </div>
   );
@@ -62,11 +65,12 @@ export function CourierSummary({ day }: { day: ISODate }) {
 
 /** Ссылка «Маршрут» по оставшимся точкам. */
 export function RouteButton({ day }: { day: ISODate }) {
-  const { active, list } = useMyDay(day);
-  const pts = active.length ? active : list;
+  const { active, list, c } = useMyDay(day);
+  // сегодня всё закрыто — маршрут уже не нужен; на будущий день — по всем точкам
+  const pts = active.length ? active : day > c.today ? list : [];
   if (!pts.length) return null;
   return (
-    <a className="btn btn-secondary" href={routeUrl(pts)} target="_blank" rel="noreferrer">
+    <a className="btn btn-secondary btn-lg" href={routeUrl(pts)} target="_blank" rel="noreferrer">
       <Navigation />
       Маршрут на карте
     </a>
@@ -82,6 +86,7 @@ function CourierCard({ d, pos, primary, c, flow, today }: { d: Delivery; pos: nu
   const acts = actsFor(d, can, { prefer: 'courier', order: ix.orders.get(d.orderId) });
   const main = today ? acts.all.find((a) => a.key === 'start' || a.key === 'deliver') : undefined;
   const failAct = today && d.state === 'on_way' ? acts.all.find((a) => a.key === 'fail') : undefined;
+  const delayAct = today ? acts.all.find((a) => a.key === 'delay') : undefined;
   return (
     <article className={cx('card dl-cc', primary && 'is-next')}>
       <div className="dl-cc-top">
@@ -95,6 +100,7 @@ function CourierCard({ d, pos, primary, c, flow, today }: { d: Delivery; pos: nu
         </span>
         <span className="spacer" />
         <LateChip d={d} c={c} />
+        <DelayChip d={d} label="Задержка до" />
         {d.state === 'on_way' ? <StateChip d={d} /> : null}
       </div>
 
@@ -122,10 +128,16 @@ function CourierCard({ d, pos, primary, c, flow, today }: { d: Delivery; pos: nu
           <Package />
           {placesText(d.places)} · {kgText(d.weightKg)}
         </span>
-        <button type="button" className="link-button row" style={{ gap: 4 }} onClick={() => open('delivery', d.id)}>
-          <ListOrdered />
+      </div>
+      <div className={cx('dl-cc-tools', delayAct && 'is-two')}>
+        <Button variant="secondary" size="lg" block icon={<ListOrdered />} onClick={() => flow.lines(d)}>
           Состав заказа
-        </button>
+        </Button>
+        {delayAct ? (
+          <Button variant="secondary" size="lg" block icon={<Timer />} onClick={() => flow.act(delayAct, d)}>
+            {delayAct.label}
+          </Button>
+        ) : null}
       </div>
       {d.comment ? (
         <div className="dl-cc-comment">
@@ -158,6 +170,8 @@ function CourierCard({ d, pos, primary, c, flow, today }: { d: Delivery; pos: nu
 /** Список заявок курьера на день: карточки, затем «Не удалось» и свёрнутые «Вручено». */
 export function CourierBoard({ day }: { day: ISODate }) {
   const db = useDB();
+  const { me } = useSession();
+  const nav = useNavigate();
   const { list, active, done, failed, c } = useMyDay(day);
   const flow = useDeliveryFlow();
   const open = useOpenEntity();
@@ -165,7 +179,9 @@ export function CourierBoard({ day }: { day: ISODate }) {
   const ix = indexes(db);
   const isToday = day <= c.today;
   const pos = new Map(list.map((d, i) => [d.id, i + 1]));
-  const collected = done.reduce((z, d) => z + d.collected, 0);
+  const gotCash = done.reduce((z, d) => z + (d.collectedMethod === 'cash' ? d.collected : 0), 0);
+  const gotBank = done.reduce((z, d) => z + (d.collectedMethod && d.collectedMethod !== 'cash' ? d.collected : 0), 0);
+  const onHand = courierCash(db, me.id).onHand;
 
   return (
     <div className="dl-board">
@@ -175,8 +191,15 @@ export function CourierBoard({ day }: { day: ISODate }) {
       {!active.length ? (
         <div className="card">
           <EmptyState title={list.length ? 'Все заявки закрыты' : `${dayLabel(day, c)} заявок нет`}>
-            {list.length ? 'Сдайте наличные в кассу магазина' : 'Диспетчер назначит доставки — они появятся здесь'}
+            {list.length ? (onHand > 0 ? `Сдайте наличные в кассу магазина: ${fmt.money(onHand)}` : 'Наличные сданы — на сегодня всё') : 'Диспетчер назначит доставки — они появятся здесь'}
           </EmptyState>
+          {list.length && onHand > 0 ? (
+            <div className="dl-empty-act">
+              <Button variant="primary" size="lg" block icon={<HandCoins />} onClick={() => nav('/delivery/cash')}>
+                Сколько сдать
+              </Button>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -202,9 +225,13 @@ export function CourierBoard({ day }: { day: ISODate }) {
       {done.length ? (
         <section className="col-3">
           <button type="button" className="dl-board-toggle" onClick={() => setShowDone((v) => !v)} aria-expanded={showDone}>
-            <span className="grow">
-              Вручено · {done.length}
-              {collected ? <span className="muted w-600"> · получено {fmt.money(collected)}</span> : null}
+            <span className="grow col" style={{ gap: 2 }}>
+              <span>Вручено · {done.length}</span>
+              {gotCash || gotBank ? (
+                <span className="dl-board-toggle-sub">
+                  {[gotCash ? `наличными ${fmt.money(gotCash)}` : '', gotBank ? `картой и переводом ${fmt.money(gotBank)}` : ''].filter(Boolean).join(' · ')}
+                </span>
+              ) : null}
             </span>
             {showDone ? <ChevronUp /> : <ChevronDown />}
           </button>

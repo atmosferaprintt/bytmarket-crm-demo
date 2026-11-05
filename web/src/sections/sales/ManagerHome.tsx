@@ -12,8 +12,8 @@ import { TaskModal } from '../../shell/TaskModal';
 import { Button, Card, Chip, EmptyState, Kpi, ProgressBar, StatusChip, cx, fmt, overdueStatus, toast } from '../../ui';
 import { NewOrderDrawer } from './NewOrderDrawer';
 import { useSalesOrders } from './salesScope';
-import { deliveryFailed } from './parts';
-import { fixNo } from './lib';
+import { APPROVAL_STATUS } from './parts';
+import { WORK_STAGES, approvalTask, capitalize, fixNo, isFailedOrder, orderProblems, orderShortage } from './lib';
 import { clientsWithOpenOrders, missedHabitualOrder } from '../clients/lib';
 import './sales.css';
 
@@ -34,26 +34,28 @@ export default function Home() {
     const orders = salesOrders;
     const requests = orders.filter((o) => o.state === 'request').sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     const dById = new Map(db.deliveries.map((d) => [d.id, d]));
+    const dOf = (o: Order) => (o.deliveryId ? dById.get(o.deliveryId) : undefined);
     // недоставленный заказ снова в работе: диспетчер назначит повтор или вернёт товар на склад
-    const isFailed = (o: Order) => (o.state === 'confirmed' || o.state === 'closed') && deliveryFailed(o, o.deliveryId ? dById.get(o.deliveryId) : undefined);
-    const work = orders.filter((o) => o.state === 'confirmed' || isFailed(o));
-    const group = (test: (o: Order) => boolean) => {
-      const list = work.filter(test);
-      return { n: list.length, sum: list.reduce((s, o) => s + o.total, 0) };
-    };
-    const onWay = (o: Order) => {
-      const d = o.deliveryId ? dById.get(o.deliveryId) : undefined;
-      return !!d && d.state === 'on_way';
-    };
-    const stages = [
-      { key: 'wait', label: 'Ждут сборки', ...group((o) => o.pick === 'none' && o.ship === 'none') },
-      { key: 'picking', label: 'Собираются', ...group((o) => o.pick === 'picking') },
-      { key: 'picked', label: 'Собраны, ждут отгрузки', ...group((o) => o.pick === 'picked' && o.ship === 'none' && !onWay(o)) },
-      { key: 'way', label: 'У курьера в пути', ...group((o) => onWay(o)) },
-      { key: 'partial', label: 'Отгружены частично', ...group((o) => o.ship === 'partial') },
-    ];
-    const failed = group(isFailed);
-    const noDelivery = work.filter((o) => o.fulfillment === 'delivery' && !o.deliveryId && o.ship === 'none').length;
+    const work = orders.filter((o) => o.state === 'confirmed' || isFailedOrder(o, dOf(o)));
+    // те же этапы и проверки, что у фильтра в списке заказов: строка ведёт в список с этим фильтром
+    const stages = WORK_STAGES.map((st) => {
+      const list = work.filter((o) => st.test(o, dOf(o)));
+      return { key: st.key, label: st.label, n: list.length, sum: list.reduce((s, o) => s + o.total, 0) };
+    });
+    const requestInfo = new Map(
+      requests.map((o) => {
+        const c = idx.clients.get(o.clientId);
+        return [
+          o.id,
+          {
+            approval: !!approvalTask(db, o.id),
+            problems: c ? orderProblems(db, c, o.total).map((p) => p.text) : [],
+            short: orderShortage(db, o).length > 0,
+            owner: c?.ownerId ? idx.employees.get(c.ownerId) : undefined,
+          },
+        ] as const;
+      }),
+    );
 
     const clients = scoped.clients.filter((c) => c.active);
     const debts = clients
@@ -87,7 +89,7 @@ export default function Home() {
     const fact = salesForPeriod(db, month + '-01', today, { employeeId: me.id }).revenue;
     const tasks = scoped.myTasks.filter((t) => t.state === 'open' && t.due <= today).sort((a, b) => a.due.localeCompare(b.due) || (a.dueTime ?? '99').localeCompare(b.dueTime ?? '99'));
     const workSum = work.reduce((s, o) => s + o.total, 0);
-    return { idx, requests, work, workSum, stages, failed, noDelivery, debts, debtTotal, overdueTotal, missed, plan, fact, tasks };
+    return { idx, requests, requestInfo, work, workSum, stages, debts, debtTotal, overdueTotal, missed, plan, fact, tasks };
   }, [db, version, scoped, salesOrders, me.id, today]);
 
   const daysInMonth = new Date(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0).getDate();
@@ -135,24 +137,36 @@ export default function Home() {
                 {data.requests.slice(0, 6).map((o) => {
                   const c = data.idx.clients.get(o.clientId);
                   const a = data.idx.employees.get(o.authorId);
-                  const b = clientBalance(db, o.clientId);
+                  const info = data.requestInfo.get(o.id);
+                  const owner = info?.owner;
+                  // чей клиент: ваш, представителя или без ответственного; автор — если это не ответственный
+                  const whose = !owner ? 'Клиент без ответственного' : owner.id === me.id ? 'Ваш клиент' : `Клиент ${owner.short}`;
+                  const by = o.authorId === me.id ? 'ваш заказ' : a && a.id !== owner?.id ? `заявка ${a.short}` : null;
+                  const flags = info?.approval || info?.problems.length || info?.short;
                   return (
-                    <div key={o.id} className="list-row">
+                    <button key={o.id} type="button" className="list-row sales-req-row" onClick={() => openEntity('order', o.id)}>
                       <div className="grow">
                         <div className="row" style={{ gap: 6 }}>
-                          <span className="w-700">№ {o.number}</span>
+                          <span className="w-700 nowrap">№ {o.number}</span>
                           <span className="w-600 ellipsis">{c?.name}</span>
                         </div>
-                        <div className="muted t-12">
-                          {o.authorId === me.id ? 'Ваш заказ сверх условий' : a?.short} · {fmt.dateTime(o.createdAt)} · {fmt.count(o.lines.length, 'позиция', 'позиции', 'позиций')}
-                        </div>
+                        <div className="muted t-12 ellipsis">{[whose, by, fmt.dateTime(o.createdAt)].filter(Boolean).join(' · ')}</div>
+                        {flags ? (
+                          <span className="chips sales-req-chips">
+                            {info?.approval ? (
+                              <StatusChip s={APPROVAL_STATUS} />
+                            ) : info?.problems.length ? (
+                              <Chip tone="bad" title={capitalize(info.problems.join('; '))}>
+                                Нужно согласие владельца
+                              </Chip>
+                            ) : null}
+                            {info?.short ? <Chip tone="warn">Не хватает товара</Chip> : null}
+                          </span>
+                        ) : null}
                       </div>
-                      {o.authorId === me.id ? <Chip tone="warn">У владельца</Chip> : b.maxOverdueDays > 0 ? <StatusChip s={overdueStatus(b.maxOverdueDays)} /> : null}
-                      <span className="num w-700">{fmt.money(o.total)}</span>
-                      <Button size="sm" onClick={() => openEntity('order', o.id)}>
-                        Открыть
-                      </Button>
-                    </div>
+                      <span className="num w-700 nowrap">{fmt.money(o.total)}</span>
+                      <ChevronRight size={16} className="faint" />
+                    </button>
                   );
                 })}
               </div>
@@ -163,26 +177,19 @@ export default function Home() {
 
           <Card title="Мои заказы в работе" actions={<Link to="/sales" className="sales-more-link">Все заказы<ChevronRight size={14} /></Link>} flush>
             <div className="list">
-              {data.stages.map((s) => (
-                <div key={s.key} className="list-row">
-                  <span className="grow ink-2 w-600">{s.label}</span>
-                  <span className="muted t-12 num">{s.n ? fmt.money(s.sum) : ''}</span>
-                  <span className={cx('sales-count', s.n > 0 && 'is-on')}>{s.n}</span>
-                </div>
-              ))}
-              {data.failed.n ? (
-                <div className="list-row">
-                  <span className="grow c-bad w-600">Не доставлены</span>
-                  <span className="muted t-12 num">{fmt.money(data.failed.sum)}</span>
-                  <span className="sales-count is-bad">{data.failed.n}</span>
-                </div>
-              ) : null}
-              {data.noDelivery ? (
-                <div className="list-row">
-                  <span className="grow c-warn w-600">Доставка не оформлена</span>
-                  <span className="sales-count is-warn">{data.noDelivery}</span>
-                </div>
-              ) : null}
+              {data.stages
+                .filter((s) => s.n > 0 || (s.key !== 'failed' && s.key !== 'nodelivery'))
+                .map((s) => {
+                  const tone = s.key === 'failed' ? 'bad' : s.key === 'nodelivery' ? 'warn' : null;
+                  return (
+                    <Link key={s.key} to={`/sales?stage=${s.key}`} className="list-row sales-stage-row">
+                      <span className={cx('grow w-600', tone === 'bad' ? 'c-bad' : tone === 'warn' ? 'c-warn' : 'ink-2')}>{s.label}</span>
+                      <span className="muted t-12 num">{s.n && s.key !== 'nodelivery' ? fmt.money(s.sum) : ''}</span>
+                      <span className={cx('sales-count', s.n > 0 && (tone ? `is-${tone}` : 'is-on'))}>{s.n}</span>
+                      <ChevronRight size={16} className="faint" />
+                    </Link>
+                  );
+                })}
             </div>
           </Card>
 

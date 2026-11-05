@@ -6,7 +6,7 @@ import type { Delivery, DeliveryState, ISODate, Order } from '../../data/types';
 import { orderPayment } from '../../data/selectors';
 import type { DB } from '../../data/types';
 import { Chip, DELIVERY_STATE, PAY_STATE, Segmented, StatusChip, cx, fmt } from '../../ui';
-import { lateOf, mapUrl, telUrl, type Clock } from './lib';
+import { delayOf, lateOf, mapUrl, telUrl, type Clock } from './lib';
 
 /** Узкий экран (1280 и уже): таблицы прячут второстепенные колонки внутрь соседних. */
 export function useNarrow(query = '(max-width: 1400px)'): boolean {
@@ -123,6 +123,18 @@ export function LateChip({ d, c, short }: { d: Delivery; c: Clock; short?: boole
   const late = lateOf(d, c);
   if (!late) return null;
   return <Chip tone="bad" title={late.label}>{short ? late.label.replace(/^Опоздание /, '') : late.label}</Chip>;
+}
+
+/** Курьер отметил «Задерживаюсь»: «Задерживается до 15:30». */
+export function DelayChip({ d, label = 'Задерживается до' }: { d: Delivery; label?: string }) {
+  const until = delayOf(d);
+  if (!until) return null;
+  const last = [...(d.notes ?? [])].reverse().find((n) => n.text.startsWith('Задерживается'));
+  return (
+    <Chip tone="warn" title={last?.text}>
+      {`${label} ${until}`}
+    </Chip>
+  );
 }
 
 /** Оплата заказа — отдельно от доставки: «Доставлено» не значит «оплачено». */

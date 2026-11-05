@@ -10,6 +10,7 @@ import { DEAD_DAYS, deficitRows, expiryRows, groupRows, isDead, periodDays, prod
 import { KpiTile, deltaOf, ppDelta } from '../overview/KpiTile';
 import { DeltaText, DocsDrawer, HowCalc, MarginText, ReportTop, WrapHead, sum, useReportPeriod } from './parts';
 import { change } from '../overview/period';
+import { expensesFor } from '../overview/overviewData';
 import { plusDays } from '../../data/dates';
 
 type Metric = 'revenue' | 'qty' | 'profit';
@@ -54,6 +55,9 @@ export default function ProductsReport() {
   const prevMargin = prevTotal && prevTotal.knownRevenue > 0 ? (prevTotal.profit / prevTotal.knownRevenue) * 100 : null;
   const share = total.lines ? total.knownLines / total.lines : 1;
   const days = periodDays(range.from, range.to);
+  // расходы за период из журнала денег — та же формула, что на обзоре: «Прибыль после расходов» = валовая − расходы
+  const expenses = useMemo(() => expensesFor(db, range.from, range.to), [db, version, range.from, range.to]);
+  const net = total.profit - expenses.total;
 
   const rankCols: Column<ProductRow>[] = [
     {
@@ -136,7 +140,24 @@ export default function ProductsReport() {
       <ReportTop />
       <div className="rp-kpis">
         <KpiTile label="Выручка" value={fmt.money(total.revenue)} d={deltaOf(total.revenue, prevTotal?.revenue ?? null)} />
-        {seeProfit ? <KpiTile label="Валовая прибыль" value={fmt.money(total.profit)} d={deltaOf(total.profit, prevTotal?.profit ?? null)} /> : null}
+        {seeProfit ? (
+          <KpiTile
+            label="Валовая прибыль"
+            value={fmt.money(total.profit)}
+            d={deltaOf(total.profit, prevTotal?.profit ?? null)}
+            title={`Расходы — из журнала денег за ${label}${expenses.byCategory.length ? ': ' + expenses.byCategory.slice(0, 4).map((x) => `${x.category.toLowerCase()} ${fmt.money(x.amount)}`).join(', ') : ''}`}
+            extra={
+              <div className="rp-kpi-lines">
+                <div className="rp-kpi-line">
+                  Расходы <b>{fmt.money(expenses.total)}</b>
+                </div>
+                <div className="rp-kpi-line">
+                  После расходов <b className={net < 0 ? 'c-bad' : undefined}>{fmt.money(net)}</b>
+                </div>
+              </div>
+            }
+          />
+        ) : null}
         {seeProfit ? (
           <KpiTile
             label={<span title={share < 0.999 ? `Неполные данные: себестоимость известна по ${Math.round(share * 100)} % строк` : undefined}>Маржа</span>}
@@ -229,7 +250,8 @@ export default function ProductsReport() {
         rows={[
           ['Выручка', 'Розница — по чекам кассы в день продажи. Опт — по отгрузке со склада в день отгрузки, а не по дате заказа. Цена — итоговая, после акции и ручной скидки.'],
           ['Возвраты', 'Возврат по чеку и возврат по заказу вычитаются из выручки, штук и прибыли в день возврата. Поэтому у товара продажи могут быть меньше нуля.'],
-          ['Валовая прибыль', 'Цена продажи минус себестоимость на момент продажи, по каждой строке. Чистую прибыль здесь не считаем: расходы магазина в отчёт не входят.'],
+          ['Валовая прибыль', 'Цена продажи минус себестоимость на момент продажи, по каждой строке.'],
+          ['Прибыль после расходов', 'Валовая прибыль минус расходы за период из журнала денег: аренда, зарплата, топливо, связь, ремонт, недостачи — по дате записи расхода. Так же считает обзор владельца. Налоги и закупки товара сюда не входят: товар уже учтён в себестоимости.'],
           ['Неполные данные', `Если себестоимость товара неизвестна, строка входит в выручку, но не в прибыль и маржу. Без себестоимости — ${fmt.count(noCost.active, 'товар', 'товара', 'товаров')} в продаже${noCost.inactive ? ` и ${fmt.count(noCost.inactive, 'снятый', 'снятых', 'снятых')} с продажи` : ''}; за период себестоимость известна по ${Math.round(share * 100)} % строк. Такие места помечены значком.`],
           ['Маржа', 'Валовая прибыль ÷ выручка строк с известной себестоимостью. Наценка в списке «Низкая маржа» — к себестоимости.'],
           ['Без движения', `Товар есть на остатке, а продаж и отгрузок не было ${DEAD_DAYS} дней и больше — тот же порог во всех разделах. Если товара не было в наличии, отсутствие продаж не считаем низким спросом — такие дни показаны отдельно.`],

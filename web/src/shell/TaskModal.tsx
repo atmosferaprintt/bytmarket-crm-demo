@@ -1,11 +1,28 @@
 import { useState } from 'react';
-import type { ID, TaskLink } from '../data/types';
+import type { ID, TaskKind, TaskLink } from '../data/types';
 import { dispatch, useDB } from '../data/store';
 import { useSession } from '../roles/session';
 import { Button, Field, Input, Modal, Select, Segmented, toast } from '../ui';
 
-/** Новая задача. Можно привязать к клиенту, заказу, доставке, товару или закупке. */
-export function TaskModal({ link, assigneeId, onClose, defaultTitle = '' }: { link?: TaskLink | null; assigneeId?: ID; onClose: () => void; defaultTitle?: string }) {
+/** Новая задача. Можно привязать к клиенту, заказу, доставке, товару, закупке, платежу или поставщику.
+    kind — вид задачи: такая закроется сама, когда дело сделают (напомнили об оплате, разнесли платёж). */
+export function TaskModal({
+  link,
+  assigneeId,
+  onClose,
+  defaultTitle = '',
+  kind,
+  title: modalTitle = 'Новая задача',
+  onDone,
+}: {
+  link?: TaskLink | null;
+  assigneeId?: ID | null;
+  onClose: () => void;
+  defaultTitle?: string;
+  kind?: TaskKind;
+  title?: string;
+  onDone?: () => void;
+}) {
   const db = useDB();
   const { me } = useSession();
   const [title, setTitle] = useState(defaultTitle);
@@ -20,18 +37,20 @@ export function TaskModal({ link, assigneeId, onClose, defaultTitle = '' }: { li
       setError('Напишите, что нужно сделать');
       return;
     }
-    const r = dispatch('task.create', { title: title.trim(), assigneeId: who, due, dueTime: dueTime || null, priority, link: link ?? null }, me.id);
+    const r = dispatch('task.create', { title: title.trim(), assigneeId: who, due, dueTime: dueTime || null, priority, link: link ?? null, ...(kind ? { kind } : {}) }, me.id);
     if (!r.ok) {
       setError(r.error);
       return;
     }
-    toast('Задача поставлена');
+    const e = db.employees.find((x) => x.id === who);
+    toast(who === me.id ? 'Задача поставлена' : `Задача поставлена: ${e?.short ?? e?.name ?? 'сотруднику'}`);
+    onDone?.();
     onClose();
   };
 
   return (
     <Modal
-      title="Новая задача"
+      title={modalTitle}
       onClose={onClose}
       footer={
         <>

@@ -1,14 +1,14 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarDays, ChevronRight, HandCoins, Map as MapIcon, Phone, UserPlus } from 'lucide-react';
+import { CalendarDays, ChevronRight, HandCoins, Map as MapIcon, Phone, UserPlus, UserRound } from 'lucide-react';
 import { PageHeader } from '../../shell/PageHeader';
 import { useOpenEntity } from '../../shell/entities';
 import { useDB, useDBVersion } from '../../data/store';
 import { courierCash, indexes } from '../../data/selectors';
 import { useSession } from '../../roles/session';
 import { Avatar, Button, Card, Chip, EmptyState, Kpi, MoreMenu, ProgressBar, fmt } from '../../ui';
-import { LateChip, StateChip } from './parts';
-import { byRoute, clockOf, forDay, kgText, lastFail, lateOf, loadText, loadsOf, placesText, shortDistrict, telUrl } from './lib';
+import { DelayChip, LateChip, StateChip } from './parts';
+import { byRoute, clockOf, delayOf, forDay, wishOf, kgText, lastFail, lateOf, loadText, loadsOf, placesText, shortDistrict, telUrl } from './lib';
 import { actsFor, useDeliveryFlow } from './flow';
 import './delivery.css';
 
@@ -27,7 +27,10 @@ export default function Home() {
     const today = forDay(db.deliveries, c.today, c).filter((d) => d.state !== 'returned');
     const waiting = today.filter((d) => d.state === 'waiting').sort(byRoute);
     const failed = today.filter((d) => d.state === 'failed').sort((a, b) => (lastFail(b)?.at ?? '').localeCompare(lastFail(a)?.at ?? ''));
-    const late = today.filter((d) => d.state === 'assigned' && lateOf(d, c)).sort((a, b) => (lateOf(b, c)?.minutes ?? 0) - (lateOf(a, c)?.minutes ?? 0));
+    // опаздывают или курьер отметил «Задерживаюсь» — диспетчер видит это в «Проблемах»
+    const late = today
+      .filter((d) => d.state === 'assigned' && (lateOf(d, c) || delayOf(d)))
+      .sort((a, b) => (lateOf(b, c)?.minutes ?? 0) - (lateOf(a, c)?.minutes ?? 0));
     const delivered = today.filter((d) => d.state === 'delivered').length;
     const onWayList = today.filter((d) => d.state === 'on_way').sort(byRoute);
     const onWay = onWayList.length;
@@ -127,17 +130,31 @@ export default function Home() {
               <div className="list">
                 {data.failed.map((d) => {
                   const f = lastFail(d);
+                  const wish = wishOf(d, c.today);
+                  const courier = d.courierId ? ix.employees.get(d.courierId) : undefined;
                   const acts = actsFor(d, can, { courier: false, order: ix.orders.get(d.orderId) });
                   return (
-                    <div key={d.id} className="list-row dl-home-row" role="button" tabIndex={0} onClick={() => open('delivery', d.id)} onKeyDown={(e) => e.key === 'Enter' && open('delivery', d.id)}>
+                    <div key={d.id} className="list-row dl-home-row is-top" role="button" tabIndex={0} onClick={() => open('delivery', d.id)} onKeyDown={(e) => e.key === 'Enter' && open('delivery', d.id)}>
                       <span className="dl-line-no">№ {d.number}</span>
                       <span className="grow col" style={{ gap: 2, minWidth: 0 }}>
                         <span className="w-700 ellipsis">{ix.clients.get(d.clientId)?.name ?? d.contactName}</span>
-                        <span className="t-12 muted ellipsis">
-                          {f?.reason ?? 'Причина не указана'} · {f ? fmt.time(f.at) : ''} · {ix.employees.get(d.courierId ?? '')?.short ?? 'без курьера'}
+                        <span className="t-12 ink-2 dl-wrap">
+                          {d.address}, {shortDistrict(d.district)}
                         </span>
+                        <span className="t-12 muted dl-wrap">
+                          {f?.reason ?? 'Причина не указана'}
+                          {f ? ` · ${fmt.time(f.at)}` : ''}
+                        </span>
+                        {wish ? (
+                          <span className="t-12 ink-2 w-600">
+                            Клиент просит {fmt.date(wish.date)}, <span className="nowrap">{wish.interval}</span>
+                          </span>
+                        ) : null}
                       </span>
-                      <StateChip d={d} />
+                      <span className="dl-home-chips">
+                        <StateChip d={d} />
+                        <Chip tone="outline" icon={<UserRound />}>{courier?.short ?? 'Без курьера'}</Chip>
+                      </span>
                       {acts.main ? (
                         <span className="row" style={{ gap: 4 }} onClick={(e) => e.stopPropagation()}>
                           <Button size="sm" variant="secondary" onClick={() => flow.act(acts.main!, d)}>
@@ -152,15 +169,20 @@ export default function Home() {
                 {data.late.map((d) => {
                   const courier = d.courierId ? ix.employees.get(d.courierId) : undefined;
                   return (
-                    <div key={d.id} className="list-row dl-home-row" role="button" tabIndex={0} onClick={() => open('delivery', d.id)} onKeyDown={(e) => e.key === 'Enter' && open('delivery', d.id)}>
+                    <div key={d.id} className="list-row dl-home-row is-top" role="button" tabIndex={0} onClick={() => open('delivery', d.id)} onKeyDown={(e) => e.key === 'Enter' && open('delivery', d.id)}>
                       <span className="dl-line-no">№ {d.number}</span>
                       <span className="grow col" style={{ gap: 2, minWidth: 0 }}>
                         <span className="w-700 ellipsis">{ix.clients.get(d.clientId)?.name ?? d.contactName}</span>
-                        <span className="t-12 muted ellipsis">
-                          {d.interval} · {d.address} · {courier?.short ?? 'без курьера'}
+                        <span className="t-12 ink-2 dl-wrap">
+                          {d.address}, {shortDistrict(d.district)}
                         </span>
+                        <span className="t-12 muted">Интервал {d.interval}</span>
                       </span>
-                      <LateChip d={d} c={c} />
+                      <span className="dl-home-chips">
+                        <LateChip d={d} c={c} />
+                        <DelayChip d={d} />
+                        <Chip tone="outline" icon={<UserRound />}>{courier?.short ?? 'Без курьера'}</Chip>
+                      </span>
                       {courier ? (
                         <a className="btn btn-secondary btn-sm" href={telUrl(courier.phone)} onClick={(e) => e.stopPropagation()} title={fmt.phone(courier.phone)}>
                           <Phone />
@@ -206,8 +228,14 @@ export default function Home() {
                       <span className="col" style={{ gap: 2, alignItems: 'flex-end' }}>
                         <span className="num w-600">{d.interval}</span>
                         <LateChip d={d} c={c} />
+                        <DelayChip d={d} />
                       </span>
                       <span className="num w-700 dl-home-sum">{d.collect > 0 ? fmt.money(d.collect) : '—'}</span>
+                      {canAssign ? (
+                        <span onClick={(e) => e.stopPropagation()}>
+                          <MoreMenu size="sm" items={flow.menu(actsFor(d, can, { courier: false }).all, d)} />
+                        </span>
+                      ) : null}
                     </div>
                   );
                 })}

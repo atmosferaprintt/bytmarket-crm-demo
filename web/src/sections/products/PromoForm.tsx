@@ -1,12 +1,12 @@
 /* Новая акция: цель (товары, категория, бренд), скидка, даты, аудитория, проверка минимальной наценки. */
 import { useMemo, useState } from 'react';
-import { Plus, X } from 'lucide-react';
+import { Plus, Trash2, X } from 'lucide-react';
 import type { Promo } from '../../data/types';
 import { dispatch, useDB, useDBVersion } from '../../data/store';
 import { plusDays } from '../../data/dates';
 import { useSession } from '../../roles/session';
 import { Button, Field, Input, Modal, MoneyInput, Notice, SearchInput, Segmented, Select, fmt, toast } from '../../ui';
-import { catalogRows, categoryOptions, promoMarginIssues, promoProducts, promoPrice } from './lib';
+import { catalogRows, categoryOptions, promoMarginIssues, promoProducts, promoPrice, safePromoPct, safePromoPrice } from './lib';
 
 type TargetType = Promo['target']['type'];
 
@@ -49,8 +49,33 @@ export default function PromoForm({ onClose, onSaved }: { onClose: () => void; o
     type === 'products' ? (ids.length ? { type, ids } : null) : type === 'category' ? (categoryId ? { type, id: categoryId } : null) : brandId ? { type, id: brandId } : null;
   const affected = useMemo(() => (target ? promoProducts(db, target, audience).filter((p) => p.active) : []), [db, version, JSON.stringify(target), audience]);
   const v = value === '' ? 0 : value;
-  const issues = useMemo(() => (v > 0 && can('seeCost') ? promoMarginIssues(db, affected, { kind, value: v, audience }) : []), [db, affected, kind, v, audience]);
-  const noEffect = kind === 'price' && v > 0 ? affected.filter((p) => promoPrice({ kind, value: v }, audience === 'wholesale' ? p.wholesalePrice : p.retailPrice) >= (audience === 'wholesale' ? p.wholesalePrice : p.retailPrice)).length : 0;
+  const seeCost = can('seeCost');
+  const issues = useMemo(() => (v > 0 && seeCost ? promoMarginIssues(db, affected, { kind, value: v, audience }) : []), [db, affected, kind, v, audience, seeCost]);
+  // безопасная скидка: наценка ни у одного товара акции не падает ниже минимальной (для «Все покупатели» — и в рознице, и в опте)
+  const safePct = useMemo(() => (seeCost && kind === 'percent' && affected.length ? safePromoPct(db, affected, audience) : null), [db, affected, kind, audience, seeCost]);
+  const safePrice = useMemo(() => (seeCost && kind === 'price' && affected.length ? safePromoPrice(db, affected) : null), [db, affected, kind, seeCost]);
+
+  /** Убрать из акции товары, где наценка падает ниже минимальной. Категорию или бренд превращаем в список товаров без них. */
+  const dropIssues = () => {
+    const bad = new Set(issues.map((i) => i.product.id));
+    const keep = affected.filter((p) => !bad.has(p.id)).map((p) => p.id);
+    if (!keep.length) {
+      setError('Если убрать эти товары, в акции ничего не останется. Лучше уменьшить скидку');
+      return;
+    }
+    setType('products');
+    setIds(keep);
+    setError(null);
+    toast(`Убрали ${fmt.count(bad.size, 'товар', 'товара', 'товаров')}: в акции ${fmt.count(keep.length, 'товар', 'товара', 'товаров')}`);
+  };
+  // «цена» ничего не меняет, если обычная цена и так не выше: для «Все покупатели» — ни в рознице, ни в опте
+  const noEffect =
+    kind === 'price' && v > 0
+      ? affected.filter((p) => {
+          const bases = audience === 'retail' ? [p.retailPrice] : audience === 'wholesale' ? [p.wholesalePrice] : [p.retailPrice, p.wholesalePrice];
+          return bases.every((b) => promoPrice({ kind, value: v }, b) >= b);
+        }).length
+      : 0;
 
   const save = () => {
     setError(null);
@@ -170,7 +195,20 @@ export default function PromoForm({ onClose, onSaved }: { onClose: () => void; o
               ]}
             />
           </Field>
-          <Field label={kind === 'percent' ? 'Скидка, %' : 'Цена за штуку'}>
+          <Field
+            label={kind === 'percent' ? 'Скидка, %' : 'Цена за штуку'}
+            hint={
+              safePct !== null ? (
+                <span className="nowrap" title={`Наценка не падает ниже ${db.settings.minMarginPct} % ни у одного товара${audience === 'all' ? ' — ни в рознице, ни в опте' : ''}`}>
+                  {safePct > 0 ? <>Безопасная скидка — до {safePct}&nbsp;%</> : 'Наценка у части товаров уже на минимуме'}
+                </span>
+              ) : safePrice !== null ? (
+                <span className="nowrap" title={`Наценка не падает ниже ${db.settings.minMarginPct} % ни у одного товара`}>
+                  Безопасная цена — от {fmt.price(safePrice)}
+                </span>
+              ) : undefined
+            }
+          >
             {kind === 'percent' ? (
               <Input inputMode="numeric" className="num" value={value === '' ? '' : String(value)} onChange={(e) => setValue(e.target.value.replace(/[^\d]/g, '') === '' ? '' : Number(e.target.value.replace(/[^\d]/g, '')))} />
             ) : (
@@ -210,13 +248,20 @@ export default function PromoForm({ onClose, onSaved }: { onClose: () => void; o
                     <li key={i.product.id}>
                       <span className="ellipsis">{i.product.name}</span>
                       <span className="num nowrap">
-                        {i.priceType === 'retail' ? 'розница' : 'опт'} {fmt.price(i.price)}, нужно не меньше {fmt.price(i.min)}
+                        {i.prices.map((x) => `${x.priceType === 'retail' ? 'розница' : 'опт'} ${fmt.price(x.price)}`).join(', ')}, нужно не меньше {fmt.price(i.min)}
                       </span>
                     </li>
                   ))}
                 </ul>
                 {issues.length > 5 ? <div>и ещё {fmt.count(issues.length - 5, 'товар', 'товара', 'товаров')}</div> : null}
-                <div>Создать можно, но лучше уменьшить скидку или убрать эти товары.</div>
+                <div className="prd-issues-foot">
+                  <span className="grow">
+                    Создать можно, но лучше {safePct !== null && safePct > 0 ? `дать скидку до ${safePct} %` : 'уменьшить скидку'} или убрать эти товары.
+                  </span>
+                  <Button size="sm" icon={<Trash2 />} onClick={dropIssues}>
+                    Убрать эти товары
+                  </Button>
+                </div>
               </>
             ) : noEffect ? (
               `У ${fmt.count(noEffect, 'товара', 'товаров', 'товаров')} цена и так ниже — для них акция ничего не меняет`

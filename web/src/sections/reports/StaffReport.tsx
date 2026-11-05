@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Info } from 'lucide-react';
-import { Avatar, Card, DataTable, fmt, type Column } from '../../ui';
+import { Avatar, Card, DataTable, StatList, StatRow, fmt, type Column } from '../../ui';
 import { HBarList, PlanMeter, SegmentBar } from '../../ui/charts';
 import { useDB, useDBVersion } from '../../data/store';
 import { useSession } from '../../roles/session';
@@ -11,6 +11,18 @@ import { KpiTile } from '../overview/KpiTile';
 import { DocsDrawer, HowCalc, ReportTop, WrapHead, sum, useReportPeriod, type DocRow } from './parts';
 import { groupFacts, saleFacts, topCategoryId } from '../overview/analytics';
 import { planProgress } from '../../data/kpis';
+/** До 1500 px таблица сотрудников без второстепенных колонок: средний, новые, скидки, отмены — в панели сотрудника. */
+function useCompact(): boolean {
+  const q = '(max-width: 1500px)';
+  const [v, setV] = useState(() => typeof window !== 'undefined' && window.matchMedia(q).matches);
+  useEffect(() => {
+    const m = window.matchMedia(q);
+    const h = () => setV(m.matches);
+    m.addEventListener('change', h);
+    return () => m.removeEventListener('change', h);
+  }, []);
+  return v;
+}
 
 const MON_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 const MON_NOM = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
@@ -26,6 +38,8 @@ export default function StaffReport() {
   // план — месяц, в который попадает конец периода; та же формула, что в «Клиенты → Представители» и на обзоре
   const storePlan = useMemo(() => planProgress(db, null, range.to), [db, version, range.to]);
   const planMonth = MON_NOM[monthIx(storePlan.month)];
+  const narrow = useCompact();
+  const left = (r: StaffRow) => (r.plan.plan ? Math.max(0, r.plan.plan - r.plan.fact) : null);
   const [pick, setPick] = useState<StaffRow | null>(null);
   const [repPick, setRepPick] = useState<StaffRow | null>(null);
 
@@ -90,6 +104,7 @@ export default function StaffReport() {
       key: 'avg',
       header: <span title="Продажи ÷ чеков и заказов">Средний</span>,
       align: 'right',
+      hidden: narrow,
       render: (r) => (avgOf(r) ? fmt.money(avgOf(r)) : '—'),
       sort: avgOf,
       csv: avgOf,
@@ -98,10 +113,10 @@ export default function StaffReport() {
         return n ? fmt.money(Math.round(sum(rs, (r) => r.agg.revenue) / n)) : '—';
       },
     },
-    { key: 'new', header: 'Новых', align: 'right', render: (r) => (r.newClients ? fmt.num(r.newClients) : '—'), sort: (r) => r.newClients, total: (rs) => fmt.num(sum(rs, (r) => r.newClients)) },
-    { key: 'disc', header: 'Скидки', align: 'right', render: (r) => (r.agg.manualDiscount > 0 ? fmt.money(r.agg.manualDiscount) : '—'), sort: (r) => r.agg.manualDiscount, total: (rs) => fmt.money(sum(rs, (r) => r.agg.manualDiscount)) },
+    { key: 'new', header: 'Новых', align: 'right', hidden: narrow, render: (r) => (r.newClients ? fmt.num(r.newClients) : '—'), sort: (r) => r.newClients, total: (rs) => fmt.num(sum(rs, (r) => r.newClients)) },
+    { key: 'disc', header: 'Скидки', align: 'right', hidden: narrow, render: (r) => (r.agg.manualDiscount > 0 ? fmt.money(r.agg.manualDiscount) : '—'), sort: (r) => r.agg.manualDiscount, total: (rs) => fmt.money(sum(rs, (r) => r.agg.manualDiscount)) },
     { key: 'ret', header: 'Возвраты', align: 'right', render: (r) => (r.agg.returns ? fmt.money(r.agg.returns) : '—'), sort: (r) => r.agg.returns, total: (rs) => fmt.money(sum(rs, (r) => r.agg.returns)) },
-    { key: 'cancel', header: 'Отмены', align: 'right', render: (r) => (r.cancelled ? fmt.num(r.cancelled) : '—'), sort: (r) => r.cancelled },
+    { key: 'cancel', header: 'Отмены', align: 'right', hidden: narrow, render: (r) => (r.cancelled ? fmt.num(r.cancelled) : '—'), sort: (r) => r.cancelled },
     {
       key: 'debt',
       header: <WrapHead width={64}>Долг клиентов</WrapHead>,
@@ -126,7 +141,32 @@ export default function StaffReport() {
         ),
       sort: (r) => r.plan.pct ?? -1,
       csv: (r) => r.plan.pct ?? '',
-      width: 150,
+      csvHeader: 'Выполнено плана, %',
+      width: 130,
+    },
+    {
+      key: 'planSum',
+      header: <span title={`План продаж на ${planMonth}`}>План, ₽</span>,
+      csvHeader: `План на ${planMonth}, ₽`,
+      align: 'right',
+      render: (r) => (r.plan.plan ? fmt.money(r.plan.plan) : <span className="faint">—</span>),
+      sort: (r) => r.plan.plan,
+      csv: (r) => r.plan.plan ?? '',
+      total: (rs) => fmt.money(sum(rs, (r) => r.plan.plan ?? 0)),
+    },
+    {
+      key: 'left',
+      header: <span title={`Сколько осталось продать до плана на ${planMonth}: план минус продано с 1 числа`}>Осталось</span>,
+      csvHeader: 'Осталось до плана, ₽',
+      align: 'right',
+      render: (r) => {
+        const x = left(r);
+        if (x === null) return <span className="faint">—</span>;
+        return x === 0 ? <span className="c-ok w-600">выполнен</span> : fmt.money(x);
+      },
+      sort: (r) => left(r),
+      csv: (r) => left(r) ?? '',
+      total: (rs) => fmt.money(sum(rs, (r) => left(r) ?? 0)),
     },
   ];
 
@@ -259,7 +299,7 @@ export default function StaffReport() {
           ['Новые клиенты', 'Клиент заведён в базе после 5 августа, и первая его покупка — в выбранном периоде. Засчитывается тому, кто её оформил. Повторные — покупки клиентов, которые уже покупали раньше.'],
           ['Скидки и отмены', 'Ручные скидки — то, что сотрудник дал сверх акции. Отмены — заказы ответственного, отменённые за период.'],
           ['Долг клиентов', 'Долг на сегодня по клиентам, закреплённым за сотрудником. Красным — если есть просрочка.'],
-          ['План месяца', `Продажи сотрудника с 1 ${MON_GEN[monthIx(storePlan.month)]} к его плану на весь месяц — по той же формуле, что в разделе «Клиенты → Представители» и на обзоре. «По графику» — доля прошедших дней месяца: столько должно быть выполнено к сегодняшнему дню. Риска на полосе — там, где надо быть.`],
+          ['План месяца', `Продажи сотрудника с 1 ${MON_GEN[monthIx(storePlan.month)]} к его плану на весь месяц — по той же формуле, что в разделе «Клиенты → Представители» и на обзоре. «По графику» — доля прошедших дней месяца: столько должно быть выполнено к сегодняшнему дню. Риска на полосе — там, где надо быть. «Осталось» — план минус продано с 1 числа.`],
           ['Прибыль', 'Валовая, по строкам с известной себестоимостью. Чистую прибыль не считаем.'],
         ]}
       />
@@ -271,9 +311,46 @@ export default function StaffReport() {
           onClose={() => setPick(null)}
           rows={docsFor(pick)}
           extra={
-            <Card title="Что продавал">
-              <HBarList rows={mix(pick)} format={fmt.money} empty="Продаж за период нет" />
-            </Card>
+            <>
+              <Card title={`Итоги · ${label}`}>
+                <StatList>
+                  <StatRow label="Продажи" value={fmt.money(pick.agg.revenue)} />
+                  <StatRow label="Чеков и заказов" value={`${fmt.num(docsOf(pick))}${avgOf(pick) ? ` · средний ${fmt.money(avgOf(pick))}` : ''}`} />
+                  {pick.newClients ? <StatRow label="Новых клиентов" value={fmt.num(pick.newClients)} /> : null}
+                  {pick.agg.manualDiscount > 0 ? <StatRow label="Ручные скидки" value={fmt.money(pick.agg.manualDiscount)} /> : null}
+                  {pick.cancelled ? <StatRow label="Отменённых заказов" value={fmt.num(pick.cancelled)} /> : null}
+                  {seeProfit ? <StatRow label="Валовая прибыль" value={`${fmt.money(pick.agg.profit)}${pick.margin !== null ? ` · маржа ${fmt.pct(pick.margin)}` : ''}`} /> : null}
+                  <StatRow label={`План на ${planMonth}`} value={pick.plan.plan ? fmt.money(pick.plan.plan) : 'не задан'} />
+                  {pick.plan.plan ? (
+                    <StatRow
+                      label={`Продано с 1 ${MON_GEN[monthIx(storePlan.month)]}`}
+                      value={
+                        <span className="row" style={{ gap: 8, justifyContent: 'flex-end' }}>
+                          <PlanMeter value={pick.plan.fact} plan={pick.plan.plan} expectedPct={pick.plan.expectedPct} title={`По графику на ${fmt.date(pick.plan.to)} — ${fmt.pct(pick.plan.expectedPct, 0)}`} />
+                        </span>
+                      }
+                    />
+                  ) : null}
+                  {pick.plan.plan ? <StatRow label="Осталось до плана" value={left(pick) ? fmt.money(left(pick)!) : <span className="c-ok">План выполнен</span>} /> : null}
+                  <StatRow
+                    label="Долг его клиентов"
+                    value={
+                      pick.clientsDebt ? (
+                        <span>
+                          {fmt.money(pick.clientsDebt)}
+                          {pick.clientsOverdue ? <span className="c-bad"> · просрочено {fmt.money(pick.clientsOverdue)}</span> : null}
+                        </span>
+                      ) : (
+                        'нет'
+                      )
+                    }
+                  />
+                </StatList>
+              </Card>
+              <Card title="Что продавал">
+                <HBarList rows={mix(pick)} format={fmt.money} empty="Продаж за период нет" />
+              </Card>
+            </>
           }
         />
       ) : null}

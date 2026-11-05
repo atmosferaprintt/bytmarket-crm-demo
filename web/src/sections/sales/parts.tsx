@@ -2,7 +2,7 @@
 import type { ReactNode } from 'react';
 import type { Client, Delivery, Order, Promo } from '../../data/types';
 import type { ClientBalance, OrderPayment } from '../../data/selectors';
-import { Chip, PAY_STATE, PICK_STATE, PROMO_STATE, ORDER_STATE, SHIP_STATE, StatusChip, cx, fmt, overdueStatus, type StatusDef } from '../../ui';
+import { Chip, DELIVERY_STATE, PAY_STATE, PICK_STATE, PROMO_STATE, ORDER_STATE, SHIP_STATE, StatusChip, cx, fmt, overdueStatus, type StatusDef } from '../../ui';
 
 /** Полоса условий клиента: цены, отсрочка, лимит, долг, просрочка и срок оплаты. */
 export function ConditionsStrip({ client, balance, dueLabel }: { client: Client; balance: ClientBalance; dueLabel: ReactNode }) {
@@ -87,13 +87,47 @@ export function shownOverdue(o: Order, pay: OrderPayment, d: Delivery | undefine
   return deliveryFailed(o, d) ? 0 : pay.overdueDays;
 }
 
+/** Заказ ждёт решения владельца: открыта задача «согласовать заказ». */
+export const APPROVAL_STATUS: StatusDef = { label: 'На согласовании у владельца', tone: 'warn' };
+/** Заявка представителя, которую ещё не подтвердил менеджер, — так её видит сам представитель. */
+export const WAITS_MANAGER: StatusDef = { label: 'Ждёт менеджера', tone: 'violet' };
+/** Заявка оформлена без связи и ещё не ушла с телефона. */
+export const NOT_SENT: StatusDef = { label: 'Не отправлена', tone: 'warn' };
+
+/** Главный этап заказа одним словом: Заявка → Подтверждён → Собирается → Собран → В пути → Доставлен / Отгружен. */
+export function orderStage(o: Order, d: Delivery | undefined, opts: { rep?: boolean; approval?: boolean } = {}): StatusDef {
+  if (o.state === 'draft') return ORDER_STATE.draft;
+  if (o.state === 'cancelled') return ORDER_STATE.cancelled;
+  if (o.state === 'request') return opts.approval ? APPROVAL_STATUS : opts.rep ? WAITS_MANAGER : ORDER_STATE.request;
+  if (deliveryFailed(o, d)) return SHIP_FAILED;
+  if (o.ship === 'delivered') return SHIP_STATE.delivered;
+  if (o.ship === 'shipped') return o.fulfillment === 'delivery' && d && d.state === 'on_way' ? DELIVERY_STATE.on_way : SHIP_STATE.shipped;
+  if (o.ship === 'partial') return SHIP_STATE.partial;
+  if (o.pick === 'picking') return PICK_STATE.picking;
+  if (o.pick === 'picked') return PICK_STATE.picked;
+  return ORDER_STATE.confirmed;
+}
+
+/** Коротко о заказе в два чипа: главный этап и оплата (или просрочка). Для списков «Последние заказы» и телефона. */
+export function OrderBrief({ o, pay, delivery, rep, approval, extra }: { o: Order; pay: OrderPayment; delivery?: Delivery; rep?: boolean; approval?: boolean; extra?: ReactNode }) {
+  const live = o.state === 'confirmed' || o.state === 'closed';
+  const overdue = shownOverdue(o, pay, delivery);
+  return (
+    <span className="chips sales-chips-compact">
+      <StatusChip s={orderStage(o, delivery, { rep, approval })} />
+      {overdue > 0 ? <StatusChip s={overdueStatus(overdue)} /> : live && pay.amount > 0 ? <StatusChip s={PAY_STATE[pay.state]} /> : null}
+      {extra}
+    </span>
+  );
+}
+
 /** Четыре раздельных состояния заказа. */
-export function OrderChips({ o, pay, delivery, compact }: { o: Order; pay: OrderPayment; delivery?: Delivery; compact?: boolean }) {
+export function OrderChips({ o, pay, delivery, compact, approval, rep }: { o: Order; pay: OrderPayment; delivery?: Delivery; compact?: boolean; approval?: boolean; rep?: boolean }) {
   const live = o.state === 'confirmed' || o.state === 'closed';
   const overdue = shownOverdue(o, pay, delivery);
   return (
     <span className={cx('chips', compact && 'sales-chips-compact')}>
-      <StatusChip s={ORDER_STATE[o.state]} />
+      <StatusChip s={o.state === 'request' && approval ? APPROVAL_STATUS : o.state === 'request' && rep ? WAITS_MANAGER : ORDER_STATE[o.state]} />
       {live ? <StatusChip s={PICK_STATE[o.pick]} /> : null}
       {live ? <StatusChip s={shipStatus(o, delivery)} /> : null}
       {live && pay.amount > 0 ? <StatusChip s={PAY_STATE[pay.state]} /> : null}

@@ -1,15 +1,17 @@
 /* Журнал денег: все поступления, выплаты, расходы и перемещения. */
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { HandCoins } from 'lucide-react';
 import type { AccountKey, Payment, PaymentKind } from '../../data/types';
 import { ACCOUNT_NAMES, PAY_METHOD_NAMES } from '../../data/types';
 import { useDB, useDBVersion } from '../../data/store';
-import { indexes } from '../../data/selectors';
+import { indexes, shiftSummary } from '../../data/selectors';
+import { nowAt } from '../overview/analytics';
 import { PageHeader } from '../../shell/PageHeader';
 import { EntityLink } from '../../shell/entities';
 import { Button, DataTable, Kpi, MoreMenu, PAYMENT_STATUS, Select, StatusChip, cx, fmt, type Column, type FilterDef } from '../../ui';
 import { MoneyModalHost, useMoneyMenu, type MoneyModal } from './actions';
-import { ACCOUNT_KEYS, KIND_SHORT, PERIOD_OPTIONS, clean, kindLabel, periodBounds, transferText, useConfirmPayment, useMoneyPerms, type PeriodKey } from './lib';
+import { ACCOUNT_KEYS, KIND_SHORT, clean, kindLabel, periodBounds, periodLabel, transferText, useMoneyPerms, usePeriodFromUrl, type PeriodKey } from './lib';
 import { useMoneyCounts } from './counts';
 import { useNarrow } from './parts';
 
@@ -25,7 +27,12 @@ interface JRow {
   /** перемещение между своими кассами при «все счета» — в итог не входит */
   internal: boolean;
   author: string;
+  /** идущая смена: деньги по чекам ещё не проведены платежом — строка для итога, не документ */
+  virtual?: boolean;
 }
+
+/** Дата для Excel: «05.11.2026». */
+const xlDate = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
 
 const KIND_ORDER: (PaymentKind | 'initial')[] = ['client', 'shift', 'supplier', 'refund', 'expense', 'transfer'];
 
@@ -33,9 +40,17 @@ export default function Journal() {
   const db = useDB();
   const v = useDBVersion();
   const perms = useMoneyPerms();
-  const confirm = useConfirmPayment();
+  const [params] = useSearchParams();
+  const fromUrl = usePeriodFromUrl('d30', params);
+  const custom = fromUrl.custom;
   const [modal, setModal] = useState<MoneyModal>(null);
-  const [period, setPeriod] = useState<PeriodKey>('d30');
+  const [periodRaw, setPeriod] = useState<PeriodKey>(fromUrl.initial);
+  // пришли по ссылке с другим периодом — показываем его; ушли со ссылки — обычный выбор
+  const customKey = custom ? `${custom.from}|${custom.to}` : '';
+  useEffect(() => {
+    if (customKey) setPeriod('custom');
+  }, [customKey]);
+  const period: PeriodKey = periodRaw === 'custom' && !custom ? 'd30' : periodRaw;
   const [acc, setAcc] = useState<AccountKey | 'all'>('all');
   const menu = useMoneyMenu(setModal, ['accept']);
   const counts = useMoneyCounts();
@@ -44,7 +59,7 @@ export default function Journal() {
 
   const rows = useMemo<JRow[]>(() => {
     const ix = indexes(db);
-    const { from, to } = periodBounds(period, today, db.meta.startDate);
+    const { from, to } = periodBounds(period, today, db.meta.startDate, custom);
     const purchases = new Map(db.purchases.map((x) => [x.id, x]));
     const shifts = new Map(db.shifts.map((x) => [x.id, x]));
     const deliveries = new Map(db.deliveries.map((x) => [x.id, x]));
@@ -171,8 +186,59 @@ export default function Journal() {
         author: ix.employees.get(p.authorId)?.short ?? '—',
       });
     }
+    // идущая смена: наличные и карты по чекам войдут в журнал при закрытии смены, но деньги уже поступили —
+    // так же считает «Поступило денег» на обзоре
+    const open = to >= today ? db.shifts.find((x) => !x.closedAt) : undefined;
+    if (open) {
+      const sum = shiftSummary(db, open.id);
+      const now = nowAt();
+      const seller = ix.employees.get(open.sellerId)?.short ?? '';
+      const parts: { account: AccountKey; amount: number; method: Payment['method'] }[] = [
+        { account: 'shop_cash', amount: sum.cash, method: 'cash' },
+        { account: 'bank', amount: sum.card, method: 'card' },
+      ];
+      for (const x of parts) {
+        if (x.amount <= 0 || (acc !== 'all' && acc !== x.account)) continue;
+        const p: Payment = {
+          id: `open-shift-${x.account}`,
+          number: 0,
+          at: now,
+          direction: 'in',
+          kind: 'shift',
+          clientId: null,
+          supplierId: null,
+          amount: x.amount,
+          method: x.method,
+          account: x.account,
+          toAccount: null,
+          allocations: [],
+          status: 'posted',
+          shiftId: open.id,
+          deliveryId: null,
+          returnId: null,
+          expenseCategory: null,
+          authorId: open.sellerId,
+          comment: '',
+          idempotencyKey: null,
+        };
+        const text = `Смена № ${open.number} идёт · ${seller}`;
+        out.push({
+          p,
+          kind: 'shift',
+          party: <span className="w-600">{text}</span>,
+          partyText: text,
+          purpose: x.method === 'cash' ? 'Наличные по чекам, проведутся при закрытии смены' : 'Оплаты картой по чекам, проведутся при закрытии смены',
+          purposeText: x.method === 'cash' ? 'Наличные по чекам до закрытия смены' : 'Карты по чекам до закрытия смены',
+          inAmt: x.amount,
+          outAmt: 0,
+          internal: false,
+          author: seller,
+          virtual: true,
+        });
+      }
+    }
     return out;
-  }, [db, v, period, acc, today]);
+  }, [db, v, period, acc, today, custom?.from, custom?.to]);
 
   const kpi = useMemo(() => {
     let inSum = 0;
@@ -205,18 +271,19 @@ export default function Journal() {
       key: 'at',
       header: 'Дата',
       sort: (r) => r.p.at,
-      csv: (r) => `${r.p.at.replace('T', ' ')} № ${r.p.number}`,
+      csv: (r) => xlDate(r.p.at),
       width: 100,
       render: (r) => (
         <div>
           <div className="nowrap">{fmt.relDate(r.p.at, today)}</div>
-          <div className="cell-sub nowrap">
-            {fmt.time(r.p.at)} · № {r.p.number}
-          </div>
+          <div className="cell-sub nowrap">{r.virtual ? 'сейчас · смена идёт' : `${fmt.time(r.p.at)} · № ${r.p.number}`}</div>
           {narrow ? <div className="cell-sub nowrap">{r.author}</div> : null}
         </div>
       ),
     },
+    // в выгрузке для Excel время и номер — отдельными колонками; на экране они во второй строке даты
+    { key: 'time', header: 'Время', className: 'money-csv-only', csv: (r) => (r.virtual ? '' : r.p.at.slice(11, 16)), render: () => null },
+    { key: 'no', header: '№', className: 'money-csv-only', csv: (r) => (r.virtual ? '' : r.p.number), render: () => null },
     {
       key: 'kind',
       header: 'Вид',
@@ -274,19 +341,19 @@ export default function Journal() {
       key: 'status',
       header: 'Статус',
       sort: (r) => r.p.status,
-      csv: (r) => PAYMENT_STATUS[r.p.status].label,
+      csv: (r) => (r.virtual ? 'Смена идёт' : PAYMENT_STATUS[r.p.status].label),
       width: 150,
       render: (r) => (
         <div className="col money-jr-status">
-          <StatusChip s={PAYMENT_STATUS[r.p.status]} />
+          <StatusChip s={r.virtual ? { label: 'Смена идёт', tone: 'info' } : PAYMENT_STATUS[r.p.status]} />
           {r.p.status === 'pending' && perms.confirm ? (
             <button
               type="button"
               className="link-button t-12"
-              title="Подтвердить по выписке банка"
+              title="Сверить с выпиской банка и подтвердить"
               onClick={(e) => {
                 e.stopPropagation();
-                confirm(r.p.id);
+                setModal({ kind: 'confirm', paymentId: r.p.id });
               }}
             >
               Подтвердить
@@ -371,10 +438,10 @@ export default function Journal() {
         search={{ placeholder: 'Номер, клиент, сумма', text: (r) => `${r.p.number} ${r.partyText} ${r.purposeText} ${r.p.comment} ${r.p.amount}` }}
         filters={filters}
         defaultSort={{ key: 'at', dir: 'desc' }}
-        onRowClick={(r) => setModal({ kind: 'payment', paymentId: r.p.id })}
+        onRowClick={(r) => (r.virtual ? undefined : setModal({ kind: 'payment', paymentId: r.p.id }))}
         toolbar={
           <>
-            <Select size="sm" value={period} onChange={(e) => setPeriod(e.target.value as PeriodKey)} options={PERIOD_OPTIONS} aria-label="Период" style={{ width: 160 }} />
+            <Select size="sm" value={period} onChange={(e) => setPeriod(e.target.value as PeriodKey)} options={fromUrl.options} aria-label="Период" style={{ width: 170 }} />
             <Select
               size="sm"
               value={acc}
@@ -385,7 +452,7 @@ export default function Journal() {
             />
           </>
         }
-        exportName="Журнал денег"
+        exportName={`Журнал денег ${periodLabel(period, today, db.meta.startDate, custom)}${acc === 'all' ? '' : ' — ' + ACCOUNT_NAMES[acc]}`}
         totalLabel={(n) => `Итого · ${fmt.num(n)}`}
         pageSize={40}
       />

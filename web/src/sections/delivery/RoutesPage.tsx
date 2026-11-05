@@ -8,7 +8,7 @@ import { useSession } from '../../roles/session';
 import { PageHeader } from '../../shell/PageHeader';
 import { useOpenEntity } from '../../shell/entities';
 import { Avatar, Button, Chip, EmptyState, ProgressBar, cx, fmt, toast } from '../../ui';
-import { DayPicker, LateChip, StateChip, useDayParam } from './parts';
+import { DayPicker, DelayChip, LateChip, StateChip, useDayParam } from './parts';
 import { byRoute, clockOf, deliveredMoneyText, forDay, kgText, loadsOf, onHandLabel, onHandSince, placesText, routeUrl, shortDistrict, telUrl, type Clock, type CourierLoad } from './lib';
 import { useDeliveryFlow } from './flow';
 
@@ -45,7 +45,7 @@ export function RoutesPage() {
       {waiting.length ? <WaitingStrip list={waiting} flow={flow} canAssign={canAssign} /> : null}
       <div className="dl-routes">
         {loads.map((l) => (
-          <RouteColumn key={l.courier.id} load={l} c={c} canMove={canAssign} />
+          <RouteColumn key={l.courier.id} load={l} c={c} canMove={canAssign} future={day > c.today} />
         ))}
         {!loads.length ? (
           <div className="card">
@@ -100,7 +100,7 @@ function WaitingStrip({ list, flow, canAssign }: { list: Delivery[]; flow: Retur
   );
 }
 
-function RouteColumn({ load, c, canMove }: { load: CourierLoad; c: Clock; canMove: boolean }) {
+function RouteColumn({ load, c, canMove, future }: { load: CourierLoad; c: Clock; canMove: boolean; future: boolean }) {
   const db = useDB();
   const { me } = useSession();
   const open = useOpenEntity();
@@ -128,7 +128,7 @@ function RouteColumn({ load, c, canMove }: { load: CourierLoad; c: Clock; canMov
     }
     const r2 = dispatch('delivery.assign' as never, { deliveryId: other.id, courierId: load.courier.id, routeOrder: b } as never, me.id) as { ok: boolean; error?: string };
     if (!r2.ok) toast(r2.error ?? 'Не получилось', 'error');
-    else toast(`Маршрут ${load.courier.short}: точка № ${d.number} ${dir < 0 ? 'раньше' : 'позже'}`);
+    else toast(`Маршрут ${load.courier.short}: ${d.address} — ${dir < 0 ? 'раньше' : 'позже'}`);
   };
 
   return (
@@ -159,25 +159,39 @@ function RouteColumn({ load, c, canMove }: { load: CourierLoad; c: Clock; canMov
         </div>
       </div>
 
-      <div className="dl-route-progress">
-        <div className="row">
-          <span className="grow t-13">
-            Вручено <span className="w-700">{load.done}</span> из {load.points}
-            {load.failed ? <span className="c-bad w-600"> · не удалось {load.failed}</span> : null}
-          </span>
-        </div>
-        <ProgressBar value={load.done} max={Math.max(1, load.points)} />
-        <div className="row t-13">
-          <span className="grow muted">{onHandLabel(since, c.today)}</span>
-          <span className="num w-700">{fmt.money(cash.onHand)}</span>
-        </div>
-        {load.collect > 0 ? (
-          <div className="row t-13">
-            <span className="grow muted">Ещё получить</span>
-            <span className="num w-700">{fmt.money(load.collect)}</span>
+      {/* в будущий день ещё нечего вручать и нечего держать на руках — только сколько получить */}
+      {future ? (
+        load.collect > 0 ? (
+          <div className="dl-route-progress">
+            <div className="row t-13">
+              <span className="grow muted">К получению</span>
+              <span className="num w-700">{fmt.money(load.collect)}</span>
+            </div>
           </div>
-        ) : null}
-      </div>
+        ) : (
+          <div className="dl-route-gap" />
+        )
+      ) : (
+        <div className="dl-route-progress">
+          <div className="row">
+            <span className="grow t-13">
+              Вручено <span className="w-700">{load.done}</span> из {load.points}
+              {load.failed ? <span className="c-bad w-600"> · не удалось {load.failed}</span> : null}
+            </span>
+          </div>
+          <ProgressBar value={load.done} max={Math.max(1, load.points)} />
+          <div className="row t-13">
+            <span className="grow muted">{onHandLabel(since, c.today)}</span>
+            <span className="num w-700">{fmt.money(cash.onHand)}</span>
+          </div>
+          {load.collect > 0 ? (
+            <div className="row t-13">
+              <span className="grow muted">Ещё получить</span>
+              <span className="num w-700">{fmt.money(load.collect)}</span>
+            </div>
+          ) : null}
+        </div>
+      )}
 
       {routePts.length ? (
         <a className="dl-route-map" href={routeUrl(routePts)} target="_blank" rel="noreferrer">
@@ -204,6 +218,7 @@ function RouteColumn({ load, c, canMove }: { load: CourierLoad; c: Clock; canMov
                   <span className="num w-700">{d.interval}</span>
                   <StateChip d={d} />
                   <LateChip d={d} c={c} />
+                  <DelayChip d={d} />
                 </span>
                 <span className="w-600 ellipsis">{d.address}</span>
                 <span className="t-12 muted ellipsis">

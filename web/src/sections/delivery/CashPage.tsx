@@ -10,13 +10,14 @@ import { PageHeader } from '../../shell/PageHeader';
 import { EntityLink, useOpenEntity } from '../../shell/entities';
 import { Avatar, Button, Card, Chip, DataTable, EmptyState, Kpi, Select, fmt, type Column } from '../../ui';
 import { DayPicker, useDayParam, useNarrow } from './parts';
-import { clockOf, couriersOf, dayLabel, deliveredAt, moneyOfDay, type CourierDay } from './lib';
+import { clockOf, couriersOf, dayLabel, deliveredAt, moneyOfDay, onHandSplit, transferPending, type CourierDay } from './lib';
 import { useDeliveryFlow } from './flow';
 
 interface CourierRow {
   e: Employee;
   day: CourierDay;
   count: number;
+  older: number; // на руках с прошлых дней — входит в «На руках»
 }
 
 export function CashPage() {
@@ -37,7 +38,7 @@ export function CashPage() {
       couriersOf(db).map((e) => {
         const cash = courierCash(db, e.id);
         const m = moneyOfDay(db, e.id, day, cash.onHand);
-        return { e, day: m, count: m.list.length };
+        return { e, day: m, count: m.list.length, older: onHandSplit(db, e.id, c.today).older };
       }),
     [db, version, day],
   );
@@ -46,14 +47,18 @@ export function CashPage() {
     { cash: 0, card: 0, handed: 0, onHand: 0 },
   );
 
-  // доставки дня с деньгами: к получению или получено
+  // доставки дня с деньгами: к получению или получено; на сегодня — ещё и все несданные наличные с прошлых дней
   const money = useMemo(
     () =>
       db.deliveries
         .filter((d) => {
           if (!d.courierId) return false;
           if (courierF && d.courierId !== courierF) return false;
-          if (d.state === 'delivered') return (deliveredAt(d) ?? '').slice(0, 10) === day && (d.collect > 0 || d.collected > 0);
+          if (d.state === 'delivered') {
+            const at = (deliveredAt(d) ?? d.date).slice(0, 10);
+            if (day === c.today && d.collectedMethod === 'cash' && d.collected > 0 && !d.handedIn) return true;
+            return at === day && (d.collect > 0 || d.collected > 0);
+          }
           return d.date === day && d.collect > 0 && d.state !== 'returned' && d.state !== 'waiting';
         })
         .sort((a, b) => (deliveredAt(a) ?? 'z').localeCompare(deliveredAt(b) ?? 'z') || a.number - b.number),
@@ -83,8 +88,16 @@ export function CashPage() {
     },
     { key: 'count', header: 'Доставок', align: 'right', render: (r) => fmt.num(r.count), sort: (r) => r.count, total: (rs) => fmt.num(rs.reduce((z, r) => z + r.count, 0)) },
     { key: 'cash', header: 'Наличными', align: 'right', render: (r) => fmt.money(r.day.cash), sort: (r) => r.day.cash, total: (rs) => fmt.money(rs.reduce((z, r) => z + r.day.cash, 0)) },
-    { key: 'card', header: 'Картой', align: 'right', render: (r) => fmt.money(r.day.card), sort: (r) => r.day.card, total: (rs) => fmt.money(rs.reduce((z, r) => z + r.day.card, 0)) },
+    { key: 'card', header: 'Картой и переводом', align: 'right', render: (r) => fmt.money(r.day.card), sort: (r) => r.day.card, total: (rs) => fmt.money(rs.reduce((z, r) => z + r.day.card, 0)) },
     { key: 'handed', header: 'Сдано', align: 'right', render: (r) => fmt.money(r.day.handedToday), sort: (r) => r.day.handedToday, total: (rs) => fmt.money(rs.reduce((z, r) => z + r.day.handedToday, 0)) },
+    {
+      key: 'older',
+      header: 'С прошлых дней',
+      align: 'right',
+      render: (r) => <span className={r.older > 0 ? 'w-600 c-warn' : 'faint'}>{fmt.money(r.older)}</span>,
+      sort: (r) => r.older,
+      total: (rs) => fmt.money(rs.reduce((z, r) => z + r.older, 0)),
+    },
     {
       key: 'onHand',
       header: 'На руках',
@@ -113,7 +126,18 @@ export function CashPage() {
 
   const moneyCols: Column<Delivery>[] = [
     { key: 'number', header: '№', render: (d) => <span className="w-600 nowrap">№ {d.number}</span>, sort: (d) => d.number, width: 76 },
-    { key: 'at', header: 'Вручено', render: (d) => (deliveredAt(d) ? fmt.time(deliveredAt(d)) : <span className="faint">—</span>), sort: (d) => deliveredAt(d), width: 90 },
+    {
+      key: 'at',
+      header: 'Вручено',
+      render: (d) => {
+        const at = deliveredAt(d);
+        if (!at) return <span className="faint">—</span>;
+        return at.slice(0, 10) === day ? fmt.time(at) : <span className="nowrap">{`${fmt.relDate(at, c.today)}, ${fmt.time(at)}`}</span>;
+      },
+      sort: (d) => deliveredAt(d),
+      csv: (d) => deliveredAt(d) ?? '',
+      width: 110,
+    },
     {
       key: 'courier',
       header: 'Курьер',
@@ -210,6 +234,7 @@ export function CashPage() {
                     <span className="t-12 muted ellipsis">
                       {fmt.count(r.count, 'доставка', 'доставки', 'доставок')} · наличными {fmt.money(r.day.cash)}
                     </span>
+                    {r.older > 0 ? <span className="t-12 c-warn w-600">с прошлых дней {fmt.money(r.older)}</span> : null}
                   </span>
                   {r.day.onHand > 0 ? (
                     <span className="col" style={{ gap: 4, alignItems: 'flex-end' }}>
@@ -244,7 +269,7 @@ export function CashPage() {
                           <span className="w-700 nowrap">№ {d.number}</span>
                           <span className="t-12 muted nowrap">
                             {ix.employees.get(d.courierId ?? '')?.short ?? '—'}
-                            {at ? ` · ${fmt.time(at)}` : ''}
+                            {at ? ` · ${at.slice(0, 10) === day ? '' : fmt.relDate(at, c.today) + ', '}${fmt.time(at)}` : ''}
                           </span>
                         </span>
                         <span className="t-13 w-600 ellipsis">{ix.clients.get(d.clientId)?.name ?? d.contactName}</span>
@@ -255,7 +280,7 @@ export function CashPage() {
                       <span className="col" style={{ gap: 2, alignItems: 'flex-end' }}>
                         <span className="num w-700 nowrap">{fmt.money(d.state === 'delivered' ? d.collected : d.collect)}</span>
                         <span className="t-12 muted nowrap">
-                          {d.state === 'delivered' ? (d.collected > 0 && d.collectedMethod ? PAY_METHOD_NAMES[d.collectedMethod] : 'получено') : 'к получению'}
+                          {d.state === 'delivered' ? (d.collected > 0 && d.collectedMethod ? PAY_METHOD_NAMES[d.collectedMethod].toLowerCase() : 'получено') : 'к получению'}
                         </span>
                       </span>
                     </button>
@@ -356,10 +381,14 @@ function HandIns({ list }: { list: Payment[] }) {
 
 /** Сверка по доставке: что с деньгами сейчас. */
 function CheckChip({ d }: { d: Delivery }) {
+  const db = useDB();
   if (d.state === 'failed') return <Chip tone="bad">Не вручено</Chip>;
   if (d.state === 'assigned') return <Chip tone="neutral">Ещё не выехал</Chip>;
   if (d.state !== 'delivered') return <Chip tone="violet">В пути</Chip>;
   if (d.collected < d.collect) return <Chip tone="bad">{`Меньше на ${fmt.money(d.collect - d.collected)}`}</Chip>;
-  if (d.collectedMethod !== 'cash' || d.collected === 0) return <Chip tone="info">На счёт</Chip>;
-  return d.handedIn ? <Chip tone="ok">Сдано</Chip> : <Chip tone="warn">На руках</Chip>;
+  if (d.collectedMethod === 'cash' && d.collected > 0 && !d.handedIn) return <Chip tone="warn">На руках</Chip>;
+  if (d.collected === 0) return <Chip tone="neutral">Без денег</Chip>;
+  if (d.collectedMethod === 'transfer') return transferPending(db, d) ? <Chip tone="warn">Перевод ждёт банка</Chip> : <Chip tone="info">Переводом</Chip>;
+  if (d.collectedMethod === 'card') return <Chip tone="info">Картой</Chip>;
+  return <Chip tone="ok">Сдано</Chip>;
 }

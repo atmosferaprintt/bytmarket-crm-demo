@@ -1,4 +1,5 @@
-/* Окно оплаты: наличные, карта или смешанная; получено, быстрые суммы, сдача. */
+/* Окно оплаты: наличные, карта или смешанная; получено, быстрые суммы, сдача.
+   С клавиатуры: 1 / 2 / 3 или стрелки — способ, Enter — к сумме, F9 — провести. */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Banknote, CreditCard, Info, ArrowLeftRight } from 'lucide-react';
 import { Button, Field, Modal, MoneyInput, Notice, cx, fmt } from '../../ui';
@@ -11,6 +12,8 @@ export interface PayResult {
 }
 
 const NOTES = [100, 200, 500, 1000, 1500, 2000, 3000, 5000, 10000];
+const ORDER: PayMethodUI[] = ['cash', 'card', 'mixed'];
+const KEY_OF: Record<string, PayMethodUI> = { '1': 'cash', '2': 'card', '3': 'mixed' };
 
 /** Быстрые суммы: «без сдачи» и три ближайшие купюры выше суммы. */
 function quickSums(due: number): number[] {
@@ -41,6 +44,12 @@ export function PayModal({
   onClose: () => void;
 }) {
   const [method, setMethod] = useState<PayMethodUI>('cash');
+  // после выбора способа фокус идёт к следующему шагу: сумма, картой или «приложите карту»
+  const [step, setStep] = useState(0);
+  const choose = (m: PayMethodUI) => {
+    setMethod(m);
+    setStep((x) => x + 1);
+  };
   const [received, setReceived] = useState<number | ''>('');
   const [card, setCard] = useState<number | ''>('');
   const formRef = useRef<HTMLFormElement>(null);
@@ -55,8 +64,14 @@ export function PayModal({
   const canPay = !busy && short === 0 && !cardTooBig && !mixedEmpty;
   const quick = useMemo(() => quickSums(cashDue), [cashDue]);
 
-  // фокус в нужное поле при смене способа
+  // окно открылось — фокус на способе оплаты: 1 / 2 / 3 или стрелки
   useEffect(() => {
+    formRef.current?.querySelector<HTMLElement>('.reg-paym [aria-checked="true"]')?.focus();
+  }, []);
+
+  // фокус в нужное поле при выборе способа
+  useEffect(() => {
+    if (!step) return;
     if (method === 'card') {
       formRef.current?.querySelector<HTMLElement>('.reg-change.is-card')?.focus();
       return;
@@ -64,7 +79,7 @@ export function PayModal({
     const el = formRef.current?.querySelector<HTMLInputElement>(method === 'mixed' ? '[data-f-wrap="card"] input' : '[data-f-wrap="cash"] input');
     el?.focus();
     el?.select();
-  }, [method]);
+  }, [method, step]);
 
   const submit = () => {
     if (!canPay) return;
@@ -112,7 +127,25 @@ export function PayModal({
           submit();
         }}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'BUTTON') {
+          const tag = (e.target as HTMLElement).tagName;
+          const typing = tag === 'INPUT' || tag === 'TEXTAREA';
+          if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+            const m = KEY_OF[e.key];
+            if (m) {
+              e.preventDefault();
+              choose(m);
+              return;
+            }
+            if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+              e.preventDefault();
+              const d = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : -1;
+              const next = ORDER[(ORDER.indexOf(method) + d + ORDER.length) % ORDER.length];
+              setMethod(next);
+              window.setTimeout(() => formRef.current?.querySelector<HTMLElement>(`.reg-paym [data-method="${next}"]`)?.focus(), 0);
+              return;
+            }
+          }
+          if (e.key === 'Enter' && tag !== 'BUTTON') {
             e.preventDefault();
             submit();
           }
@@ -124,17 +157,20 @@ export function PayModal({
         </div>
 
         <div className="reg-paym" role="radiogroup" aria-label="Способ оплаты">
-          {methods.map((m) => (
+          {methods.map((m, i) => (
             <button
               key={m.key}
               type="button"
               role="radio"
+              data-method={m.key}
               aria-checked={method === m.key}
+              tabIndex={method === m.key ? 0 : -1}
               className={cx(method === m.key && 'is-active')}
-              onClick={() => setMethod(m.key)}
+              onClick={() => choose(m.key)}
             >
               {m.icon}
               {m.label}
+              <span className="kbd reg-paym-kbd">{i + 1}</span>
             </button>
           ))}
         </div>

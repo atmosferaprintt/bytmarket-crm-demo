@@ -44,7 +44,8 @@
 .stock-doc-lines .table th:last-child, .stock-doc-lines .table td:last-child { padding-right: 10px; }
 .stock-doc-lines .select { min-width: 128px; }
 .stock-doc-lines .select.is-invalid { border-color: var(--bad); background-color: var(--panel); }
-.stock-doc-name { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* название целиком, переносом: «…35 л» и «…60 л» должны различаться */
+.stock-doc-name { max-width: 360px; white-space: normal; line-height: 1.3; overflow-wrap: anywhere; }
 .stock-doc-total { font-size: var(--fs-13); font-weight: 700; color: var(--ink); }
 .stock-count-sheet { max-height: 46vh; overflow-y: auto; }
 .stock-fact { width: 84px; margin-left: auto; text-align: right; }
@@ -61,7 +62,8 @@
   background: transparent; text-align: left; color: inherit;
 }
 .stock-picker-item.is-active { background: var(--sub-hover); }
-.stock-picker-name { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stock-picker-name { display: block; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.stock-picker-error { margin-top: 6px; }
 .stock-picker-sub { display: block; font-size: var(--fs-12); color: var(--muted); }
 .stock-picker-stock { font-size: var(--fs-12); color: var(--ink-2); font-weight: 600; }
 .stock-picker-empty { padding: 12px; color: var(--muted); font-size: var(--fs-13); }
@@ -77,6 +79,11 @@
 /* сборка */
 .stock-pick { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: var(--sp-4); align-items: start; }
 .stock-pick-side > .card-body { padding-top: 4px; display: flex; flex-direction: column; }
+/* подвал с «Собрано» прилипает к низу окна: длинный заказ не надо прокручивать до кнопки */
+.stock-pick-side > .card-foot { position: sticky; bottom: 0; z-index: 2; background: var(--panel); border-radius: 0 0 var(--r-card) var(--r-card); box-shadow: var(--sh-card); }
+.stock-unpicked { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r-md); max-height: 320px; overflow-y: auto; }
+.stock-unpicked-row { display: flex; align-items: flex-start; gap: var(--sp-3); padding: 8px 14px; border-bottom: 1px solid var(--line); font-size: var(--fs-13); }
+.stock-unpicked-row:last-child { border-bottom: 0; }
 /* лист сборки показывает все позиции заказа целиком, без внутренней прокрутки */
 .stock-pick-lines { display: flex; flex-direction: column; margin: 0 -20px; border-top: 1px solid var(--line); }
 .stock-pick-line { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: var(--sp-3); padding: 8px 20px; border-bottom: 1px solid var(--line); align-items: start; cursor: pointer; }
@@ -152,7 +159,7 @@ button.stock-feed-row:hover { background: var(--row-hover); }
   .table .stock-col-name { min-width: 200px; }
   .stock-basis { max-width: 140px; }
   .stock-move-table .stock-doc-name { max-width: 220px; }
-  .stock-doc-name { max-width: 280px; }
+  .stock-doc-name { max-width: 300px; }
 }
 @media (max-width: 760px) {
   .stock-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -166,3 +173,28 @@ button.stock-feed-row:hover { background: var(--row-hover); }
 .stock-pills .seg-item { padding: 0 10px; }
 /* числа — по ширине содержимого, всё остальное место отдаём названию */
 .stock-main .table th.num, .stock-main .table td.num { width: 1%; white-space: nowrap; }
+
+/* приёмка поставки и ручной приход */
+.stock-recv-list { display: flex; flex-direction: column; margin: 0 -24px; border-top: 1px solid var(--line); }
+.stock-recv-list > .stock-list-row { padding-left: 24px; padding-right: 24px; }
+.stock-income-warn { display: flex; align-items: center; gap: var(--sp-3); }
+
+/* пересчёт: факт «кор. + шт», крупная недостача */
+.stock-fact-cell { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.stock-count-sheet .stock-fact { width: 56px; margin-left: 0; }
+.stock-fact-eq { margin-top: 4px; text-align: right; }
+.stock-big-list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r-md); }
+.stock-big-row { display: grid; grid-template-columns: minmax(0, 1fr) 200px; gap: var(--sp-3); align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.stock-big-row:last-child { border-bottom: 0; }
+
+/* рабочий стол склада: «на завтра», просьбы продавцов */
+.stock-kpi-next { font-size: var(--fs-13); font-weight: 600; color: var(--ink-2); }
+.stock-home-done { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); padding: 12px 20px; border-bottom: 1px solid var(--line); font-size: var(--fs-14); }
+.stock-requests { border-bottom: 1px solid var(--line); background: var(--sub); }
+.stock-requests-head { padding: 10px 20px 4px; font-size: var(--fs-13); font-weight: 700; color: var(--ink); }
+.stock-request-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--sp-3); align-items: center; padding: 8px 20px; }
+.stock-request-row + .stock-request-row { border-top: 1px solid var(--line); }
+.stock-request-main { min-width: 0; border: 0; background: transparent; padding: 0; text-align: left; color: inherit; }
+.stock-request-name { white-space: normal !important; }
+.stock-request-qty { white-space: nowrap; }
+.stock-list-meta.stock-request-meta { display: block; white-space: normal; }

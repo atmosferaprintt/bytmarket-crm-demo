@@ -45,7 +45,7 @@ export function Sheet({
             <h2 className="dl-sheet-title">{title}</h2>
             {sub ? <div className="dl-sheet-sub">{sub}</div> : null}
           </div>
-          <button type="button" className="btn btn-ghost btn-icon" aria-label="Закрыть" onClick={onClose}>
+          <button type="button" className="btn btn-ghost btn-icon dl-sheet-close" aria-label="Закрыть" onClick={onClose}>
             <X />
           </button>
         </div>

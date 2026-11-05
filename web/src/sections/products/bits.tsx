@@ -4,7 +4,7 @@ import { ArrowRight, Tag } from 'lucide-react';
 import type { Promo } from '../../data/types';
 import type { PriceInfo } from '../../data/selectors';
 import { Chip, cx, fmt } from '../../ui';
-import { AUDIENCE, promoValueText, type CatalogRow } from './lib';
+import { AUDIENCE, offPct, promoValueText, type CatalogRow } from './lib';
 import { StockStatusChip } from '../stock/StockStatus';
 
 /** Цена за штуку; при акции — цена по акции и зачёркнутая обычная. */
@@ -35,6 +35,16 @@ export function PromoChip({ promo, short }: { promo: Promo; short?: boolean }) {
   return (
     <Chip tone="green" icon={<Tag />} title={`Акция «${promo.name}» до ${fmt.date(promo.end)}${audience}`}>
       {short ? promoValueText(promo) : `Акция ${promoValueText(promo)}`}
+    </Chip>
+  );
+}
+
+/** Чип акции по цене роли: процент от её обычной цены. Для опта это честнее, чем «цена 169 ₽» из розничной акции. */
+export function PromoPriceChip({ info }: { info: PriceInfo }) {
+  if (!info.promo || info.price >= info.base) return null;
+  return (
+    <Chip tone="green" icon={<Tag />} title={`Акция «${info.promo.name}» до ${fmt.date(info.promo.end)}`}>
+      Акция −{offPct(info)}&nbsp;%
     </Chip>
   );
 }

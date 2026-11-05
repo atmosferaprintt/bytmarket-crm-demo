@@ -1,18 +1,24 @@
 /* Окна диспетчера: назначить курьера, перенести, вернуть на склад, назначить ожидающие, принять деньги. */
 import { useMemo, useState } from 'react';
-import { Check, MapPin } from 'lucide-react';
+import { Check, MapPin, UserX } from 'lucide-react';
 import type { Delivery, ID, ISODate } from '../../data/types';
 import { dispatch, useDB, useDBVersion } from '../../data/store';
 import { indexes } from '../../data/selectors';
 import { useSession } from '../../roles/session';
-import { Avatar, Button, Chip, EmptyState, Field, Modal, Notice, Select, Textarea, cx, fmt, toast } from '../../ui';
+import { Avatar, Button, Chip, EmptyState, Field, Modal, MoneyInput, Notice, Segmented, Select, Textarea, cx, fmt, toast } from '../../ui';
 import { DayChoice } from './parts';
 import {
   INTERVALS,
+  RESCHEDULE_REASONS,
   byRoute,
   clockOf,
   dayLabel,
   forDay,
+  intervalFor,
+  intervalPassed,
+  nearestInterval,
+  wishOf,
+  type Clock,
   lastFail,
   loadText,
   loadsOf,
@@ -41,7 +47,21 @@ function Missing({ onClose }: { onClose: () => void }) {
 }
 
 /** Кому из курьеров отдать: загрузка на день, районы, подсказка «по пути». */
-export function CourierPicker({ loads, value, onChange, district, exclude }: { loads: CourierLoad[]; value: ID | ''; onChange: (id: ID) => void; district: string; exclude?: ID | null }) {
+export function CourierPicker({
+  loads,
+  value,
+  onChange,
+  district,
+  exclude,
+  allowNone,
+}: {
+  loads: CourierLoad[];
+  value: ID | '';
+  onChange: (id: ID) => void;
+  district: string;
+  exclude?: ID | null;
+  allowNone?: boolean;
+}) {
   const sd = shortDistrict(district);
   const max = Math.max(1, ...loads.map((l) => l.points));
   return (
@@ -73,6 +93,18 @@ export function CourierPicker({ loads, value, onChange, district, exclude }: { l
           </button>
         );
       })}
+      {allowNone ? (
+        <button type="button" role="radio" aria-checked={value === ''} className={cx('dl-pick', value === '' && 'is-active')} onClick={() => onChange('')}>
+          <span className="dl-pick-none" aria-hidden="true">
+            <UserX />
+          </span>
+          <span className="grow col" style={{ gap: 2 }}>
+            <span className="w-700 t-14">Без курьера</span>
+            <span className="t-12 muted">Ждёт назначения — назначите позже</span>
+          </span>
+          <span className={cx('dl-pick-check', value === '' && 'is-on')}>{value === '' ? <Check /> : null}</span>
+        </button>
+      ) : null}
       {!loads.length ? <EmptyState title="Курьеров нет">Добавьте курьера в «Команде и правах»</EmptyState> : null}
     </div>
   );
@@ -95,51 +127,66 @@ function DeliveryLine({ d }: { d: Delivery }) {
   );
 }
 
-/* ---------- назначить / переназначить / повторить ---------- */
+/* ---------- интервал: прошедшие сегодня — недоступны ---------- */
 
-export function AssignCourierModal({ id, mode, onClose }: { id: ID; mode: 'assign' | 'reassign' | 'retry'; onClose: () => void }) {
+function IntervalSelect({ value, onChange, day, c, current }: { value: string; onChange: (v: string) => void; day: ISODate; c: Clock; current?: string }) {
+  const list = INTERVALS.includes(value) ? INTERVALS : [value, ...INTERVALS];
+  const all = current && !list.includes(current) ? [current, ...list] : list;
+  return (
+    <Select
+      value={value}
+      aria-label="Интервал"
+      onChange={(e) => onChange(e.target.value)}
+      options={all.map((v) => {
+        const past = intervalPassed(v, day, c);
+        return { value: v, label: past ? `${v} — уже прошёл` : v, disabled: past };
+      })}
+    />
+  );
+}
+
+/* ---------- назначить / переназначить ---------- */
+
+export function AssignCourierModal({ id, mode, onClose }: { id: ID; mode: 'assign' | 'reassign'; onClose: () => void }) {
   const db = useDB();
   const version = useDBVersion();
   const d = useDelivery(id);
   const c = clockOf(db);
-  const fail = d ? lastFail(d) : null;
-  const initialDate = !d
-    ? c.today
-    : mode === 'retry'
-      ? d.date > c.today
-        ? d.date
-        : fail?.reason === 'Перенос по просьбе клиента' || c.nowMin >= 17 * 60
-          ? c.tomorrow
-          : c.today
-      : d.date < c.today
-        ? c.today
-        : d.date;
-  const [date, setDate] = useState<ISODate>(initialDate);
+  const [date, setDate] = useState<ISODate>(() => (!d || d.date < c.today ? c.today : d.date));
+  const [interval, setIv] = useState(() => (d ? intervalFor(d.interval, !d || d.date < c.today ? c.today : d.date, c) : INTERVALS[2]));
   const loads = useMemo(() => loadsOf(db, date, c), [db, version, date]);
   const [courierId, setCourierId] = useState<ID | ''>(() => {
     if (!d) return '';
-    if (mode === 'retry' && d.courierId) return d.courierId;
     return suggestCourier(loads.filter((l) => l.courier.id !== d.courierId), d.district) ?? '';
   });
   const [error, setError] = useState<string | null>(null);
   const run = useRun();
   if (!d) return <Missing onClose={onClose} />;
 
-  const title = mode === 'assign' ? 'Назначить курьера' : mode === 'reassign' ? 'Переназначить курьера' : 'Повторить доставку';
+  const pickDate = (v: ISODate) => {
+    setDate(v);
+    setIv((iv) => intervalFor(iv, v, c));
+  };
+  const moved = interval !== d.interval;
+
   const submit = () => {
     if (!courierId) {
       setError('Выберите курьера');
       return;
     }
+    if (intervalPassed(interval, date, c)) {
+      setError('Этот интервал сегодня уже прошёл — выберите другой');
+      return;
+    }
     const courier = loads.find((l) => l.courier.id === courierId)?.courier;
-    const r = run('delivery.assign', { deliveryId: d.id, courierId, date }, `Доставка № ${d.number}: ${courier?.short ?? 'курьер'}, ${dayLabel(date, c).toLowerCase()}`);
+    const r = run('delivery.assign', { deliveryId: d.id, courierId, date, interval }, `Доставка № ${d.number}: ${courier?.short ?? 'курьер'}, ${dayLabel(date, c).toLowerCase()}, ${interval}`);
     if (r.ok) onClose();
     else setError(r.error ?? null);
   };
 
   return (
     <Modal
-      title={title}
+      title={mode === 'assign' ? 'Назначить курьера' : 'Переназначить курьера'}
       onClose={onClose}
       footer={
         <>
@@ -147,20 +194,21 @@ export function AssignCourierModal({ id, mode, onClose }: { id: ID; mode: 'assig
             Отмена
           </Button>
           <Button variant="primary" onClick={submit} disabled={!courierId}>
-            {mode === 'retry' ? 'Назначить повторно' : mode === 'reassign' ? 'Переназначить' : 'Назначить'}
+            {mode === 'reassign' ? 'Переназначить' : 'Назначить'}
           </Button>
         </>
       }
     >
       <DeliveryLine d={d} />
-      {mode === 'retry' && fail ? (
-        <Notice tone="warn" title={`Не удалось ${fmt.dateTime(fail.at)}`}>
-          {fail.reason}
-        </Notice>
-      ) : null}
-      <Field label="День">
-        <DayChoice value={date} onChange={setDate} c={c} />
-      </Field>
+      <div className="dl-when">
+        <Field label="День">
+          <DayChoice value={date} onChange={pickDate} c={c} />
+        </Field>
+        <Field label="Интервал">
+          <IntervalSelect value={interval} onChange={setIv} day={date} c={c} current={d.interval} />
+        </Field>
+      </div>
+      {moved && intervalPassed(d.interval, date, c) ? <Notice tone="info">{`Интервал ${d.interval} сегодня уже прошёл — предложили ближайший`}</Notice> : null}
       <Field label={`Курьер на ${dayLabel(date, c).toLowerCase()}`}>
         <CourierPicker loads={loads} value={courierId} onChange={setCourierId} district={d.district} exclude={mode === 'reassign' ? d.courierId : null} />
       </Field>
@@ -169,33 +217,87 @@ export function AssignCourierModal({ id, mode, onClose }: { id: ID; mode: 'assig
   );
 }
 
-/* ---------- перенести ---------- */
+/* ---------- перенести / повторить после неудачи — одно окно ---------- */
+
+const ASKED_FAIL = 'Перенос по просьбе клиента';
 
 export function RescheduleModal({ id, onClose }: { id: ID; onClose: () => void }) {
   const db = useDB();
   const version = useDBVersion();
   const d = useDelivery(id);
   const c = clockOf(db);
-  const [date, setDate] = useState<ISODate>(() => (d && d.date > c.today ? d.date : c.tomorrow));
-  const [interval, setIv] = useState(d?.interval ?? INTERVALS[2]);
-  const [courierId, setCourierId] = useState<ID | ''>(d?.courierId ?? '');
-  const [error, setError] = useState<string | null>(null);
+  const fail = d && d.state === 'failed' ? lastFail(d) : null;
+  const wish = d ? wishOf(d, c.today) : null;
+  const usableWish = wish && wish.date >= c.today && !intervalPassed(wish.interval, wish.date, c) ? wish : null;
+  const initialDate: ISODate = !d
+    ? c.tomorrow
+    : usableWish
+      ? usableWish.date
+      : fail
+        ? fail.reason === ASKED_FAIL || !nearestInterval(c) || c.nowMin >= 17 * 60
+          ? c.tomorrow
+          : c.today
+        : d.date > c.today
+          ? d.date
+          : c.tomorrow;
+  const [date, setDate] = useState<ISODate>(initialDate);
+  const [interval, setIv] = useState(() => (usableWish ? usableWish.interval : d ? intervalFor(d.interval, initialDate, c) : INTERVALS[2]));
   const loads = useMemo(() => loadsOf(db, date, c), [db, version, date]);
+  const [courierId, setCourierId] = useState<ID | ''>(() => {
+    if (!d) return '';
+    if (d.courierId && loads.some((l) => l.courier.id === d.courierId)) return d.courierId;
+    return d.state === 'failed' ? suggestCourier(loads, d.district) ?? '' : '';
+  });
+  const [reason, setReason] = useState<string>(() =>
+    wish || fail?.reason === ASKED_FAIL ? 'Клиент попросил' : fail?.reason === 'Не успели в интервал' ? 'Не успели' : '',
+  );
+  const [comment, setComment] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const run = useRun();
   if (!d) return <Missing onClose={onClose} />;
-  const intervals = INTERVALS.includes(d.interval) ? INTERVALS : [d.interval, ...INTERVALS];
+  const retry = d.state === 'failed';
+
+  const pickDate = (v: ISODate) => {
+    setDate(v);
+    setIv((iv) => intervalFor(iv, v, c));
+  };
 
   const submit = () => {
-    const payload: { deliveryId: ID; date: ISODate; interval: string; courierId?: ID } = { deliveryId: d.id, date, interval };
+    const text = comment.trim();
+    if (!reason && !retry) {
+      setError('Выберите причину переноса');
+      return;
+    }
+    if (reason === 'Другое' && !text) {
+      setError('Напишите причину');
+      return;
+    }
+    if (intervalPassed(interval, date, c)) {
+      setError('Этот интервал сегодня уже прошёл — выберите другой');
+      return;
+    }
+    const why = !reason
+      ? `Повторная доставка: ${(fail?.reason ?? 'не удалось').toLowerCase()}`
+      : reason === 'Другое'
+        ? text
+        : text
+          ? `${reason}: ${text}`
+          : reason;
+    const payload: { deliveryId: ID; date: ISODate; interval: string; courierId?: ID; reason: string } = { deliveryId: d.id, date, interval, reason: why };
     if (courierId) payload.courierId = courierId;
-    const r = run('delivery.reschedule', payload, `Доставка № ${d.number} перенесена на ${fmt.date(date)}, ${interval}`);
+    const courier = courierId ? loads.find((l) => l.courier.id === courierId)?.courier : undefined;
+    const r = run(
+      'delivery.reschedule',
+      payload,
+      `Доставка № ${d.number}: ${dayLabel(date, c).toLowerCase()}, ${interval}${courier ? `, ${courier.short}` : ', ждёт назначения курьера'}`,
+    );
     if (r.ok) onClose();
     else setError(r.error ?? null);
   };
 
   return (
     <Modal
-      title="Перенести доставку"
+      title={retry ? 'Повторить доставку' : 'Перенести доставку'}
       onClose={onClose}
       footer={
         <>
@@ -203,30 +305,60 @@ export function RescheduleModal({ id, onClose }: { id: ID; onClose: () => void }
             Отмена
           </Button>
           <Button variant="primary" onClick={submit}>
-            Перенести
+            {retry ? (courierId ? 'Назначить повторно' : 'Перенести без курьера') : 'Перенести'}
           </Button>
         </>
       }
     >
       <DeliveryLine d={d} />
-      <Field label="Новый день">
-        <DayChoice value={date} onChange={setDate} c={c} />
-      </Field>
-      <div className="grid-2">
-        <Field label="Интервал">
-          <Select value={interval} onChange={(e) => setIv(e.target.value)} options={intervals.map((v) => ({ value: v, label: v }))} />
+      {fail ? (
+        <Notice tone="warn" title={`Не удалось ${fmt.dateTime(fail.at)}: ${fail.reason}`}>
+          {wish ? `Клиент просит ${fmt.date(wish.date)}, ${wish.interval}` : null}
+        </Notice>
+      ) : wish ? (
+        <Notice tone="info">{`Клиент просит ${fmt.date(wish.date)}, ${wish.interval}`}</Notice>
+      ) : null}
+      <div className="dl-when">
+        <Field label={retry ? 'День' : 'Новый день'}>
+          <DayChoice value={date} onChange={pickDate} c={c} />
         </Field>
-        <Field label="Курьер">
-          <Select
-            value={courierId}
-            onChange={(e) => setCourierId(e.target.value)}
-            options={[
-              { value: '', label: 'Без курьера — ожидает назначения' },
-              ...loads.map((l) => ({ value: l.courier.id, label: `${l.courier.short} · ${l.points ? fmt.count(l.points, 'точка', 'точки', 'точек') : 'свободен'}` })),
-            ]}
-          />
+        <Field label="Интервал">
+          <IntervalSelect value={interval} onChange={setIv} day={date} c={c} current={d.interval} />
         </Field>
       </div>
+      {wish && (wish.date !== date || wish.interval !== interval) && usableWish ? (
+        <div className="chips">
+          <button
+            type="button"
+            className="dl-quick"
+            onClick={() => {
+              setDate(usableWish.date);
+              setIv(usableWish.interval);
+            }}
+          >
+            Как просит клиент · {dayLabel(usableWish.date, c).toLowerCase()}, {usableWish.interval}
+          </button>
+        </div>
+      ) : null}
+      <Field label={`Курьер на ${dayLabel(date, c).toLowerCase()}`}>
+        <CourierPicker loads={loads} value={courierId} onChange={setCourierId} district={d.district} allowNone />
+      </Field>
+      <Field label={retry ? 'Причина' : 'Причина переноса'}>
+        <Segmented
+          ariaLabel="Причина"
+          value={reason}
+          onChange={(v) => {
+            setReason(v);
+            setError(null);
+          }}
+          options={RESCHEDULE_REASONS.map((r) => ({ value: r, label: r }))}
+        />
+      </Field>
+      {reason ? (
+        <Field label={reason === 'Другое' ? 'Что случилось' : 'Комментарий'}>
+          <Textarea rows={2} value={comment} placeholder={reason === 'Другое' ? 'Попадёт в историю заказа' : 'Если нужно'} onChange={(e) => { setComment(e.target.value); setError(null); }} />
+        </Field>
+      ) : null}
       {error ? <Notice tone="bad">{error}</Notice> : null}
     </Modal>
   );
@@ -325,11 +457,14 @@ export function BulkAssignModal({ ids, day, onClose }: { ids: ID[]; day: ISODate
     }
     return res;
   });
+  // интервал по каждой доставке: если сегодня он уже прошёл — ближайший будущий
+  const [ivs, setIvs] = useState<Record<ID, string>>(() => Object.fromEntries(list.map((d) => [d.id, intervalFor(d.interval, target, c)])));
   const [busy, setBusy] = useState(false);
+  const movedN = list.filter((d) => (ivs[d.id] ?? d.interval) !== d.interval).length;
 
   const loadsNow = baseLoads.map((l) => {
     const added = list.filter((d) => picks[d.id] === l.courier.id);
-    return { ...l, points: l.points + added.length, places: l.places + added.reduce((z, d) => z + d.places, 0), kg: Math.round(l.kg + added.reduce((z, d) => z + d.weightKg, 0)) };
+    return { ...l, points: l.points + added.length, places: l.places + added.reduce((z, d) => z + d.places, 0), kg: l.kg + added.reduce((z, d) => z + Math.round(d.weightKg), 0) };
   });
   const chosen = list.filter((d) => picks[d.id]);
 
@@ -338,7 +473,12 @@ export function BulkAssignModal({ ids, day, onClose }: { ids: ID[]; day: ISODate
     let ok = 0;
     const errors: string[] = [];
     for (const d of chosen) {
-      const r = dispatch('delivery.assign' as never, { deliveryId: d.id, courierId: picks[d.id], date: target } as never, me.id) as { ok: boolean; error?: string };
+      const interval = ivs[d.id] ?? d.interval;
+      if (intervalPassed(interval, target, c)) {
+        errors.push(`№ ${d.number}: интервал ${interval} уже прошёл`);
+        continue;
+      }
+      const r = dispatch('delivery.assign' as never, { deliveryId: d.id, courierId: picks[d.id], date: target, interval } as never, me.id) as { ok: boolean; error?: string };
       if (r.ok) ok++;
       else errors.push(`№ ${d.number}: ${r.error}`);
     }
@@ -376,6 +516,7 @@ export function BulkAssignModal({ ids, day, onClose }: { ids: ID[]; day: ISODate
           </div>
         ))}
       </div>
+      {movedN ? <Notice tone="info">{`У ${fmt.count(movedN, 'доставки', 'доставок', 'доставок')} интервал сегодня уже прошёл — предложили ближайший`}</Notice> : null}
       {list.length ? (
         <div className="dl-bulk">
           {list.map((d) => {
@@ -386,10 +527,13 @@ export function BulkAssignModal({ ids, day, onClose }: { ids: ID[]; day: ISODate
                 <span className="grow col" style={{ gap: 2, minWidth: 0 }}>
                   <span className="w-700 ellipsis">{client?.name ?? d.contactName}</span>
                   <span className="t-12 muted ellipsis">
-                    <MapPin size={12} style={{ verticalAlign: -2 }} /> {d.address}, {shortDistrict(d.district)} · {d.interval} · {placesText(d.places)}
+                    <MapPin size={12} style={{ verticalAlign: -2 }} /> {d.address}, {shortDistrict(d.district)} · {placesText(d.places)}
+                    {d.collect > 0 ? ` · ${fmt.money(d.collect)}` : ''}
                   </span>
                 </span>
-                {d.collect > 0 ? <span className="num w-600 t-13">{fmt.money(d.collect)}</span> : null}
+                <span className="dl-bulk-iv">
+                  <IntervalSelect value={ivs[d.id] ?? d.interval} onChange={(v) => setIvs((x) => ({ ...x, [d.id]: v }))} day={target} c={c} current={d.interval} />
+                </span>
                 <Select
                   size="sm"
                   className="dl-bulk-select"
@@ -418,10 +562,27 @@ export function HandInModal({ courierId, onClose }: { courierId: ID; onClose: ()
   const list = useMemo(() => notHandedIn(db, courierId), [db, version, courierId]);
   const ix = indexes(db);
   const sum = list.reduce((z, d) => z + d.collected, 0);
+  const [counted, setCounted] = useState<number | ''>(sum);
+  const [comment, setComment] = useState('');
   const [error, setError] = useState<string | null>(null);
   const run = useRun();
+  const got = counted === '' ? 0 : counted;
+  const short = Math.max(0, sum - got);
+  const over = got > sum;
+
   const submit = () => {
-    const r = run('courier.handIn', { courierId }, `${courier?.name ?? 'Курьер'} сдал деньги`);
+    if (over) {
+      setError(`Пересчитано больше, чем курьер получил по доставкам (${fmt.money(sum)}). Проверьте сумму`);
+      return;
+    }
+    if (short > 0 && !comment.trim()) {
+      setError('Недостача: напишите, что сказал курьер');
+      return;
+    }
+    const payload: { courierId: ID; counted: number; comment?: string } = { courierId, counted: got };
+    if (comment.trim()) payload.comment = comment.trim();
+    const who = courier?.short ?? 'Курьер';
+    const r = run('courier.handIn', payload, short > 0 ? `${who} сдал ${fmt.money(got)}, недостача ${fmt.money(short)} записана на курьера` : `${who} сдал ${fmt.money(got)} в кассу магазина`, { info: 'none' });
     if (r.ok) onClose();
     else setError(r.error ?? null);
   };
@@ -435,8 +596,8 @@ export function HandInModal({ courierId, onClose }: { courierId: ID; onClose: ()
           <Button variant="ghost" onClick={onClose}>
             Отмена
           </Button>
-          <Button variant="primary" onClick={submit} disabled={!sum}>
-            {sum ? `Принять ${fmt.money(sum)}` : 'Принять'}
+          <Button variant="primary" onClick={submit} disabled={!sum || over || (short > 0 && !comment.trim())}>
+            {sum ? `Принять ${fmt.money(got)}` : 'Принять'}
           </Button>
         </>
       }
@@ -453,11 +614,35 @@ export function HandInModal({ courierId, onClose }: { courierId: ID; onClose: ()
               </div>
             ))}
             <div className="dl-ret-row is-total">
-              <span className="grow">Итого наличными</span>
+              <span className="grow">Получено наличными по доставкам</span>
               <span className="num w-700 t-16">{fmt.money(sum)}</span>
             </div>
           </div>
-          <Notice tone="info">Пересчитайте деньги. После приёма сумма перейдёт в кассу магазина.</Notice>
+          <Field label="Пересчитано">
+            <MoneyInput
+              size="lg"
+              value={counted}
+              ariaLabel="Пересчитано"
+              onChange={(v) => {
+                setCounted(v);
+                setError(null);
+              }}
+            />
+          </Field>
+          {short > 0 ? (
+            <>
+              <Notice tone="warn" title={`Недостача ${fmt.money(short)} запишется на курьера`}>
+                В кассу примем {fmt.money(got)}, разница уйдёт в расходы «Недостача»
+              </Notice>
+              <Field label="Что сказал курьер">
+                <Textarea rows={2} value={comment} placeholder="Например: дал сдачу больше, обещал вернуть завтра" onChange={(e) => { setComment(e.target.value); setError(null); }} />
+              </Field>
+            </>
+          ) : over ? (
+            <Notice tone="bad">Больше, чем курьер получил по доставкам — пересчитайте ещё раз</Notice>
+          ) : (
+            <Notice tone="info">Пересчитайте деньги. После приёма сумма перейдёт в кассу магазина.</Notice>
+          )}
         </>
       ) : (
         <EmptyState title="Сдавать нечего">Все наличные от этого курьера уже приняты</EmptyState>

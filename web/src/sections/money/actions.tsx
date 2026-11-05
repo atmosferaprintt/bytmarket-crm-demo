@@ -1,10 +1,12 @@
 /* Окна раздела «Деньги»: расход, выплата поставщику, перемещение, возврат, опознание платежа. */
 import { useMemo, useState } from 'react';
-import { ArrowLeftRight, Banknote, Check, HandCoins, Receipt, Truck, Undo2 } from 'lucide-react';
-import type { AccountKey, ID } from '../../data/types';
+import { ArrowLeftRight, BadgeCheck, Banknote, Check, HandCoins, Lightbulb, Receipt, Truck, Undo2, Wallet } from 'lucide-react';
+import type { AccountKey, ID, ISODate } from '../../data/types';
 import { ACCOUNT_NAMES, EXPENSE_CATEGORIES } from '../../data/types';
 import { useDB, useDBVersion } from '../../data/store';
-import { accountBalances, clientBalances, indexes, orderPayment, purchaseAccepted, supplierBalance, supplierBalances } from '../../data/selectors';
+import { accountBalances, clientBalances, courierCash, indexes, orderPayment, purchaseAccepted, supplierBalance, supplierBalances } from '../../data/selectors';
+import { plusDays } from '../../data/dates';
+import { EntityLink } from '../../shell/entities';
 import { useScoped } from '../../roles/scope';
 import {
   Button,
@@ -17,6 +19,8 @@ import {
   MoneyInput,
   Notice,
   Select,
+  StatList,
+  StatRow,
   StatusChip,
   cx,
   fmt,
@@ -28,19 +32,24 @@ import { ReconciliationModal } from './Reconciliation';
 import { PaymentDrawer } from './PaymentDrawer';
 import { ACCOUNT_KEYS, autoSplit, clean, clientPayInfo, openOrdersOf, useMoneyPerms, useRun, weekEnd } from './lib';
 export { useConfirmPayment, useMoneyPerms } from './lib';
-import { AccountField, AllocationTable, ClientPicker, ClientSummary, MethodField, MiniStat, useMethodAccount } from './parts';
+import { AccountField, AllocationTable, ClientPicker, ClientSummary, DateField, MethodField, MiniStat, useMethodAccount } from './parts';
+
+/** Откуда платят поставщику и расходы: касса магазина или счёт. Деньги у курьеров так не тратят — их сдают в кассу. */
+const PAY_FROM: AccountKey[] = ['shop_cash', 'bank'];
 
 /* ---------- какое окно открыто ---------- */
 
 export type MoneyModal =
   | { kind: 'accept'; clientId?: ID; orderId?: ID }
   | { kind: 'expense'; category?: string }
-  | { kind: 'supplier'; supplierId?: ID }
+  | { kind: 'supplier'; supplierId?: ID; amount?: number }
   | { kind: 'transfer'; from?: AccountKey; to?: AccountKey }
   | { kind: 'refund'; clientId?: ID }
   | { kind: 'identify'; paymentId: ID }
   | { kind: 'act'; clientId: ID }
   | { kind: 'payment'; paymentId: ID }
+  | { kind: 'confirm'; paymentId: ID }
+  | { kind: 'handin'; courierId: ID }
   | null;
 
 export type SetModal = (m: MoneyModal) => void;
@@ -53,7 +62,7 @@ export function MoneyModalHost({ modal, onClose, onOpen }: { modal: MoneyModal; 
     case 'expense':
       return <ExpenseModal category={modal.category} onClose={onClose} />;
     case 'supplier':
-      return <SupplierPayModal supplierId={modal.supplierId} onClose={onClose} />;
+      return <SupplierPayModal supplierId={modal.supplierId} amount={modal.amount} onClose={onClose} />;
     case 'transfer':
       return <TransferModal from={modal.from} to={modal.to} onClose={onClose} />;
     case 'refund':
@@ -64,6 +73,10 @@ export function MoneyModalHost({ modal, onClose, onOpen }: { modal: MoneyModal; 
       return <ReconciliationModal clientId={modal.clientId} onClose={onClose} />;
     case 'payment':
       return <PaymentDrawer paymentId={modal.paymentId} onClose={onClose} onOpen={onOpen} />;
+    case 'confirm':
+      return <ConfirmTransferModal paymentId={modal.paymentId} onClose={onClose} />;
+    case 'handin':
+      return <CourierHandInModal courierId={modal.courierId} onClose={onClose} />;
   }
 }
 
@@ -83,9 +96,12 @@ export function useMoneyMenu(open: SetModal, skip: NonNullable<MoneyModal>['kind
 /* ---------- расход ---------- */
 
 export function ExpenseModal({ category: initial, onClose }: { category?: string; onClose: () => void }) {
+  const db = useDB();
   const run = useRun();
+  const today = db.meta.today;
   const [category, setCategory] = useState<string>(initial ?? '');
   const [amount, setAmount] = useState<number | ''>('');
+  const [date, setDate] = useState<ISODate>(today);
   const ma = useMethodAccount('transfer');
   const [comment, setComment] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -95,7 +111,11 @@ export function ExpenseModal({ category: initial, onClose }: { category?: string
     if (!category) return setError('Выберите категорию расхода');
     if (!amount) return setError('Укажите сумму');
     setBusy(true);
-    const r = run('payment.expense', { category, amount, method: ma.method, account: ma.account, comment: comment.trim() || undefined }, `Расход ${fmt.money(amount)} записан`);
+    const r = run(
+      'payment.expense',
+      { category, amount, method: ma.method, account: ma.account, comment: comment.trim() || undefined, date },
+      date === today ? `Расход ${fmt.money(amount)} записан` : `Расход ${fmt.money(amount)} записан датой ${fmt.date(date)}`,
+    );
     setBusy(false);
     if (!r.ok) return setError(r.error);
     onClose();
@@ -128,7 +148,11 @@ export function ExpenseModal({ category: initial, onClose }: { category?: string
       </div>
       <div className="grid-2">
         <MethodField value={ma.method} onChange={ma.setMethod} />
-        <AccountField value={ma.account} onChange={ma.setAccount} label="Откуда" />
+        <AccountField value={ma.account} onChange={ma.setAccount} label="Откуда" only={PAY_FROM} />
+      </div>
+      <div className="grid-2">
+        <DateField value={date} onChange={setDate} min={plusDays(today, -62)} max={today} />
+        <span />
       </div>
       <Field label="Комментарий">
         <Input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Например, аренда склада за ноябрь" />
@@ -140,7 +164,7 @@ export function ExpenseModal({ category: initial, onClose }: { category?: string
 
 /* ---------- выплата поставщику ---------- */
 
-export function SupplierPayModal({ supplierId: initial, onClose }: { supplierId?: ID; onClose: () => void }) {
+export function SupplierPayModal({ supplierId: initial, amount: initialAmount, onClose }: { supplierId?: ID; amount?: number; onClose: () => void }) {
   const db = useDB();
   const v = useDBVersion();
   const run = useRun();
@@ -157,6 +181,7 @@ export function SupplierPayModal({ supplierId: initial, onClose }: { supplierId?
   }, [db, v, bal]);
   const thisWeek = purchases.filter((x) => x.dueDate <= weekEnd(today)).reduce((s, x) => s + x.amount, 0);
   const [amount, setAmount] = useState<number | ''>(() => {
+    if (initialAmount) return initialAmount;
     const b = supplierBalance(db, initial ?? suppliers[0]?.id ?? '');
     const w = b.upcoming.filter((u) => u.dueDate <= weekEnd(today)).reduce((s, u) => s + u.amount, 0);
     return w || b.debt || '';
@@ -240,7 +265,7 @@ export function SupplierPayModal({ supplierId: initial, onClose }: { supplierId?
           <MoneyInput size="lg" value={amount} onChange={(x) => setAmount(x)} placeholder="0" />
         </Field>
         <MethodField value={ma.method} onChange={ma.setMethod} />
-        <AccountField value={ma.account} onChange={ma.setAccount} label="Откуда" />
+        <AccountField value={ma.account} onChange={ma.setAccount} label="Откуда" only={PAY_FROM} />
       </div>
       {sum > balances[ma.account] ? (
         <Notice tone="warn">
@@ -348,11 +373,14 @@ export function TransferModal({ from: f, to: t, onClose }: { from?: AccountKey; 
   const isCollection = from === 'shop_cash' && to === 'bank';
   const changeFrom = (a: AccountKey) => {
     setFrom(a);
+    setError(null);
     if (a === to) setTo(ACCOUNT_KEYS.find((x) => x !== a)!);
   };
+  const over = !!amount && amount > bal[from];
   const submit = () => {
     if (busy) return;
     if (!amount) return setError('Укажите сумму');
+    if (over) return;
     setBusy(true);
     const r = run(
       'payment.transfer',
@@ -376,7 +404,7 @@ export function TransferModal({ from: f, to: t, onClose }: { from?: AccountKey; 
           <Button variant="ghost" onClick={onClose}>
             Отмена
           </Button>
-          <Button variant="primary" onClick={submit} loading={busy} disabled={!amount}>
+          <Button variant="primary" onClick={submit} loading={busy} disabled={!amount || over}>
             {amount ? `Переместить ${fmt.money(amount)}` : 'Переместить'}
           </Button>
         </>
@@ -387,7 +415,16 @@ export function TransferModal({ from: f, to: t, onClose }: { from?: AccountKey; 
         <AccountField value={to} onChange={setTo} label="Куда" exclude={from} />
       </div>
       <Field label="Сумма">
-        <MoneyInput size="lg" value={amount} onChange={setAmount} autoFocus placeholder="0" />
+        <MoneyInput
+          size="lg"
+          value={amount}
+          onChange={(x) => {
+            setAmount(x);
+            setError(null);
+          }}
+          autoFocus
+          placeholder="0"
+        />
       </Field>
       {bal[from] > 0 ? (
         <div className="row" style={{ marginTop: -6 }}>
@@ -404,12 +441,14 @@ export function TransferModal({ from: f, to: t, onClose }: { from?: AccountKey; 
       <Field label="Комментарий">
         <Input value={comment} onChange={(e) => setComment(e.target.value)} placeholder={isCollection ? 'Инкассация' : 'Например, размен в кассу'} />
       </Field>
-      {amount && amount > bal[from] ? (
-        <Notice tone="warn">
-          {ACCOUNT_NAMES[from]}: {fmt.money(bal[from])} — столько переместить нельзя
+      {/* одна причина — одно сообщение: нехватку видно сразу, ошибку операции — только если она другая */}
+      {over ? (
+        <Notice tone="bad">
+          {ACCOUNT_NAMES[from]}: {fmt.money(bal[from])} — переместить {fmt.money(amount || 0)} нельзя, уменьшите сумму
         </Notice>
+      ) : error ? (
+        <Notice tone="bad">{error}</Notice>
       ) : null}
-      {error ? <Notice tone="bad">{error}</Notice> : null}
     </Modal>
   );
 }
@@ -525,6 +564,44 @@ export function RefundModal({ clientId: initial, onClose }: { clientId?: ID; onC
 
 /* ---------- опознать неопознанное поступление ---------- */
 
+const innOf = (s: string | null | undefined) => (s ?? '').replace(/\D/g, '');
+
+interface Hint {
+  key: string;
+  clientId: ID;
+  orderId: ID | null;
+  title: string;
+  why: string;
+  amount: number;
+}
+
+/** Подсказки, чей платёж: сначала клиент с тем же ИНН, что в выписке, затем заказы, долг по которым ровно равен сумме. */
+function identifyHints(db: ReturnType<typeof useDB>, payer: { name: string; inn: string } | null | undefined, amount: number, allowed: Set<ID>): Hint[] {
+  const ix = indexes(db);
+  const out: Hint[] = [];
+  const inn = innOf(payer?.inn);
+  const bal = clientBalances(db);
+  if (inn) {
+    for (const c of db.clients) {
+      if (!allowed.has(c.id) || innOf(c.inn) !== inn) continue;
+      out.push({ key: 'inn:' + c.id, clientId: c.id, orderId: null, title: c.name, why: `Тот же ИНН ${inn}`, amount: bal.get(c.id)?.debt ?? 0 });
+    }
+  }
+  const seen = new Set(out.map((h) => h.clientId));
+  const exact: Hint[] = [];
+  for (const o of db.orders) {
+    if (o.state === 'cancelled' || o.state === 'draft' || o.state === 'request' || !allowed.has(o.clientId)) continue;
+    const op = orderPayment(db, o);
+    const free = Math.max(0, op.due - op.pending);
+    if (free !== amount) continue;
+    const c = ix.clients.get(o.clientId);
+    if (!c) continue;
+    exact.push({ key: 'order:' + o.id, clientId: c.id, orderId: o.id, title: c.name, why: `Заказ № ${o.number}: к оплате ровно ${fmt.money(free)}`, amount: free });
+  }
+  exact.sort((a, b) => Number(seen.has(b.clientId)) - Number(seen.has(a.clientId)));
+  return [...out, ...exact].slice(0, 5);
+}
+
 export function IdentifyModal({ paymentId, onClose }: { paymentId: ID; onClose: () => void }) {
   const db = useDB();
   const v = useDBVersion();
@@ -532,13 +609,21 @@ export function IdentifyModal({ paymentId, onClose }: { paymentId: ID; onClose: 
   const scoped = useScoped();
   const pay = useMemo(() => db.payments.find((p) => p.id === paymentId), [db, v, paymentId]);
   const [clientId, setClientId] = useState<ID | null>(null);
+  const [preferOrder, setPreferOrder] = useState<ID | null>(null);
   const [manual, setManual] = useState<Record<ID, number> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const rows = useMemo(() => (clientId ? openOrdersOf(db, clientId) : []), [db, v, clientId]);
+  const hints = useMemo(() => (pay ? identifyHints(db, pay.payer, pay.amount, new Set(scoped.clients.map((c) => c.id))) : []), [db, v, pay, scoped.clients]);
   if (!pay) return null;
-  const split = manual ?? autoSplit(rows, pay.amount);
+  const split = manual ?? autoSplit(rows, pay.amount, preferOrder);
   const allocated = rows.reduce((s, r) => s + (split[r.order.id] ?? 0), 0);
+  const pick = (id: ID, orderId: ID | null = null) => {
+    setClientId(id);
+    setPreferOrder(orderId);
+    setManual(null);
+    setError(null);
+  };
   const submit = () => {
     if (busy || !clientId) return;
     if (allocated > pay.amount) return setError('Распределено больше суммы платежа');
@@ -573,13 +658,44 @@ export function IdentifyModal({ paymentId, onClose }: { paymentId: ID; onClose: 
         <MiniStat label="Сумма" value={fmt.money(pay.amount)} />
         <MiniStat label="Пришло" value={fmt.dateTime(pay.at)} />
         <MiniStat label="Куда" value={ACCOUNT_NAMES[pay.account]} />
-        <div className="grow" style={{ minWidth: 0 }}>
-          <span className="t-12 muted">Назначение платежа из банка</span>
-          <div className="t-13 w-600">{clean(pay.comment) || '—'}</div>
+        <div className="grow money-payer">
+          <span className="t-12 muted">Плательщик по выписке банка</span>
+          {pay.payer ? (
+            <span className="t-14 w-700">
+              {pay.payer.name}
+              <span className="money-payer-inn">ИНН {pay.payer.inn}</span>
+            </span>
+          ) : (
+            <span className="t-14 w-600 muted">Не указан</span>
+          )}
+          <span className="t-12 ink-2">Назначение: {clean(pay.comment) || 'нет'}</span>
         </div>
       </div>
       {!clientId ? (
-        <ClientPicker clients={scoped.clients} onPick={(id) => { setClientId(id); setManual(null); }} placeholder="Чей платёж: название, ИНН из назначения, телефон" />
+        <>
+          {hints.length ? (
+            <div className="money-hints">
+              <span className="money-hints-head">
+                <Lightbulb />
+                Похоже, это
+              </span>
+              {hints.map((h) => (
+                <button key={h.key} type="button" className="list-row money-pick-row money-hint" onClick={() => pick(h.clientId, h.orderId)}>
+                  <span className="grow">
+                    <span className="w-600 ellipsis" style={{ display: 'block' }}>
+                      {h.title}
+                    </span>
+                    <span className="t-12 ink-2">{h.why}</span>
+                  </span>
+                  <span className="num w-600 nowrap" title={h.orderId ? 'К оплате по заказу' : 'Долг клиента'}>
+                    {h.amount ? fmt.money(h.amount) : <span className="faint">Без долга</span>}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <ClientPicker clients={scoped.clients} onPick={(id) => pick(id)} autoFocus={!hints.length} placeholder="Чей платёж: название, ИНН из выписки, телефон" />
+        </>
       ) : (
         <>
           <ClientSummary clientId={clientId} onChange={() => setClientId(null)} />
@@ -599,3 +715,215 @@ export function IdentifyModal({ paymentId, onClose }: { paymentId: ID; onClose: 
   );
 }
 
+/* ---------- подтвердить перевод по выписке ---------- */
+
+/** Перед подтверждением видно, что именно сверить с выпиской: дату, сумму, плательщика и заказы, к которым относится перевод. */
+export function ConfirmTransferModal({ paymentId, onClose }: { paymentId: ID; onClose: () => void }) {
+  const db = useDB();
+  const v = useDBVersion();
+  const run = useRun();
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const data = useMemo(() => {
+    const p = db.payments.find((x) => x.id === paymentId);
+    if (!p) return null;
+    const ix = indexes(db);
+    const lines = p.allocations
+      .filter((a) => a.orderId)
+      .map((a) => {
+        const o = ix.orders.get(a.orderId!);
+        return { id: a.orderId!, number: o?.number ?? 0, amount: a.amount, due: o?.dueDate ?? null };
+      });
+    const allocated = lines.reduce((z, x) => z + x.amount, 0);
+    return { p, client: p.clientId ? ix.clients.get(p.clientId) : undefined, author: ix.employees.get(p.authorId), lines, advance: p.amount - allocated };
+  }, [db, v, paymentId]);
+  if (!data) return null;
+  const { p, client, author, lines, advance } = data;
+  const submit = () => {
+    if (busy) return;
+    setBusy(true);
+    const r = run('payment.confirm', { paymentId }, `Перевод ${fmt.money(p.amount)} подтверждён по выписке`);
+    setBusy(false);
+    if (!r.ok) return setError(r.error);
+    onClose();
+  };
+  return (
+    <Modal
+      title="Подтвердить перевод"
+      sub="Сверьте с выпиской банка: дату, сумму и плательщика"
+      icon={<IconTile tone="ok">
+        <BadgeCheck />
+      </IconTile>}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Отмена
+          </Button>
+          <Button variant="primary" icon={<BadgeCheck />} onClick={submit} loading={busy} disabled={p.status !== 'pending'}>
+            Подтвердить {fmt.money(p.amount)}
+          </Button>
+        </>
+      }
+    >
+      <StatList>
+        <StatRow label="Дата перевода" value={fmt.dateTime(p.at)} />
+        <StatRow label="Сумма" value={<span className="t-16 w-700">{fmt.money(p.amount)}</span>} />
+        <StatRow
+          label="Плательщик"
+          value={
+            client ? (
+              <EntityLink type="client" id={client.id}>
+                {client.name}
+              </EntityLink>
+            ) : (
+              '—'
+            )
+          }
+        />
+        {client?.inn ? <StatRow label="ИНН" value={client.inn} /> : null}
+        <StatRow label="На счёт" value={ACCOUNT_NAMES[p.account]} />
+        <StatRow label="Записал" value={author?.name ?? '—'} />
+        {clean(p.comment) ? <StatRow label="Комментарий" value={<span className="money-wrap">{clean(p.comment)}</span>} /> : null}
+      </StatList>
+      <div className="col" style={{ gap: 8 }}>
+        <span className="t-14 w-700">К чему относится</span>
+        <StatList>
+          {lines.map((l) => (
+            <StatRow
+              key={l.id}
+              label={
+                <span className="row" style={{ gap: 6 }}>
+                  <EntityLink type="order" id={l.id}>
+                    Заказ № {l.number}
+                  </EntityLink>
+                  {l.due ? <span className="t-12 muted">срок {fmt.date(l.due)}</span> : null}
+                </span>
+              }
+              value={fmt.money(l.amount)}
+            />
+          ))}
+          {advance > 0 ? <StatRow label={lines.length ? 'Сверх заказов — аванс' : 'Аванс без заказа'} value={fmt.money(advance)} /> : null}
+          <StatRow label="Долг клиента уменьшится на" value={fmt.money(p.amount)} total />
+        </StatList>
+      </div>
+      {p.status !== 'pending' ? <Notice tone="info">Перевод уже подтверждён</Notice> : null}
+      {error ? <Notice tone="bad">{error}</Notice> : null}
+    </Modal>
+  );
+}
+
+/* ---------- принять деньги у курьера ---------- */
+
+/** Сдача наличных курьером: пересчитали меньше — недостача записывается на курьера с объяснением. */
+export function CourierHandInModal({ courierId, onClose }: { courierId: ID; onClose: () => void }) {
+  const db = useDB();
+  const v = useDBVersion();
+  const run = useRun();
+  const today = db.meta.today;
+  const data = useMemo(() => {
+    const ix = indexes(db);
+    const list = db.deliveries
+      .filter((d) => d.courierId === courierId && d.collectedMethod === 'cash' && d.collected > 0 && !d.handedIn)
+      .sort((a, b) => a.date.localeCompare(b.date) || a.number - b.number)
+      .map((d) => ({ d, client: ix.clients.get(d.clientId)?.name ?? '—', order: ix.orders.get(d.orderId)?.number ?? 0 }));
+    return { courier: ix.employees.get(courierId), list, onHand: courierCash(db, courierId).onHand };
+  }, [db, v, courierId]);
+  const sum = data.list.reduce((z, x) => z + x.d.collected, 0);
+  const [counted, setCounted] = useState<number | ''>(sum);
+  const [comment, setComment] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const c = counted === '' ? 0 : counted;
+  const shortage = sum - c;
+  const name = data.courier?.name ?? 'Курьер';
+  const submit = () => {
+    if (busy) return;
+    if (c > sum) return setError(`Пересчитано больше, чем курьер получил по доставкам (${fmt.money(sum)}). Проверьте сумму`);
+    if (shortage > 0 && !comment.trim()) return setError('Недостача: напишите, что сказал курьер');
+    setBusy(true);
+    const r = run(
+      'courier.handIn',
+      { courierId, counted: c, comment: comment.trim() || undefined },
+      // подробности — сумма и недостача — добавит сама операция
+      `Деньги у курьера ${data.courier?.short ?? name}`,
+    );
+    setBusy(false);
+    if (!r.ok) return setError(r.error);
+    onClose();
+  };
+  return (
+    <Modal
+      title="Принять деньги у курьера"
+      sub={name}
+      icon={<IconTile>
+        <Wallet />
+      </IconTile>}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Отмена
+          </Button>
+          <Button variant="primary" icon={<HandCoins />} onClick={submit} loading={busy} disabled={!sum || c > sum}>
+            {`Принять ${fmt.money(c)}`}
+          </Button>
+        </>
+      }
+    >
+      {data.list.length ? (
+        <>
+          <div className="money-client">
+            <MiniStat label="По доставкам" value={fmt.money(sum)} />
+            <MiniStat label="Доставок" value={fmt.num(data.list.length)} />
+            <MiniStat label="На руках с" value={fmt.relDate(data.list[0].d.date, today)} />
+          </div>
+          <StatList>
+            {data.list.slice(0, 6).map(({ d, client, order }) => (
+              <StatRow
+                key={d.id}
+                label={
+                  <span className="row" style={{ gap: 6, minWidth: 0 }}>
+                    <span className="nowrap muted">{fmt.relDate(d.date, today)}</span>
+                    <EntityLink type="order" id={d.orderId}>
+                      № {order}
+                    </EntityLink>
+                    <span className="ellipsis">{client}</span>
+                  </span>
+                }
+                value={fmt.money(d.collected)}
+              />
+            ))}
+            {data.list.length > 6 ? <StatRow label={`Ещё ${fmt.count(data.list.length - 6, 'доставка', 'доставки', 'доставок')}`} value={fmt.money(data.list.slice(6).reduce((z, x) => z + x.d.collected, 0))} /> : null}
+          </StatList>
+          <div className="grid-2">
+            <Field label="Пересчитано">
+              <MoneyInput
+                size="lg"
+                value={counted}
+                onChange={(x) => {
+                  setCounted(x);
+                  setError(null);
+                }}
+                autoFocus
+                placeholder="0"
+              />
+            </Field>
+            <Field label="Недостача">
+              <div className={cx('money-shortage t-16 w-700 num', shortage > 0 && 'c-bad')}>{shortage > 0 ? fmt.money(shortage) : 'Нет'}</div>
+            </Field>
+          </div>
+          {shortage > 0 ? (
+            <Field label="Что сказал курьер">
+              <Input value={comment} onChange={(e) => { setComment(e.target.value); setError(null); }} placeholder="Например, клиент недоплатил 200 ₽, обещал доплатить" />
+            </Field>
+          ) : null}
+          {shortage > 0 ? <Notice tone="warn">Недостача {fmt.money(shortage)} запишется расходом «Недостача» на курьера</Notice> : null}
+        </>
+      ) : (
+        <EmptyState title="Курьеру нечего сдавать">Все наличные по доставкам уже в кассе</EmptyState>
+      )}
+      {error ? <Notice tone="bad">{error}</Notice> : null}
+    </Modal>
+  );
+}

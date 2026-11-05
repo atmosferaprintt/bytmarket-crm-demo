@@ -10,8 +10,8 @@ import { useScoped } from '../../roles/scope';
 import { PageHeader } from '../../shell/PageHeader';
 import { EntityLink, useOpenEntity } from '../../shell/entities';
 import { Avatar, Button, Card, DataTable, EmptyState, MoreMenu, PICK_STATE, SearchInput, Select, StatusChip, cx, fmt, type Column } from '../../ui';
-import { DayPicker, LateChip, StateChip, StatePills, useDayParam, useNarrow, type StateFilter } from './parts';
-import { byRoute, clockOf, couriersOf, dayLabel, forDay, intervalStart, lateOf, placesText, shortDistrict, type Clock } from './lib';
+import { DayPicker, DelayChip, LateChip, StateChip, StatePills, useDayParam, useNarrow, type StateFilter } from './parts';
+import { byRoute, clockOf, couriersOf, dayLabel, delayOf, forDay, intervalStart, lateOf, placesText, shortDistrict, type Clock } from './lib';
 import { actsFor, useDeliveryFlow } from './flow';
 
 const STATE_RANK: Record<DeliveryState, number> = { failed: 0, waiting: 1, on_way: 2, assigned: 3, delivered: 4, returned: 5 };
@@ -175,17 +175,18 @@ export function QueuePage() {
       key: 'state',
       header: 'Статус',
       render: (d) =>
-        compact && lateOf(d, c) ? (
+        (compact && lateOf(d, c)) || delayOf(d) ? (
           <div className="col" style={{ gap: 4, alignItems: 'flex-start' }}>
             <StateChip d={d} />
-            <LateChip d={d} c={c} />
+            {compact ? <LateChip d={d} c={c} /> : null}
+            <DelayChip d={d} />
           </div>
         ) : (
           <StateChip d={d} />
         ),
       sort: (d) => STATE_RANK[d.state],
       csv: (d) => d.state,
-      width: 150,
+      width: 176,
     },
     {
       key: 'late',
@@ -381,6 +382,7 @@ function PhoneQueue({
                 <span className="chips grow">
                   <StateChip d={d} />
                   <LateChip d={d} c={c} />
+                  <DelayChip d={d} />
                 </span>
                 {more.length ? (
                   <span onClick={(e) => e.stopPropagation()}>

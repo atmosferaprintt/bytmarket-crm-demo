@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CircleCheck, Clock, History, Info, PackageCheck, ScanBarcode, Send, Store, Trash2, X } from 'lucide-react';
+import { CircleCheck, Clock, History, Info, PackageCheck, ScanBarcode, Send, Store, Trash2, UserRound, X } from 'lucide-react';
 import type { Client, ID, ISODate, OrderSource, PackKey, Product } from '../../data/types';
 import { dispatch, nowDemo, useDB, useDBVersion } from '../../data/store';
 import { clientBalance, indexes, priceFor, repeatPreviewSafe, stockIndex } from './data';
@@ -30,9 +30,10 @@ import {
   toast,
 } from '../../ui';
 import { ConditionsStrip, Dash, DiscountChip, LimitBar, PriceCell } from './parts';
-import { INTERVALS, capitalize, fixNo, newKey, nextWorkday, norm, orderProblems, productName, useIsPhone } from './lib';
+import { INTERVALS, capitalize, dueDateFor, fixNo, newKey, nextWorkday, norm, orderProblems, productName, shipDateFor, useIsPhone } from './lib';
 import { DiscountModal, HistoryPicker, ProductSearch, RepeatChanges } from './OrderEditorParts';
 import { TopMenu } from './TopMenu';
+import { queueOffline, useOffline } from './offline';
 import './sales.css';
 
 export interface NewOrderProps {
@@ -113,7 +114,7 @@ export function defaultPack(p: Product, wholesale: boolean): PackKey {
 }
 
 /** Редактор заказа: новый, повтор, продолжение черновика или заявки (editId). */
-export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf, source, chatId, initialLines, fromMessage, onClose, onCreated, editId }: NewOrderProps & { editId?: ID }) {
+export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf, source, visitId, chatId, initialLines, fromMessage, onClose, onCreated, editId }: NewOrderProps & { editId?: ID }) {
   const db = useDB();
   const version = useDBVersion();
   const { me, role, can, discountLimit } = useSession();
@@ -124,6 +125,7 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
 
   const isOwner = role === 'owner';
   const confirmsSelf = can('createOrder'); // менеджер и владелец подтверждают сами
+  const offline = useOffline();
   const editing = editId ? db.orders.find((o) => o.id === editId) : undefined;
 
   const preview = useMemo(() => (repeatOf ? repeatPreviewSafe(db, repeatOf) : null), [repeatOf]); // считаем один раз при открытии
@@ -283,14 +285,22 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
       const d = dispatch('delivery.create', { orderId, date: state.date, interval: state.interval, pointId: point?.id }, me.id);
       if (!d.ok) toast(`Заказ создан, доставку оформите отдельно: ${d.error}`, 'error');
     }
+    // представитель без связи: заявка сохранена в телефоне и уйдёт, когда связь появится
+    const noLink = !confirmsSelf && offline.on;
+    if (noLink) queueOffline(orderId);
     // заказ из переписки: номер и сумму клиент получит автосообщением «Заказ принят»; если оно выключено или это заявка — пишем сами
     const wa = db.settings.whatsapp;
-    if (chatId && wa.connected && !(confirmsSelf && wa.auto.confirmed)) {
+    if (chatId && wa.connected && !noLink && !(confirmsSelf && wa.auto.confirmed)) {
       const o = getOrderNumber(orderId);
       dispatch('chat.send', { chatId, text: `Оформили ${confirmsSelf ? 'заказ' : 'заявку'} № ${o} на ${fmt.money(calc.total)}. ${deliveryNote}.`, orderId }, me.id);
     }
+    // заявка из визита: результат визита «Заказ» ставится сам
+    if (visitId) {
+      const v = db.visits.find((x) => x.id === visitId);
+      if (v && v.state === 'planned') dispatch('visit.complete', { visitId, result: 'order', orderId }, me.id);
+    }
     dropDraft(draftKey);
-    toast(message);
+    toast(noLink ? `Заявка № ${getOrderNumber(orderId)} сохранена в телефоне, отправим, когда появится связь` : message);
     if (onCreated) onCreated(orderId);
     else {
       onClose();
@@ -326,7 +336,11 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
       if (!r.ok || !r.id) return fail(r.ok ? 'Заказ не создан' : r.error);
       const owner = db.employees.find((e) => e.active && e.roles.includes('owner'));
       if (owner) {
-        dispatch('task.create', { title: `Согласовать заказ № ${getOrderNumber(r.id)}: ${hardProblems.map((p) => p.text).join('; ')}`, assigneeId: owner.id, due: today, priority: 'high', link: { type: 'order', id: r.id } }, me.id);
+        dispatch(
+          'task.create',
+          { title: `Согласовать заказ № ${getOrderNumber(r.id)}: ${hardProblems.map((p) => p.text).join('; ')}`, assigneeId: owner.id, due: today, priority: 'high', link: { type: 'order', id: r.id }, kind: 'approve_order' },
+          me.id,
+        );
       }
       return finish(r.id, `Заказ № ${getOrderNumber(r.id)} отправлен владельцу на согласование`, false);
     }
@@ -416,8 +430,9 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
     </div>
   ) : undefined;
 
-  const shipDate = state.fulfillment === 'delivery' ? state.date : today;
-  const dueLabel = client && client.deferDays > 0 ? fmt.date(fmt.addDays(shipDate, client.deferDays)) : 'При получении';
+  // срок оплаты — тем же расчётом, что в карточке заказа: от дня отгрузки плюс отсрочка
+  const due = client ? dueDateFor(client, shipDateFor(state.fulfillment, state.fulfillment === 'delivery' ? state.date : null, today)) : null;
+  const dueLabel = due ? <span title="Срок считается от дня отгрузки">≈ {fmt.date(due)}</span> : 'При получении';
 
   const dateOptions = useMemo(() => {
     const out: { value: string; label: string }[] = [];
@@ -464,13 +479,33 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
           <TopMenu
             items={[
               { label: 'Карточка клиента', icon: <Store />, onClick: () => openEntity('client', client.id) },
-              { label: 'Очистить и начать заново', icon: <Trash2 />, danger: true, onClick: resetDraft, hidden: !!editing || !!repeatOf },
+              { label: 'Очистить и начать заново', icon: <Trash2 />, danger: true, onClick: resetDraft, hidden: !!editing || !!repeatOf || phone },
             ]}
           />
         ) : undefined
       }
       footer={
-        <div className={cx('sales-editor-foot', phone && 'is-phone')}>
+        phone ? (
+          // телефон: итог рядом с главной кнопкой, черновик — в «⋯» (он и так сохраняется сам)
+          <div className="sales-editor-foot is-phone">
+            <TopMenu
+              align="start"
+              label="Ещё"
+              items={[
+                { label: savedAt ? `Сохранить черновик · сохранён в ${savedAt}` : 'Сохранить черновик', icon: <CircleCheck />, onClick: saveDraft, disabled: !client || busy },
+                { label: 'Очистить и начать заново', icon: <Trash2 />, danger: true, onClick: resetDraft, hidden: !!editing || !!repeatOf || !client },
+              ]}
+            />
+            <span className="sales-foot-total">
+              <span className="t-12 muted w-600">Итого</span>
+              <span className="t-16 w-700 num">{fmt.money(calc.total)}</span>
+            </span>
+            <Button variant="primary" onClick={submit} disabled={mainDisabled} loading={busy} title={mainTitle} size="lg">
+              {mainLabel}
+            </Button>
+          </div>
+        ) : (
+        <div className="sales-editor-foot">
           {savedAt ? (
             <span className="sales-saved">
               <CircleCheck />
@@ -486,10 +521,11 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
           <Button onClick={saveDraft} disabled={!client || busy}>
             Сохранить черновик
           </Button>
-          <Button variant="primary" icon={confirmsSelf && !toApproval ? <PackageCheck /> : <Send />} onClick={submit} disabled={mainDisabled} loading={busy} title={mainTitle} size={phone ? 'lg' : 'md'}>
+          <Button variant="primary" icon={confirmsSelf && !toApproval ? <PackageCheck /> : <Send />} onClick={submit} disabled={mainDisabled} loading={busy} title={mainTitle}>
             {mainLabel}
           </Button>
         </div>
+        )
       }
     >
       <div className={cx('sales-editor', phone && 'is-phone')}>
@@ -678,7 +714,7 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
 
             <div className={cx('sales-ord-bottom', phone && 'is-phone')}>
               <div className="sales-form-grid">
-                <Field label="Получение">
+                <Field label="Получение" className="sales-span-2">
                   <Segmented
                     value={state.fulfillment}
                     onChange={(v) => update((s) => ({ ...s, fulfillment: v }))}
@@ -689,12 +725,12 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
                   />
                 </Field>
                 {client.points.length > 1 ? (
-                  <Field label="Точка клиента">
+                  <Field label="Точка клиента" className="sales-span-2">
                     <Select value={point?.id ?? ''} onChange={(e) => update((s) => ({ ...s, pointId: e.target.value }))} options={client.points.map((p) => ({ value: p.id, label: `${p.name}, ${p.address}` }))} />
                   </Field>
                 ) : (
-                  <Field label="Точка клиента">
-                    <div className="sales-static ellipsis" title={point ? `${point.name}, ${point.address}` : undefined}>
+                  <Field label="Точка клиента" className="sales-span-2">
+                    <div className="sales-static sales-static-wrap" title={point ? `${point.name}, ${point.address}` : undefined}>
                       {point ? `${point.name}, ${point.address}` : 'Адрес не указан'}
                     </div>
                   </Field>
@@ -796,27 +832,39 @@ function PackSelect({ product, value, onChange, inline }: { product: Product | u
 function ClientPicker({ clients, onPick }: { clients: Client[]; onPick: (c: Client) => void }) {
   const db = useDB();
   const version = useDBVersion();
+  const { role } = useSession();
   const [q, setQ] = useState('');
+  const matches = (c: Client, tokens: string[]) => {
+    const t = norm([c.name, c.phone, c.inn ?? '', ...c.points.map((p) => p.name + ' ' + p.address), ...c.contacts.map((x) => x.name + ' ' + x.phone)].join(' '));
+    return tokens.every((tok) => t.includes(tok));
+  };
   const list = useMemo(() => {
     const active = clients.filter((c) => c.active);
     const withBal = active.map((c) => ({ c, b: clientBalance(db, c.id) }));
     withBal.sort((a, b) => (b.b.lastOrderAt ?? '').localeCompare(a.b.lastOrderAt ?? ''));
     if (!q.trim()) return withBal.slice(0, 40);
     const tokens = norm(q.trim()).split(/\s+/);
-    return withBal
-      .filter(({ c }) => {
-        const t = norm([c.name, c.phone, c.inn ?? '', ...c.points.map((p) => p.name + ' ' + p.address), ...c.contacts.map((x) => x.name + ' ' + x.phone)].join(' '));
-        return tokens.every((tok) => t.includes(tok));
-      })
-      .slice(0, 40);
-  }, [clients, q, db, version]);
+    return withBal.filter(({ c }) => matches(c, tokens)).slice(0, 40);
+  }, [clients, q, db, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  // нашли клиента другого сотрудника — говорим, кто его ведёт, а не «не найден»
+  const foreign = useMemo(() => {
+    if (!q.trim() || (role !== 'manager' && role !== 'rep')) return [];
+    const mine = new Set(clients.map((c) => c.id));
+    const tokens = norm(q.trim()).split(/\s+/);
+    const emp = indexes(db).employees;
+    return db.clients
+      .filter((c) => c.active && !mine.has(c.id) && matches(c, tokens))
+      .slice(0, 5)
+      .map((c) => ({ c, owner: c.ownerId ? emp.get(c.ownerId) : undefined }));
+  }, [clients, q, db, version, role]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="col-3">
       <div className="t-16 w-700">Для кого заказ</div>
       <SearchInput value={q} onChange={setQ} placeholder="Название, телефон, ИНН или адрес точки" autoFocus size="lg" />
       <div className="card sales-picker">
-        {list.length ? (
-          list.map(({ c, b }) => (
+        {list.length || foreign.length ? (
+          [
+            ...list.map(({ c, b }) => (
             <button key={c.id} type="button" className="list-row" onClick={() => onPick(c)}>
               <IconTile>
                 <Store />
@@ -829,10 +877,26 @@ function ClientPicker({ clients, onPick }: { clients: Client[]; onPick: (c: Clie
               </div>
               {b.maxOverdueDays > 0 ? <StatusChip s={overdueStatus(b.maxOverdueDays)} /> : b.debt > 0 ? <span className="t-12 muted num">долг {fmt.money(b.debt)}</span> : <Dash />}
             </button>
-          ))
+            )),
+            ...foreign.map(({ c, owner }) => (
+              <div key={c.id} className="list-row sales-picker-foreign" aria-disabled="true">
+                <IconTile>
+                  <UserRound />
+                </IconTile>
+                <div className="grow">
+                  <div className="w-600 ellipsis">{c.name}</div>
+                  <div className="muted t-12 ellipsis">{c.points[0]?.address ?? fmt.phone(c.phone)}</div>
+                </div>
+                <Chip tone="outline">{owner ? `Клиента ведёт ${owner.short}` : 'Клиент другого сотрудника'}</Chip>
+              </div>
+            )),
+          ]
         ) : (
           <EmptyState title="Клиент не найден">Проверьте название или телефон</EmptyState>
         )}
+        {foreign.length ? (
+          <div className="sales-picker-note t-12 muted">Заказ такому клиенту оформляет его ответственный. Если клиент перешёл к вам, попросите владельца передать карточку.</div>
+        ) : null}
       </div>
     </div>
   );

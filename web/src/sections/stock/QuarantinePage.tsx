@@ -1,6 +1,6 @@
 /* Склад → Карантин: товар на проверке и история решений. В продажу — только после проверки. */
 import { useMemo, useState } from 'react';
-import { RotateCcw, ShieldCheck, Trash2 } from 'lucide-react';
+import { RotateCcw, ShieldCheck, Trash2, Undo2 } from 'lucide-react';
 import type { DB, QuarantineItem, WriteoffReason } from '../../data/types';
 import { LOCATION_NAMES, WRITEOFF_REASONS } from '../../data/types';
 import { useDB, useDBVersion } from '../../data/store';
@@ -9,7 +9,8 @@ import { get } from '../../data/idx';
 import { useSession } from '../../roles/session';
 import { PageHeader } from '../../shell/PageHeader';
 import { EntityLink, useOpenEntity } from '../../shell/entities';
-import { Button, Card, DataTable, EmptyState, Field, Input, Modal, Notice, Select, StatusChip, QUARANTINE_STATE, fmt, toast, type Column, type FilterDef } from '../../ui';
+import { Button, Card, DataTable, EmptyState, Field, Input, Modal, Notice, Select, StatList, StatRow, StatusChip, QUARANTINE_STATE, fmt, toast, type Column, type FilterDef, type StatusDef } from '../../ui';
+import { shortName } from './calc';
 import { stockTabCounts } from './picking';
 import { act } from './act';
 import { quarantineCanRelease } from '../../data/ops';
@@ -48,42 +49,122 @@ function sourceDoc(db: DB, q: QuarantineItem): string {
   return `Возврат № ${get(db, 'returns', q.sourceId)?.number ?? ''}`;
 }
 
-function WriteoffModal({ q, onClose }: { q: QuarantineItem; onClose: () => void }) {
+type Decision = 'release' | 'writeoff' | 'supplier';
+
+/** Бухгалтер, которому уходит задача учесть возврат поставщику. */
+function accountantOf(db: DB) {
+  const list = db.employees.filter((e) => e.active && e.roles.includes('accountant'));
+  return list.find((e) => e.id === 'e-suleymanova') ?? list[0];
+}
+
+/** Решение по товару на проверке — с подтверждением: вернуть в продажу, списать, вернуть поставщику. Все решения необратимы. */
+function DecisionModal({ q, kind, onClose }: { q: QuarantineItem; kind: Decision; onClose: () => void }) {
   const db = useDB();
-  const { me } = useSession();
-  const p = indexes(db).products.get(q.productId);
+  const { me, can } = useSession();
+  const ix = indexes(db);
+  const p = ix.products.get(q.productId);
+  const pu = q.source === 'purchase_defect' ? get(db, 'purchases', q.sourceId) : undefined;
+  const supplier = pu ? ix.suppliers.get(pu.supplierId) : undefined;
+  const price = pu?.lines.find((l) => l.productId === q.productId)?.price ?? p?.cost ?? 0;
+  const sum = price * q.qty;
+  const acc = accountantOf(db);
   const [reason, setReason] = useState<WriteoffReason>(q.source === 'purchase_defect' ? 'damage' : /срок|просроч/i.test(q.reason) ? 'expired' : /протек|течёт|течет/i.test(q.reason) ? 'leak' : 'damage');
   const [comment, setComment] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const where = q.location === 'shop' ? 'в магазине' : 'на складе';
+
   const submit = () => {
-    const r = act('quarantine.writeoff', { itemId: q.id, reason, comment: comment.trim() || undefined }, me.id);
+    setError(null);
+    if (kind === 'release') {
+      const r = act('quarantine.release', { itemId: q.id, comment: comment.trim() || undefined }, me.id);
+      if (!r.ok) return setError(r.error);
+      toast(r.info ?? 'Возвращено в продажу');
+      return onClose();
+    }
+    if (kind === 'writeoff') {
+      const r = act('quarantine.writeoff', { itemId: q.id, reason, comment: comment.trim() || undefined }, me.id);
+      if (!r.ok) return setError(r.error);
+      const doc = r.id ? get(db, 'stockDocs', r.id) : undefined;
+      toast(`Списано ${fmt.qty(q.qty)}${doc ? `, документ № ${doc.number}` : ''}`);
+      return onClose();
+    }
+    if (!supplier) return setError('Поставщик не найден — оформите обычное списание');
+    if (!acc) return setError('В программе нет бухгалтера — некому передать возврат');
+    const r = act('quarantine.writeoff', { itemId: q.id, reason: 'supplier_return', comment: comment.trim() || `Возврат поставщику ${supplier.name} по закупке № ${pu?.number}: ${q.reason}` }, me.id);
     if (!r.ok) return setError(r.error);
-    const doc = r.id ? get(db, 'stockDocs', r.id) : undefined;
-    toast(`Списано ${fmt.qty(q.qty)}${doc ? `, документ № ${doc.number}` : ''}`);
+    const t = act(
+      'task.create',
+      {
+        title: `Учесть возврат поставщику ${supplier.name}: ${fmt.qty(q.qty)} на ${fmt.money(sum)} · ${p ? shortName(p) : 'товар'}, закупка № ${pu?.number}`,
+        assigneeId: acc.id,
+        due: db.meta.today,
+        priority: 'normal',
+        link: { type: 'supplier', id: supplier.id },
+      },
+      me.id,
+    );
+    if (!t.ok) {
+      toast(`Товар списан как возврат поставщику, но задача бухгалтеру не создана: ${t.error}`, 'error');
+      return onClose();
+    }
+    toast(`Возврат поставщику оформлен: ${fmt.qty(q.qty)}. Задача бухгалтеру — ${acc.short ?? acc.name}`);
     onClose();
   };
+
+  const title = kind === 'release' ? 'Вернуть в продажу' : kind === 'writeoff' ? 'Списать с проверки' : 'Вернуть поставщику';
+  const primary = kind === 'release' ? `Вернуть в продажу ${fmt.qty(q.qty)}` : kind === 'writeoff' ? `Списать ${fmt.qty(q.qty)}` : `Вернуть поставщику ${fmt.qty(q.qty)}`;
+  const icon = kind === 'release' ? <RotateCcw /> : kind === 'writeoff' ? <Trash2 /> : <Undo2 />;
+
   return (
     <Modal
-      title="Списать с проверки"
-      sub={`${p?.name ?? ''} · ${fmt.qty(q.qty)}`}
+      title={title}
+      sub={p?.name ?? ''}
       onClose={onClose}
       footer={
         <>
+          <span className="spacer" />
           <Button variant="ghost" onClick={onClose}>
             Отмена
           </Button>
-          <Button variant="primary" icon={<Trash2 />} onClick={submit}>
-            Списать {fmt.qty(q.qty)}
+          <Button variant={kind === 'writeoff' ? 'danger' : 'primary'} icon={icon} onClick={submit}>
+            {primary}
           </Button>
         </>
       }
     >
-      <Field label="Причина списания">
-        <Select value={reason} onChange={(e) => setReason(e.target.value as WriteoffReason)} options={(Object.keys(WRITEOFF_REASONS) as WriteoffReason[]).map((k) => ({ value: k, label: WRITEOFF_REASONS[k] }))} />
-      </Field>
+      <StatList>
+        <StatRow label="На проверке" value={<b>{fmt.qty(q.qty)}</b>} />
+        <StatRow label="Откуда" value={<span className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>{Q_SOURCE[q.source]} · <QSourceLink db={db} q={q} /></span>} />
+        <StatRow label="Причина" value={qReason(q)} />
+        <StatRow label="Где лежит" value={LOCATION_NAMES[q.location]} />
+        {kind === 'supplier' && supplier ? <StatRow label="Поставщик" value={supplier.name} /> : null}
+        {kind === 'supplier' && can('seeCost') ? <StatRow total label="По закупочной цене" value={fmt.money(sum)} /> : null}
+      </StatList>
+      {kind === 'writeoff' ? (
+        <Field label="Причина списания">
+          <Select
+            value={reason}
+            onChange={(e) => setReason(e.target.value as WriteoffReason)}
+            options={(Object.keys(WRITEOFF_REASONS) as WriteoffReason[]).filter((k) => k !== 'supplier_return').map((k) => ({ value: k, label: WRITEOFF_REASONS[k] }))}
+          />
+        </Field>
+      ) : null}
       <Field label="Комментарий">
-        <Input value={comment} onChange={(e) => setComment(e.target.value)} placeholder={q.reason} />
+        <Input
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          placeholder={kind === 'supplier' ? `Например: забрал водитель, накладная на возврат № …` : kind === 'release' ? 'Например: упаковка целая, проверил' : q.reason}
+        />
       </Field>
+      {kind === 'release' ? (
+        <Notice tone="info">Товар целый: {fmt.qty(q.qty)} вернётся в продажу {where}. Отменить решение нельзя</Notice>
+      ) : kind === 'writeoff' ? (
+        <Notice tone="warn">Списание необратимо: {fmt.qty(q.qty)} уйдёт из учёта {where}</Notice>
+      ) : (
+        <Notice tone="info" title="Что произойдёт">
+          Товар спишем с причиной «{WRITEOFF_REASONS.supplier_return}». {acc ? `${acc.name} получит задачу учесть возврат: ${fmt.qty(q.qty)}${can('seeCost') ? ` на ${fmt.money(sum)}` : ''}` : 'Бухгалтер получит задачу учесть возврат'}. Отменить решение нельзя
+        </Notice>
+      )}
       {error ? <Notice tone="bad">{error}</Notice> : null}
     </Modal>
   );
@@ -97,7 +178,7 @@ export default function QuarantinePage() {
   const ix = indexes(db);
   const today = db.meta.today;
   const canDecide = can('inspectQuarantine');
-  const [wo, setWo] = useState<QuarantineItem | null>(null);
+  const [decide, setDecide] = useState<{ q: QuarantineItem; kind: Decision } | null>(null);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const pending = useMemo(() => db.quarantine.filter((q) => q.state === 'check'), [db, version]);
@@ -107,13 +188,17 @@ export default function QuarantinePage() {
     [db, version],
   );
 
-  const release = (q: QuarantineItem) => {
-    const r = act('quarantine.release', { itemId: q.id }, me.id);
-    if (!r.ok) return toast(r.error, 'error');
-    toast(r.info ?? 'Возвращено в продажу');
-  };
-
   const pname = (q: QuarantineItem) => ix.products.get(q.productId)?.name ?? '—';
+  // списание с причиной «Возврат поставщику» показываем отдельным решением
+  const returnedIds = useMemo(() => {
+    const keys = new Set<string>();
+    for (const d of db.stockDocs) if (d.kind === 'writeoff' && d.lines.length === 1 && d.lines[0].reason === 'supplier_return') keys.add(`${d.lines[0].productId}|${d.at}`);
+    const ids = new Set<string>();
+    for (const q of db.quarantine) if (q.state === 'written_off' && keys.has(`${q.productId}|${q.decidedAt}`)) ids.add(q.id);
+    return ids;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [db, version]);
+  const decisionOf = (q: QuarantineItem): StatusDef => (returnedIds.has(q.id) ? { label: 'Возвращён поставщику', tone: 'info' } : QUARANTINE_STATE[q.state]);
   const sourceFilter: FilterDef<QuarantineItem>[] = [
     {
       key: 'source',
@@ -184,8 +269,12 @@ export default function QuarantinePage() {
       hidden: !canDecide,
       render: (q) => (
         <span className="stock-qactions" onClick={(e) => e.stopPropagation()}>
-          {quarantineCanRelease(q) ? (
-            <Button size="sm" icon={<RotateCcw />} onClick={() => release(q)} title="Проверено, товар целый — вернуть в продажу">
+          {q.source === 'purchase_defect' ? (
+            <Button size="sm" icon={<Undo2 />} onClick={() => setDecide({ q, kind: 'supplier' })} title="Брак поставщика: списать как возврат и передать бухгалтеру">
+              Вернуть поставщику
+            </Button>
+          ) : quarantineCanRelease(q) ? (
+            <Button size="sm" icon={<RotateCcw />} onClick={() => setDecide({ q, kind: 'release' })} title="Проверено, товар целый — вернуть в продажу">
               В продажу
             </Button>
           ) : (
@@ -193,7 +282,7 @@ export default function QuarantinePage() {
               Только списание
             </span>
           )}
-          <Button size="sm" variant="ghost" icon={<Trash2 />} onClick={() => setWo(q)}>
+          <Button size="sm" variant="ghost" icon={<Trash2 />} onClick={() => setDecide({ q, kind: 'writeoff' })}>
             Списать
           </Button>
         </span>
@@ -203,7 +292,7 @@ export default function QuarantinePage() {
 
   const histColumns: Column<QuarantineItem>[] = [
     productCol,
-    { key: 'state', header: 'Решение', sort: (q) => q.state, csv: (q) => QUARANTINE_STATE[q.state].label, render: (q) => <StatusChip s={QUARANTINE_STATE[q.state]} /> },
+    { key: 'state', header: 'Решение', sort: (q) => decisionOf(q).label, csv: (q) => decisionOf(q).label, render: (q) => <StatusChip s={decisionOf(q)} /> },
     { key: 'qty', header: 'Сколько', align: 'right', sort: (q) => q.qty, csv: (q) => q.qty, render: (q) => fmt.qty(q.qty), total: (rs) => fmt.qty(rs.reduce((s, q) => s + q.qty, 0)) },
     { key: 'source', header: 'Откуда', sort: (q) => Q_SOURCE[q.source], csv: (q) => Q_SOURCE[q.source], render: (q) => <span className="nowrap">{Q_SOURCE[q.source]}</span> },
     { key: 'reason', header: 'Причина', sort: (q) => qReason(q), csv: (q) => qReason(q), render: (q) => <span className="stock-basis" title={q.reason}>{qReason(q)}</span> },
@@ -264,7 +353,7 @@ export default function QuarantinePage() {
         </Card>
       )}
       </div>
-      {wo ? <WriteoffModal q={wo} onClose={() => setWo(null)} /> : null}
+      {decide ? <DecisionModal q={decide.q} kind={decide.kind} onClose={() => setDecide(null)} /> : null}
     </>
   );
 }

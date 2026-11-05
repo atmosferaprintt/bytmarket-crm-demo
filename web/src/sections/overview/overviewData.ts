@@ -11,6 +11,7 @@ import {
   delayedOrders,
   hourlySeries,
   lossesFor,
+  memoDB,
   salesUntil,
   stockValue,
   supplierDebtAt,
@@ -50,6 +51,31 @@ export interface OverviewData {
   stock: StockValue;
   losses: LossSummary;
   delayed: DelayItem[];
+  /** расходы за период из журнала денег — для «Прибыль после расходов» */
+  expenses: ExpenseSummary;
+  prevExpenses: number | null;
+}
+
+export interface ExpenseSummary {
+  total: number;
+  byCategory: { category: string; amount: number }[];
+}
+
+/** Расходы за период: проведённые записи «Расход» журнала денег (аренда, зарплата, топливо, недостачи), по датам записи.
+    Одна формула для обзора, отчётов и «Деньги → Расходы». */
+export function expensesFor(db: DB, from: ISODate, to: ISODate, until?: string): ExpenseSummary {
+  return memoDB(db, `expenses|${from}|${to}|${until ?? ''}`, () => {
+    const hi = until ? to + 'T' + until : to + 'T99';
+    const by = new Map<string, number>();
+    let total = 0;
+    for (const p of db.payments) {
+      if (p.kind !== 'expense' || p.status !== 'posted' || p.at < from || p.at > hi) continue;
+      const c = p.expenseCategory ?? 'Другое';
+      by.set(c, (by.get(c) ?? 0) + p.amount);
+      total += p.amount;
+    }
+    return { total, byCategory: [...by.entries()].map(([category, amount]) => ({ category, amount })).sort((a, b) => b.amount - a.amount) };
+  });
 }
 
 export function computeOverview(db: DB, p: PeriodState, nowTime: string): OverviewData {
@@ -87,6 +113,8 @@ export function computeOverview(db: DB, p: PeriodState, nowTime: string): Overvi
     stock: stockValue(db),
     losses: lossesFor(db, r.from, r.to),
     delayed: delayedOrders(db),
+    expenses: expensesFor(db, r.from, r.to),
+    prevExpenses: cmp ? expensesFor(db, prev.from, prev.to, partialDay ? nowTime : undefined).total : null,
   };
 }
 

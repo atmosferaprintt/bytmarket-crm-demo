@@ -11,9 +11,9 @@ import { EntityLink } from '../../shell/entities';
 import { Button, Card, Chip, EmptyState, Kpi, Notice, cx, fmt, toast } from '../../ui';
 import { buildCatalog, cartName, categoryIcon, fixNo, nbUnits, openShift, promoPct } from './lib';
 import { PromoChip } from '../sales/parts';
+import { stockLines } from '../stock/calc';
+import { moveQty, requestMoveToShop, requestedMoves } from './moveRequest';
 import './register.css';
-
-const MOVE_PREFIX = 'Перенести в магазин';
 
 /** Рабочий стол: продавец */
 export default function Home() {
@@ -49,42 +49,21 @@ export default function Home() {
     return { list: list.slice(0, 6), total: list.length };
   }, [db, version, catalog, today]);
 
-  /* заканчивается в магазине */
-  const warehouseMan = db.employees.find((e) => e.active && e.roles.includes('warehouse'));
-  const requested = useMemo(() => {
-    const s = new Set<ID>();
-    for (const t of db.tasks) if (t.state === 'open' && t.link?.type === 'product' && t.title.startsWith(MOVE_PREFIX)) s.add(t.link.id);
-    return s;
-  }, [db, version]);
-  const low = useMemo(() => {
-    const out: { p: Product; shop: number; wh: number; days: number; suggest: number; category: string }[] = [];
-    for (const it of catalog.items) {
-      const pop = catalog.popularity.get(it.p.id) ?? 0;
-      if (pop <= 0) continue;
-      const st = stockOf(db, it.p.id);
-      const perDay = pop / 14;
-      const shop = st.shop.available;
-      if (shop > Math.max(3, perDay * 3) || st.warehouse.available <= 0) continue;
-      const step = it.p.packs.find((k) => k.key === 'box')?.qty ?? it.p.packs.find((k) => k.key === 'pack')?.qty ?? 1;
-      const want = Math.max(step, Math.ceil((perDay * 7) / step) * step);
-      out.push({ p: it.p, shop, wh: st.warehouse.available, days: shop / perDay, suggest: Math.min(want, st.warehouse.available), category: it.category });
-    }
-    out.sort((a, b) => a.days - b.days);
-    return out.slice(0, 6);
-  }, [db, version, catalog]);
+  /* заканчивается в магазине — тот же список, что у склада («Мало в магазине») */
+  const requested = useMemo(() => requestedMoves(db), [db, version]);
+  const lowAll = useMemo(
+    () =>
+      stockLines(db)
+        .filter((l) => l.flags.has('shopLow'))
+        .sort((a, b) => a.info.shop.available - a.shopMin - (b.info.shop.available - b.shopMin) || (b.flow?.shopPerDay ?? 0) - (a.flow?.shopPerDay ?? 0)),
+    [db, version],
+  );
+  const low = lowAll.slice(0, 6);
 
-  const askMove = (x: { p: Product; suggest: number }) => {
-    if (!warehouseMan) {
-      toast('На складе сейчас никого нет — передайте просьбу владельцу', 'error');
-      return;
-    }
-    const r = dispatch(
-      'task.create',
-      { title: `${MOVE_PREFIX}: ${x.p.name} — ${fmt.qty(x.suggest)}`, assigneeId: warehouseMan.id, due: today, priority: 'high', link: { type: 'product', id: x.p.id } },
-      me.id,
-    );
+  const askMove = (p: Product) => {
+    const r = requestMoveToShop(db, me.id, p, moveQty(db, p));
     if (!r.ok) toast(r.error, 'error');
-    else toast(`Попросили склад: ${warehouseMan.name}`);
+    else toast(r.text);
   };
 
   /* мои задачи */
@@ -118,7 +97,7 @@ export default function Home() {
 
       <div className="grid-4">
         <Kpi label={shift ? `Чеков в смене с ${fmt.time(shift.openedAt)}` : 'Чеков в смене'} value={fmt.num(sum?.receipts ?? 0)} />
-        <Kpi label="Выручка смены" value={fmt.money(sum?.total ?? 0)} />
+        <Kpi label="Выручка смены" value={fmt.money(sum ? sum.total - sum.refunds : 0)} />
         <Kpi label="Средний чек" value={fmt.money(sum && sum.receipts ? Math.round(sum.total / sum.receipts) : 0)} />
         <Kpi label="Наличных в кассе" value={fmt.money(sum?.expectedCash ?? 0)} />
       </div>
@@ -182,31 +161,39 @@ export default function Home() {
         </div>
 
         <div className="col-4" style={{ minWidth: 0 }}>
-          <Card className="reg-home-list" title="Заканчивается в магазине" flush>
+          <Card
+            className="reg-home-list"
+            title="Заканчивается в магазине"
+            actions={lowAll.length ? <Chip>{fmt.count(lowAll.length, 'позиция', 'позиции', 'позиций')}</Chip> : null}
+            flush
+          >
             {low.length ? (
               <div className="list">
-                {low.map((x) => (
-                  <div key={x.p.id} className="list-row">
-                    <div className="grow">
-                      <EntityLink type="product" id={x.p.id}>
-                        <span title={x.p.name}>{nbUnits(cartName(x.p))}</span>
-                      </EntityLink>
-                      <div className="t-12 muted">
-                        В магазине <b className="ink-2">{fmt.qty(x.shop)}</b> · на складе {fmt.qty(x.wh)}
+                {low.map((x) => {
+                  const q = x.shopMove?.qty ?? moveQty(db, x.p);
+                  return (
+                    <div key={x.id} className="list-row">
+                      <div className="grow">
+                        <EntityLink type="product" id={x.id}>
+                          <span title={x.p.name}>{nbUnits(cartName(x.p))}</span>
+                        </EntityLink>
+                        <div className="t-12 muted">
+                          В магазине <b className={x.info.shop.available <= 0 ? 'c-bad' : 'ink-2'}>{fmt.qty(x.info.shop.available)}</b> · на складе {fmt.qty(x.info.warehouse.available)}
+                        </div>
                       </div>
+                      {requested.has(x.id) ? (
+                        <Chip tone="info">Попросили склад</Chip>
+                      ) : (
+                        <Button size="sm" icon={<ArrowRightLeft />} onClick={() => askMove(x.p)} title={`Попросить склад перенести ${fmt.qty(q)}`}>
+                          Перенести {fmt.qty(q)}
+                        </Button>
+                      )}
                     </div>
-                    {requested.has(x.p.id) ? (
-                      <Chip tone="info">Попросили склад</Chip>
-                    ) : (
-                      <Button size="sm" icon={<ArrowRightLeft />} onClick={() => askMove(x)} title={`Попросить склад перенести ${fmt.qty(x.suggest)}`}>
-                        Перенести {fmt.qty(x.suggest)}
-                      </Button>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
-              <EmptyState title="Всего хватает">Ходовые товары в магазине есть минимум на три дня</EmptyState>
+              <EmptyState title="Всего хватает">В магазине есть всё, что держим на полке</EmptyState>
             )}
           </Card>
 

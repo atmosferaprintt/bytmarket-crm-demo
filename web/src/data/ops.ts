@@ -233,7 +233,7 @@ function shiftOpen(db: DB, payload: { openingCash?: number; sellerId?: ID } | un
   return { id: s.id };
 }
 
-function shiftClose(db: DB, payload: { shiftId?: ID; countedCash: number }, ctx: OpCtx): OpResult {
+function shiftClose(db: DB, payload: { shiftId?: ID; countedCash: number; diffReason?: string }, ctx: OpCtx): OpResult {
   const p = obj(payload);
   requireRole(db, ctx, ['seller'], 'Закрыть смену');
   const s = typeof p.shiftId === 'string' ? get(db, 'shifts', p.shiftId) : openShiftOf(db);
@@ -269,7 +269,9 @@ function shiftClose(db: DB, payload: { shiftId?: ID; countedCash: number }, ctx:
   s.closedAt = ctx.at;
   s.countedCash = counted;
   const diff = counted - sum.expectedCash;
-  if (diff !== 0) audit(db, ctx, 'payment', s.id, `Смена №${s.number}: расхождение в кассе ${diff > 0 ? '+' : ''}${rub(diff)}`);
+  const reason = diff !== 0 ? text(p.diffReason, 'Причина расхождения', false) : '';
+  if (reason) s.diffReason = reason;
+  if (diff !== 0) audit(db, ctx, 'payment', s.id, `Смена №${s.number}: расхождение в кассе ${diff > 0 ? '+' : ''}${rub(diff)}${reason ? ` — ${reason}` : ''}`);
   return { id: s.id, info: diff === 0 ? 'Касса сошлась' : `Расхождение в кассе: ${diff > 0 ? '+' : ''}${rub(diff)}` };
 }
 
@@ -420,7 +422,7 @@ function receiptRefund(db: DB, payload: RefundPayload, ctx: OpCtx): OpResult {
     newQuarantine(db, ctx, { productId: l.ol.productId, location: 'shop', qty: l.qty, source: 'return', sourceId: ret.id, reason: RETURN_REASONS[l.reason] });
   }
   audit(db, ctx, 'payment', refund.id, `Возврат по чеку: ${rub(amount)} ${method === 'cash' ? 'наличными' : 'на карту'}, возврат №${rn}`);
-  return { id: refund.id, info: `Возврат ${rub(amount)} ${method === 'cash' ? 'наличными' : 'на карту'}. Товар отправлен на проверку (возврат №${rn})` };
+  return { id: refund.id, info: `Возврат ${rub(amount)} ${method === 'cash' ? 'наличными' : 'на карту'}, чек возврата №${refund.number}. Товар отправлен на проверку` };
 }
 
 /* =====================================================================
@@ -1838,6 +1840,7 @@ function deliveryAssign(db: DB, payload: { deliveryId: ID; courierId: ID; date?:
   d.date = date;
   d.state = 'assigned';
   d.delayUntil = null;
+  d.wish = null;
   if (routeOrder === null) placeInRoute(db, d);
   else d.routeOrder = routeOrder;
   const o = get(db, 'orders', d.orderId);
@@ -1925,6 +1928,7 @@ function deliveryFail(db: DB, payload: { deliveryId: ID; reason: string; comment
     const iv = String(w.interval ?? '').replace('-', '–');
     if (!INTERVAL_RE.test(iv)) fail('Интервал: в виде «10:00–13:00»');
     wishText = `клиент просит ${dayText(date)}, ${iv}`;
+    d.wish = { date, interval: iv };
   }
   d.attempts.push({ at: ctx.at, courierId: d.courierId ?? ctx.actorId, result: 'failed', reason });
   d.state = 'failed';
@@ -1944,6 +1948,7 @@ function deliveryReschedule(db: DB, payload: { deliveryId: ID; date: ISODate; in
   requireRole(db, ctx, ['dispatcher', 'manager'], 'Перенести доставку');
   const d = deliveryOf(db, p.deliveryId);
   if (d.state === 'on_way' || d.state === 'delivered' || d.state === 'returned') fail('Эту доставку перенести нельзя');
+  const wasFailedR = d.state === 'failed';
   const date = isoDate(p.date, 'Новая дата');
   if (p.courierId && !hasRole(db, String(p.courierId), 'courier')) fail('Назначить можно только курьера');
   if (p.interval !== undefined) {
@@ -1962,10 +1967,12 @@ function deliveryReschedule(db: DB, payload: { deliveryId: ID; date: ISODate; in
     d.routeOrder = 0;
   }
   d.delayUntil = null;
+  d.wish = null;
   const reason = text(p.reason, 'Причина переноса', false);
-  addNote(d, ctx, `Перенесена на ${dayText(date)}, ${d.interval}${reason ? `: ${reason}` : ''}`);
+  const what = wasFailedR ? 'Повторная доставка' : 'Перенесена';
+  addNote(d, ctx, `${what}: ${dayText(date)}, ${d.interval}${reason ? `. ${reason}` : ''}`);
   const o = get(db, 'orders', d.orderId);
-  if (o) event(o, ctx, `Доставка перенесена на ${dayText(date)}${reason ? `: ${reason}` : ''}`);
+  if (o) event(o, ctx, `${wasFailedR ? 'Повторная доставка' : 'Доставка перенесена'}: ${dayText(date)}${reason ? ` — ${reason}` : ''}`);
   return { id: d.id };
 }
 
@@ -2196,6 +2203,15 @@ function taskCreate(
     ...(p.kind !== undefined ? { kind: oneOf(p.kind, TASK_KINDS, 'Вид задачи') } : {}),
   };
   db.tasks.push(t);
+  if (t.kind === 'order_returned' && link?.type === 'order') {
+    const o = get(db, 'orders', link.id);
+    if (o) event(o, ctx, `Не согласовано, вернули менеджеру: ${title.replace(/^[^:]*:\s*/, '')}`);
+  }
+  if (t.kind === 'approve_order' && link?.type === 'order') {
+    const o = get(db, 'orders', link.id);
+    if (o) event(o, ctx, 'Отправлен владельцу на согласование');
+    for (const x of db.tasks) if (x.state === 'open' && x.kind === 'order_returned' && x.link?.type === 'order' && x.link.id === link.id) { x.state = 'done'; x.doneAt = ctx.at; }
+  }
   return { id: t.id };
 }
 
@@ -2927,7 +2943,7 @@ function tasksAfterOp(db: DB, type: string, payload: unknown, r: OpResult, ctx: 
   switch (type) {
     case 'order.confirm':
     case 'order.cancel':
-      close((t) => t.kind === 'approve_order' && linked(t, 'order', r.id));
+      close((t) => (t.kind === 'approve_order' || t.kind === 'order_returned') && linked(t, 'order', r.id));
       if (!db.orders.some((o) => o.state === 'request')) close((t) => t.kind === 'confirm_requests');
       break;
     case 'chat.send': {

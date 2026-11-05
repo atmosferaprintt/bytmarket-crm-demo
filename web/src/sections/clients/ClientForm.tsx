@@ -6,6 +6,7 @@ import { dispatch, useDB } from '../../data/store';
 import { useSession } from '../../roles/session';
 import { Button, Field, Input, Modal, MoneyInput, Notice, Segmented, Select, Textarea, toast } from '../../ui';
 import { DISTRICTS } from './lib';
+import { isInn } from '../../data/codes';
 
 interface PointDraft {
   key: string;
@@ -46,8 +47,14 @@ export function ClientFormModal({ client, onClose, onSaved }: { client?: Client;
   const [name, setName] = useState(client?.name ?? '');
   const [inn, setInn] = useState(client?.inn ?? '');
   const [phone, setPhone] = useState(client?.phone ?? '');
-  const [deferDays, setDeferDays] = useState(String(client?.deferDays ?? db.settings.defaultDeferDays ?? 0));
-  const [creditLimit, setCreditLimit] = useState<number | ''>(client?.creditLimit ?? 0);
+  // без кредита отсрочки нет: у нового клиента отсрочка 0, пока не задан кредитный лимит; лимит появился — подставляем обычную отсрочку
+  const [deferDays, setDeferDays] = useState(String(client?.deferDays ?? 0));
+  const [deferTouched, setDeferTouched] = useState(editing);
+  const [creditLimit, setCreditLimitRaw] = useState<number | ''>(client?.creditLimit ?? 0);
+  const setCreditLimit = (v: number | '') => {
+    setCreditLimitRaw(v);
+    if (!deferTouched) setDeferDays(String(toNum(v) > 0 ? db.settings.defaultDeferDays ?? 0 : 0));
+  };
   const [minOrder, setMinOrder] = useState<number | ''>(client?.minOrder ?? 0);
   const [every, setEvery] = useState(client?.orderEveryDays ? String(client.orderEveryDays) : '');
   const [ownerId, setOwnerId] = useState<string>(client ? client.ownerId ?? '' : role === 'manager' || role === 'rep' ? me.id : '');
@@ -64,6 +71,7 @@ export function ClientFormModal({ client, onClose, onSaved }: { client?: Client;
   );
   const [error, setError] = useState<string | null>(null);
   const [nameError, setNameError] = useState(false);
+  const [innError, setInnError] = useState<string | null>(null);
 
   const owners = useMemo(
     () =>
@@ -88,6 +96,16 @@ export function ClientFormModal({ client, onClose, onSaved }: { client?: Client;
     if (!name.trim()) {
       setNameError(true);
       setError('Напишите название клиента: как его называют в магазине');
+      return;
+    }
+    // ИНН проверяем сразу и подсвечиваем само поле
+    const innValue = inn.trim();
+    if (innValue && !isInn(innValue)) {
+      setInnError(innValue.length !== 10 && innValue.length !== 12 ? 'Нужно 10 цифр у организации или 12 у ИП' : 'ИНН не сходится: проверьте цифры');
+      return;
+    }
+    if (innValue && db.clients.some((x) => x.inn === innValue && x.id !== client?.id)) {
+      setInnError('Клиент с таким ИНН уже есть');
       return;
     }
     const filledPoints = points.filter((p) => p.name.trim() || p.address.trim());
@@ -139,7 +157,8 @@ export function ClientFormModal({ client, onClose, onSaved }: { client?: Client;
     if (!client) {
       const r = dispatch('client.create', fields as unknown as Partial<Client>, me.id);
       if (!r.ok) {
-        setError(r.error);
+        if (/ИНН/.test(r.error)) setInnError(r.error);
+        else setError(r.error);
         return;
       }
       toast(`Клиент «${fields.name}» добавлен`);
@@ -165,7 +184,8 @@ export function ClientFormModal({ client, onClose, onSaved }: { client?: Client;
     }
     const r = dispatch('client.update', { clientId: client.id, patch: patch as Partial<Client> }, me.id);
     if (!r.ok) {
-      setError(r.error);
+      if (/ИНН/.test(r.error)) setInnError(r.error);
+      else setError(r.error);
       return;
     }
     toast('Карточка клиента сохранена');
@@ -223,8 +243,17 @@ export function ClientFormModal({ client, onClose, onSaved }: { client?: Client;
             placeholder={kind === 'person' ? 'Имя и фамилия' : 'Например: ИП Гамзатова, магазин «Чистый дом»'}
           />
         </Field>
-        <Field label="ИНН">
-          <Input value={inn} onChange={(e) => setInn(e.target.value.replace(/[^\d]/g, '').slice(0, 12))} inputMode="numeric" placeholder={kind === 'person' ? 'Не обязательно' : '10 или 12 цифр'} />
+        <Field label="ИНН" error={innError ?? undefined}>
+          <Input
+            value={inn}
+            invalid={!!innError}
+            onChange={(e) => {
+              setInn(e.target.value.replace(/[^\d]/g, '').slice(0, 12));
+              setInnError(null);
+            }}
+            inputMode="numeric"
+            placeholder={kind === 'person' ? 'Не обязательно' : '10 или 12 цифр'}
+          />
         </Field>
         <Field label="Телефон">
           <Input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="+7 917 123-45-67" />
@@ -243,7 +272,16 @@ export function ClientFormModal({ client, onClose, onSaved }: { client?: Client;
       <h3 className="cl-form-title">Условия</h3>
       <div className="cl-form-grid cl-form-grid-4">
         <Field label="Отсрочка, дней">
-          <Input value={deferDays} onChange={(e) => setDeferDays(e.target.value.replace(/[^\d]/g, '').slice(0, 3))} inputMode="numeric" className="num" />
+          <Input
+            value={deferDays}
+            onChange={(e) => {
+              setDeferDays(e.target.value.replace(/[^\d]/g, '').slice(0, 3));
+              setDeferTouched(true);
+            }}
+            inputMode="numeric"
+            className="num"
+            placeholder="0 — оплата сразу"
+          />
         </Field>
         <Field label="Кредитный лимит">
           <MoneyInput value={creditLimit} onChange={setCreditLimit} placeholder="0 — без кредита" />

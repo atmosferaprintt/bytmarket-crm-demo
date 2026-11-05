@@ -1,11 +1,17 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { CalendarPlus, ExternalLink, ListPlus, MapPin, MessageCircle, Pencil, Phone, Plus, ShoppingCart, UserRound, Wallet } from 'lucide-react';
+import { CalendarPlus, ExternalLink, FileText, ListPlus, MapPin, MessageCircle, Pencil, Phone, Plus, ShoppingCart, UserRound, Wallet } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { EntityDrawerProps } from '../../shell/entities';
 import { EntityLink, useOpenEntity } from '../../shell/entities';
 import { TaskModal } from '../../shell/TaskModal';
 import { NewOrderDrawer } from '../sales/NewOrderDrawer';
 import { AcceptPaymentModal } from '../money/AcceptPaymentModal';
+import { ReconciliationModal } from '../money/Reconciliation';
+import { SendWhatsAppModal } from '../sales/SendInvoiceModal';
+import { TopMenu } from '../sales/TopMenu';
+import { OrderBrief, orderStage, shownOverdue } from '../sales/parts';
+import { approvalTask } from '../sales/lib';
+import { actFile, textReminder } from '../../data/whatsapp';
 import type { Client, Order, Payment, Task, Visit } from '../../data/types';
 import { PAY_METHOD_NAMES } from '../../data/types';
 import { dispatch, useDB, useDBVersion } from '../../data/store';
@@ -37,7 +43,7 @@ import {
 import { ClientFormModal } from './ClientForm';
 import { visitTimes } from './parts';
 import { PlanVisitModal } from './PlanVisitModal';
-import { clientRows, kindName, mapUrl, ordersByClient, priceTypeName, segmentName, telUrl, useIsPhone, visitsByClient } from './lib';
+import { clientRows, deliveriesById, kindName, mapUrl, ordersByClient, priceTypeName, segmentName, telUrl, useIsPhone, visitsByClient } from './lib';
 import './clients.css';
 
 type TabKey = 'overview' | 'orders' | 'payments' | 'points' | 'visits' | 'tasks' | 'history';
@@ -51,7 +57,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
   const scoped = useScoped();
   const phone = useIsPhone();
   const [tab, setTab] = useState<TabKey>('overview');
-  const [modal, setModal] = useState<null | 'order' | 'pay' | 'task' | 'visit' | 'edit'>(null);
+  const [modal, setModal] = useState<null | 'order' | 'pay' | 'task' | 'visit' | 'edit' | 'act' | 'remind'>(null);
 
   const visibleIds = useMemo(() => new Set(scoped.clients.map((c) => c.id)), [scoped.clients]);
   const data = useMemo(() => {
@@ -99,12 +105,23 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
   const canChat = db.settings.whatsapp.connected && !!c.phone && sees('chats');
   const hasChat = db.chats.some((x) => x.clientId === c.id);
 
-  const secondary = [
+  // деньги клиента: акт сверки и напоминание о долге — у владельца, менеджера и бухгалтера
+  const moneyRole = role === 'owner' || role === 'manager' || role === 'accountant';
+  const waPhone = c.contacts[0]?.phone ?? c.phone;
+  const canRemind = moneyRole && db.settings.whatsapp.connected && !!waPhone && b.debt > 0;
+  const buttons = [
+    { key: 'act', label: 'Акт сверки', icon: <FileText />, onClick: () => setModal('act'), hidden: !moneyRole },
+    { key: 'remind', label: 'Напомнить в WhatsApp', icon: <MessageCircle />, onClick: () => setModal('remind'), hidden: !canRemind },
     { key: 'pay', label: 'Принять оплату', icon: <Wallet />, onClick: () => setModal('pay'), hidden: !canPay || !canOrder },
+  ].filter((x) => !x.hidden);
+  const rest = [
     { key: 'task', label: 'Задача', icon: <ListPlus />, onClick: () => setModal('task'), hidden: false },
     { key: 'visit', label: 'Запланировать визит', icon: <CalendarPlus />, onClick: () => setModal('visit'), hidden: !canPlan },
     { key: 'edit', label: 'Изменить', icon: <Pencil />, onClick: () => setModal('edit'), hidden: !canEdit },
   ].filter((x) => !x.hidden);
+  // кнопок мало (представитель) — всё кнопками; иначе редкое — в «⋯»
+  const secondary = buttons.length ? buttons : rest;
+  const menuItems = buttons.length ? rest : [];
 
   const primary = canOrder ? (
     <Button variant="primary" icon={<ShoppingCart />} onClick={() => setModal('order')} className="cl-foot-primary">
@@ -116,9 +133,10 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
     </Button>
   ) : null;
 
-  // меню «⋯» внутри боковой панели не используем: оно открывается под панелью; второстепенные действия — кнопками
+  // «⋯» — меню раздела «Продажи», поднятое над боковой панелью
   const footer = (
     <div className="cl-drawer-foot">
+      {menuItems.length ? <TopMenu items={menuItems} align="start" /> : null}
       {secondary.map((x) => (
         <Button key={x.key} icon={x.icon} onClick={x.onClick}>
           {x.label}
@@ -182,7 +200,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
   return (
     <>
       <Drawer wide title={c.name} head={head} onClose={onClose} footer={footer}>
-        <MoneyStrip c={c} debt={b.debt} overdue={b.overdue} overdueDays={b.maxOverdueDays} advance={b.advance} />
+        <MoneyStrip c={c} debt={b.debt} overdue={b.overdue} overdueDays={b.maxOverdueDays} advance={b.advance} pending={b.pending} />
         <div className="cl-tabs-scroll">
           <Tabs items={tabs.map((t) => ({ key: t.key, label: t.label, count: counts[t.key] }))} value={tab} onChange={(k) => setTab(k as TabKey)} />
         </div>
@@ -199,13 +217,30 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
       {modal === 'task' ? <TaskModal link={{ type: 'client', id: c.id }} assigneeId={c.ownerId ?? me.id} onClose={() => setModal(null)} /> : null}
       {modal === 'visit' ? <PlanVisitModal clientId={c.id} repId={c.ownerId ?? undefined} onClose={() => setModal(null)} /> : null}
       {modal === 'edit' ? <ClientFormModal client={c} onClose={() => setModal(null)} /> : null}
+      {modal === 'act' ? <ReconciliationModal clientId={c.id} onClose={() => setModal(null)} /> : null}
+      {modal === 'remind' ? (
+        <SendWhatsAppModal
+          clientId={c.id}
+          title="Напомнить об оплате"
+          initialText={textReminder(db, c.id, c.contacts[0]?.name.split(' ')[0] ?? '')}
+          file={actFile(db.meta.today)}
+          rows={[
+            { label: 'Долг', value: fmt.money(b.debt) },
+            { label: 'Просрочено', value: b.overdue > 0 ? <span className="c-bad">{fmt.money(b.overdue)}</span> : fmt.money(0) },
+            ...(b.pending > 0 ? [{ label: 'Перевод ждёт подтверждения', value: fmt.money(b.pending) }] : []),
+          ]}
+          okText="Напоминание отправлено клиенту в WhatsApp"
+          purpose="reminder"
+          onClose={() => setModal(null)}
+        />
+      ) : null}
     </>
   );
 }
 
 /* ---------- полоса денег ---------- */
 
-function MoneyStrip({ c, debt, overdue, overdueDays, advance }: { c: Client; debt: number; overdue: number; overdueDays: number; advance: number }) {
+function MoneyStrip({ c, debt, overdue, overdueDays, advance, pending }: { c: Client; debt: number; overdue: number; overdueDays: number; advance: number; pending: number }) {
   const limit = c.creditLimit;
   const left = limit - debt;
   const over = limit > 0 && debt > limit;
@@ -252,6 +287,10 @@ function MoneyStrip({ c, debt, overdue, overdueDays, advance }: { c: Client; deb
         <div className="cl-limit-legend">
           <StatusChip s={overdueStatus(overdueDays)} />
         </div>
+      ) : null}
+      {pending > 0 ? (
+        // клиент уже перевёл — не звонить за этими деньгами
+        <div className="cl-money-pending">Перевод {fmt.money(pending)} ждёт подтверждения банка</div>
       ) : null}
     </div>
   );
@@ -367,19 +406,22 @@ function OverviewTab({ c, orders, visits, canPlan, onPlan }: { c: Client; orders
 function OrderList({ orders }: { orders: Order[] }) {
   const db = useDB();
   const open = useOpenEntity();
+  const { role } = useSession();
+  const deliveries = deliveriesById(db);
   return (
     <div className="cl-list">
       {orders.map((o) => {
         const pay = orderPayment(db, o);
+        const dl = o.deliveryId ? deliveries.get(o.deliveryId) : undefined;
         return (
           <button key={o.id} type="button" className="cl-list-row" onClick={() => open('order', o.id)}>
             <span className="cl-list-main">
               <span className="w-600">№ {o.number}</span>
               <span className="muted t-12">{fmt.dateShort(o.createdAt)}</span>
             </span>
-            <span className="chips cl-list-chips">
-              <StatusChip s={ORDER_STATE[o.state]} />
-              {o.state !== 'cancelled' && o.state !== 'request' ? pay.overdueDays > 0 ? <StatusChip s={overdueStatus(pay.overdueDays)} /> : <StatusChip s={PAY_STATE[pay.state]} /> : null}
+            {/* главный этап и оплата: «Доставлен · Не оплачен», «Собирается», «Заявка» */}
+            <span className="cl-list-chips">
+              <OrderBrief o={o} pay={pay} delivery={dl} rep={role === 'rep'} approval={o.state === 'request' && !!approvalTask(db, o.id)} />
             </span>
             <span className="num w-600 cl-list-sum">{fmt.money(o.total)}</span>
           </button>
@@ -392,19 +434,28 @@ function OrderList({ orders }: { orders: Order[] }) {
 function OrdersTab({ orders, phone }: { orders: Order[]; phone: boolean }) {
   const db = useDB();
   const open = useOpenEntity();
-  const rows = useMemo(() => orders.map((o) => ({ o, p: orderPayment(db, o) })), [orders, db]);
+  const { role } = useSession();
+  const rows = useMemo(() => {
+    const dl = deliveriesById(db);
+    return orders.map((o) => {
+      const p = orderPayment(db, o);
+      const d = o.deliveryId ? dl.get(o.deliveryId) : undefined;
+      return { o, p, stage: orderStage(o, d, { rep: role === 'rep', approval: o.state === 'request' && !!approvalTask(db, o.id) }), overdue: shownOverdue(o, p, d) };
+    });
+  }, [orders, db, role]);
   if (!orders.length) return <EmptyState title="Заказов нет">Новый заказ — кнопкой внизу</EmptyState>;
   if (phone) return <OrderList orders={orders} />;
   type R = (typeof rows)[number];
   const columns: Column<R>[] = [
     { key: 'number', header: 'Заказ', render: (r) => <span className="w-600">№ {r.o.number}</span>, sort: (r) => r.o.number, csv: (r) => r.o.number },
     { key: 'date', header: 'Дата', render: (r) => fmt.dateShort(r.o.createdAt), sort: (r) => r.o.createdAt, csv: (r) => r.o.createdAt.slice(0, 10) },
-    { key: 'state', header: 'Состояние', render: (r) => <StatusChip s={ORDER_STATE[r.o.state]} />, sort: (r) => ORDER_STATE[r.o.state].label },
+    { key: 'state', header: 'Этап', render: (r) => <StatusChip s={r.stage} />, sort: (r) => r.stage.label, csv: (r) => r.stage.label },
     {
       key: 'pay',
       header: 'Оплата',
-      render: (r) => (r.o.state === 'cancelled' || r.o.state === 'request' ? <span className="faint">—</span> : r.p.overdueDays > 0 ? <StatusChip s={overdueStatus(r.p.overdueDays)} /> : <StatusChip s={PAY_STATE[r.p.state]} />),
-      sort: (r) => r.p.overdueDays,
+      render: (r) =>
+        r.o.state !== 'confirmed' && r.o.state !== 'closed' ? <span className="faint">—</span> : r.overdue > 0 ? <StatusChip s={overdueStatus(r.overdue)} /> : r.p.amount > 0 ? <StatusChip s={PAY_STATE[r.p.state]} /> : <span className="faint">—</span>,
+      sort: (r) => r.overdue,
     },
     { key: 'total', header: 'Сумма', align: 'right', render: (r) => fmt.money(r.o.total), sort: (r) => r.o.total, total: (rs) => fmt.money(rs.reduce((s, r) => s + (r.o.state === 'cancelled' ? 0 : r.o.total), 0)) },
     { key: 'debt', header: 'Долг', align: 'right', render: (r) => (r.p.debt > 0 ? <span className={cx(r.p.overdueDays > 0 && 'c-bad')}>{fmt.money(r.p.debt)}</span> : <span className="faint">—</span>), sort: (r) => r.p.debt, total: (rs) => fmt.money(rs.reduce((s, r) => s + r.p.debt, 0)) },

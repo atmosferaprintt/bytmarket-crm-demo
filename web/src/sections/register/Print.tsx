@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { ID } from '../../data/types';
 import { useDB } from '../../data/store';
-import { indexes } from '../../data/selectors';
+import { indexes, shiftSummary } from '../../data/selectors';
 import { fmt } from '../../ui';
 import { cardNumber, packLabel } from './lib';
 
@@ -108,8 +108,79 @@ function PrintableReceipt({ id }: { id: ID }) {
   );
 }
 
-/** Печать чека: const [print, printNode] = usePrintReceipt(); print(id); {printNode} — в разметке. */
-export function usePrintReceipt(): [(id: ID) => void, ReactNode] {
+/** Сколько сдать и сколько оставить на размен после пересчёта: размен на начало остаётся в кассе, остальное — выручка. */
+export function handOver(counted: number, openingCash: number): { handIn: number; keep: number } {
+  const keep = Math.min(counted, openingCash);
+  return { handIn: counted - keep, keep };
+}
+
+/** Отчёт смены (Z-отчёт без фискальника): продажи, возвраты, наличные, карта, пересчёт, что сдать. */
+function PrintableShift({ id }: { id: ID }) {
+  const db = useDB();
+  const s = db.shifts.find((x) => x.id === id);
+  if (!s) return null;
+  const sum = shiftSummary(db, s.id);
+  const seller = indexes(db).employees.get(s.sellerId);
+  const c = db.settings.company;
+  const net = sum.total - sum.refunds;
+  const row = (label: string, value: string, strong?: boolean) => (
+    <div className={strong ? 'reg-print-row reg-print-total' : 'reg-print-row'}>
+      <span>{label}</span>
+      <span>{value}</span>
+    </div>
+  );
+  const ho = sum.countedCash === null ? null : handOver(sum.countedCash, s.openingCash);
+  return (
+    <div className="reg-print" aria-hidden="true">
+      <div className="reg-print-head">
+        <div className="w-700 t-16">{c.name}</div>
+        <div>{c.legalName}</div>
+        <div>{c.address}</div>
+      </div>
+      <div className="reg-print-title">Отчёт смены № {s.number}</div>
+      <div className="reg-print-meta">
+        <span>{fmt.dateShort(s.openedAt, true)}</span>
+        <span>
+          {fmt.time(s.openedAt)}–{s.closedAt ? fmt.time(s.closedAt) : 'сейчас'}
+        </span>
+      </div>
+      <div className="reg-print-meta">
+        <span>Продавец</span>
+        <span>{seller?.name ?? '—'}</span>
+      </div>
+      <div className="reg-print-lines">
+        {row('Чеков продажи', fmt.num(sum.receipts))}
+        {row('Продажи', fmt.money(sum.total))}
+        {row(`Возвраты${sum.refundsCount ? `, ${fmt.count(sum.refundsCount, 'чек', 'чека', 'чеков')}` : ''}`, sum.refunds ? `−${fmt.money(sum.refunds)}` : '0 ₽')}
+        {row('Выручка', fmt.money(net), true)}
+        {row('Наличными', fmt.money(sum.cash))}
+        {row('Картой', fmt.money(sum.card))}
+      </div>
+      {row('Размен на начало', fmt.money(s.openingCash))}
+      {row('Ожидалось в кассе', fmt.money(sum.expectedCash))}
+      {row('Пересчитано', sum.countedCash === null ? 'смена открыта' : fmt.money(sum.countedCash))}
+      {sum.difference !== null ? row('Расхождение', sum.difference === 0 ? '0 ₽' : `${sum.difference > 0 ? '+' : '−'}${fmt.money(Math.abs(sum.difference))}`) : null}
+      {ho ? (
+        <div className="reg-print-lines">
+          {row('Сдать выручку', fmt.money(ho.handIn), true)}
+          {row('Оставить на размен', fmt.money(ho.keep))}
+        </div>
+      ) : null}
+      <div className="reg-print-sign">
+        <span>Сдал</span>
+        <span>____________</span>
+      </div>
+      <div className="reg-print-sign">
+        <span>Принял</span>
+        <span>____________</span>
+      </div>
+      <div className="reg-print-foot">{s.closedAt ? `Смена закрыта ${fmt.dateShort(s.closedAt, true)} в ${fmt.time(s.closedAt)}` : 'Смена открыта'}</div>
+    </div>
+  );
+}
+
+/** Печать формы: выводит блок в body, вызывает печать и убирает блок. */
+function usePrintNode(render: (id: ID) => ReactNode): [(id: ID) => void, ReactNode] {
   const [id, setId] = useState<ID | null>(null);
   useEffect(() => {
     if (!id) return;
@@ -132,6 +203,16 @@ export function usePrintReceipt(): [(id: ID) => void, ReactNode] {
     };
   }, [id]);
   const print = useCallback((x: ID) => setId(x), []);
-  const node = id ? createPortal(<PrintableReceipt id={id} />, document.body) : null;
+  const node = id ? createPortal(render(id), document.body) : null;
   return [print, node];
+}
+
+/** Печать чека: const [print, printNode] = usePrintReceipt(); print(id); {printNode} — в разметке. */
+export function usePrintReceipt(): [(id: ID) => void, ReactNode] {
+  return usePrintNode((id) => <PrintableReceipt id={id} />);
+}
+
+/** Печать отчёта смены: const [printShift, node] = usePrintShift(); printShift(shiftId). */
+export function usePrintShift(): [(id: ID) => void, ReactNode] {
+  return usePrintNode((id) => <PrintableShift id={id} />);
 }

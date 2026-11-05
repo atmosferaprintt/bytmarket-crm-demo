@@ -1,13 +1,33 @@
 /* Акт сверки взаимных расчётов с покупателем: начальное сальдо, отгрузки, оплаты, конечное сальдо. Печать — window.print. */
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { FileText, Printer } from 'lucide-react';
+import { FileText, MessageCircle, Printer } from 'lucide-react';
 import type { DB, ID, ISODate } from '../../data/types';
 import { PAY_METHOD_NAMES } from '../../data/types';
 import { useDB, useDBVersion } from '../../data/store';
 import { indexes, orderShippedValue } from '../../data/selectors';
 import { Button, IconTile, Modal, fmt } from '../../ui';
 import { DateField } from './parts';
+import { SendWhatsAppModal } from '../sales/SendInvoiceModal';
+import { actFile } from '../../data/whatsapp';
+
+/** Текст к акту сверки в WhatsApp: период и итог по нашим данным. */
+function actText(db: DB, clientId: ID, act: ActData): string {
+  const c = indexes(db).clients.get(clientId);
+  const first = c?.contacts[0]?.name.split(' ')[0] ?? '';
+  const co = db.settings.company;
+  const result =
+    act.closing > 0
+      ? `за вами ${fmt.money(act.closing)}`
+      : act.closing < 0
+        ? `за нами ${fmt.money(-act.closing)} — это ваш аванс`
+        : 'задолженности нет';
+  return (
+    `Здравствуйте${first ? ', ' + first : ''}! Акт сверки с ${co.name} за период с ${fmt.date(act.from)} по ${fmt.date(act.to)} — во вложении.` +
+    `\nПо нашим данным на ${fmt.date(act.to)} ${result}.` +
+    `\nПроверьте, пожалуйста, и пришлите подписанный экземпляр. Если что-то не сходится — напишите, разберёмся.`
+  );
+}
 
 interface ActLine {
   date: ISODate;
@@ -203,11 +223,31 @@ export function ReconciliationModal({ clientId, onClose }: { clientId: ID; onClo
   const [to, setTo] = useState<ISODate>(today);
   const act = useMemo(() => reconciliation(db, clientId, from, to), [db, v, clientId, from, to]);
   const c = indexes(db).clients.get(clientId);
+  const [sending, setSending] = useState(false);
+  const waOn = db.settings.whatsapp.connected && !!(c?.contacts[0]?.phone ?? c?.phone);
 
   useEffect(() => {
     document.body.classList.add('money-printing');
     return () => document.body.classList.remove('money-printing');
   }, []);
+
+  if (sending)
+    return (
+      <SendWhatsAppModal
+        clientId={clientId}
+        title="Отправить акт сверки"
+        initialText={actText(db, clientId, act)}
+        file={actFile(to)}
+        rows={[
+          { label: 'Период', value: `${fmt.date(from)} — ${fmt.date(to)}` },
+          { label: act.closing >= 0 ? 'Долг клиента' : 'Аванс клиента', value: fmt.money(Math.abs(act.closing)) },
+        ]}
+        okText="Акт сверки отправлен клиенту в WhatsApp"
+        purpose="act"
+        onClose={() => setSending(false)}
+        onSent={onClose}
+      />
+    );
 
   return (
     <>
@@ -224,6 +264,11 @@ export function ReconciliationModal({ clientId, onClose }: { clientId: ID; onClo
             <Button variant="ghost" onClick={onClose}>
               Закрыть
             </Button>
+            {waOn ? (
+              <Button icon={<MessageCircle />} onClick={() => setSending(true)}>
+                Отправить в WhatsApp
+              </Button>
+            ) : null}
             <Button variant="primary" icon={<Printer />} onClick={() => window.print()}>
               Печать
             </Button>

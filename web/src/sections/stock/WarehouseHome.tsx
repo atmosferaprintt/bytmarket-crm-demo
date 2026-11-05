@@ -10,7 +10,9 @@ import { PageHeader } from '../../shell/PageHeader';
 import { EntityLink, useOpenEntity } from '../../shell/entities';
 import { TaskModal } from '../../shell/TaskModal';
 import { Button, Card, Chip, EmptyState, Kpi, StatusChip, DELIVERY_STATE, PICK_STATE, cx, fmt, toast } from '../../ui';
-import { DOC_KIND_NAMES, stockLines, type StockLine } from './calc';
+import { DOC_KIND_NAMES, movePack, stockLineOf, stockLines, type StockLine } from './calc';
+import { plusDays } from '../../data/dates';
+import type { Product, Task } from '../../data/types';
 import { pickQueue } from './picking';
 import { docRows } from './docRows';
 import { DocIcon, Route } from './DocBits';
@@ -47,7 +49,15 @@ export default function Home() {
       .filter((l) => l.shopMove)
       .sort((a, b) => a.info.shop.available - a.shopMin - (b.info.shop.available - b.shopMin) || (b.flow?.shopPerDay ?? 0) - (a.flow?.shopPerDay ?? 0));
     const feed = docRows(db).slice(0, 8);
-    return { queue, todayPick, toCouriers, toPickup, incoming, quarantine, shopLow, feed };
+    const tomorrow = plusDays(today, 1);
+    const tomorrowPick = queue.filter((x) => x.o.pick !== 'picked' && x.o.fulfillment === 'delivery' && x.dueDay === tomorrow);
+    // просьбы продавцов перенести товар в магазин: закрываются сами, когда товар перемещён
+    const requests = db.tasks
+      .filter((t) => t.state === 'open' && t.kind === 'move_to_shop' && t.link?.type === 'product')
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map((t) => requestLine(t, ix.products.get(t.link!.id), stockLineOf(db, t.link!.id), ix.employees.get(t.authorId)?.short ?? 'продавец'))
+      .filter((r): r is MoveRequest => r !== null);
+    return { queue, todayPick, tomorrowPick, toCouriers, toPickup, incoming, quarantine, shopLow, feed, requests };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [db, version]);
 
@@ -60,14 +70,24 @@ export default function Home() {
     [myTasks],
   );
 
-  const moveLines = data.shopLow.slice(0, 40);
-  const moveAll = () =>
-    docs.open('transfer', {
-      from: 'warehouse',
-      to: 'shop',
-      comment: 'Пополнение магазина',
-      lines: moveLines.map((l: StockLine) => ({ productId: l.id, pack: l.shopMove!.pack.key, packQty: l.shopMove!.packQty })),
-    });
+  // сначала то, что просили продавцы, потом остальное «мало в магазине»
+  const moveLines = useMemo(() => {
+    const asked = data.requests.filter((r) => r.packQty > 0);
+    const seen = new Set(asked.map((r) => r.p.id));
+    const rest = data.shopLow.filter((l) => !seen.has(l.id));
+    return [
+      ...asked.map((r) => ({ productId: r.p.id, pack: r.pack, packQty: r.packQty })),
+      ...rest.map((l: StockLine) => ({ productId: l.id, pack: l.shopMove!.pack.key, packQty: l.shopMove!.packQty })),
+    ].slice(0, 40);
+  }, [data]);
+  // в таблице — без того, что уже просили продавцы: оно выше
+  const lowRest = useMemo(() => {
+    const asked = new Set(data.requests.map((r) => r.p.id));
+    return data.shopLow.filter((l) => !asked.has(l.id));
+  }, [data]);
+  const moveAll = () => docs.open('transfer', { from: 'warehouse', to: 'shop', comment: 'Пополнение магазина', lines: moveLines });
+  const moveOne = (r: MoveRequest) =>
+    docs.open('transfer', { from: 'warehouse', to: 'shop', comment: `По просьбе: ${r.author}`, lines: [{ productId: r.p.id, pack: r.pack, packQty: Math.max(1, r.packQty) }] });
 
   const notStarted = data.todayPick.filter((x) => x.o.pick === 'none').length;
   const inWork = data.todayPick.length - notStarted;
@@ -91,7 +111,35 @@ export default function Home() {
       }
     >
       {data.todayPick.length === 0 ? (
-        <EmptyState title="На сегодня всё собрано">Новые заказы появятся здесь после подтверждения</EmptyState>
+        <div>
+          <div className="stock-home-done">
+            <span className="w-700">На сегодня всё собрано</span>
+            <span className="ink-2">На завтра: {fmt.count(data.tomorrowPick.length, 'заказ', 'заказа', 'заказов')}</span>
+          </div>
+          {data.tomorrowPick.slice(0, 5).map((x) => (
+            <button key={x.id} type="button" className="stock-list-row" onClick={() => navigate(`/stock/picking?order=${x.id}`)}>
+              <span style={{ minWidth: 0 }}>
+                <span className="stock-list-title">
+                  <span>
+                    № {x.o.number} · {x.client?.name ?? 'Клиент'}
+                  </span>
+                </span>
+                <span className="stock-list-meta" style={{ display: 'block' }}>
+                  Доставка завтра{x.delivery ? `, ${x.delivery.interval}` : ''} · {fmt.num(x.positions)} поз., {fmt.qty(x.qty)}
+                </span>
+              </span>
+              <span className="stock-list-side">
+                <StatusChip s={PICK_STATE[x.o.pick]} />
+                <ChevronRight size={16} className="faint" />
+              </span>
+            </button>
+          ))}
+          {data.tomorrowPick.length > 5 ? (
+            <button type="button" className="stock-home-more" onClick={() => navigate('/stock/picking')}>
+              Ещё {fmt.count(data.tomorrowPick.length - 5, 'заказ', 'заказа', 'заказов')} на завтра
+            </button>
+          ) : null}
+        </div>
       ) : (
         <div>
           {data.todayPick.slice(0, 6).map((x) => (
@@ -234,20 +282,54 @@ export default function Home() {
     </Card>
   );
 
+  const requestsBlock = data.requests.length ? (
+    <div className="stock-requests">
+      <div className="stock-requests-head">Просьбы продавцов · {fmt.num(data.requests.length)}</div>
+      {data.requests.map((r) => (
+        <div key={r.task.id} className="stock-request-row">
+          <button type="button" className="stock-request-main" onClick={() => open('product', r.p.id)}>
+            <span className="stock-list-title">
+              <span className="stock-request-name">{r.p.name}</span>
+            </span>
+            <span className="stock-list-meta stock-request-meta">
+              {r.author}, {fmt.relDate(r.task.createdAt, today)} в {fmt.time(r.task.createdAt)} · в магазине {fmt.num(r.shop)}, на складе {fmt.num(r.wh)}
+            </span>
+          </button>
+          <span className="stock-list-side">
+            {r.packQty > 0 ? (
+              <span className="stock-request-qty">
+                {r.packSize > 1 ? <span className="muted">{fmt.num(r.packQty)} {r.pack === 'box' ? 'кор.' : 'уп.'} · </span> : null}
+                <b>{fmt.qty(r.qty)}</b>
+              </span>
+            ) : (
+              <Chip tone="bad">На складе нет</Chip>
+            )}
+            {can('transfer') && r.packQty > 0 ? (
+              <Button size="sm" variant="ghost" icon={<ArrowLeftRight />} onClick={() => moveOne(r)}>
+                Перенести
+              </Button>
+            ) : null}
+          </span>
+        </div>
+      ))}
+    </div>
+  ) : null;
+
   const moveCard = (
     <Card
       flush
       title="Мало в магазине"
       actions={
-        data.shopLow.length && can('transfer') ? (
+        moveLines.length && can('transfer') ? (
           <Button size="sm" icon={<ArrowLeftRight />} onClick={moveAll}>
             Переместить {fmt.count(moveLines.length, 'позицию', 'позиции', 'позиций')}
           </Button>
         ) : null
       }
     >
-      {data.shopLow.length === 0 ? (
-        <EmptyState title="В магазине всего хватает" />
+      {requestsBlock}
+      {lowRest.length === 0 ? (
+        data.requests.length ? null : <EmptyState title="В магазине всего хватает" />
       ) : (
         <div className="table-scroll">
           <table className="table table-dense stock-move-table">
@@ -260,7 +342,7 @@ export default function Home() {
               </tr>
             </thead>
             <tbody>
-              {data.shopLow.slice(0, 8).map((l) => (
+              {lowRest.slice(0, 8).map((l) => (
                 <tr key={l.id} className="is-clickable" onClick={() => open('product', l.id)}>
                   <td>
                     <div className="cell-title stock-name" title={l.p.name}>
@@ -277,7 +359,7 @@ export default function Home() {
               ))}
             </tbody>
           </table>
-          {data.shopLow.length > 8 ? (
+          {lowRest.length > 8 ? (
             <button type="button" className="stock-home-more" onClick={() => navigate('/stock?f=shopLow')}>
               Все {fmt.count(data.shopLow.length, 'позиция', 'позиции', 'позиций')}
             </button>
@@ -406,10 +488,20 @@ export default function Home() {
       <PageHeader section="overview" actions={<StockDocButtons open={docs.open} />} />
 
       <div className="card stock-strip is-4">
-        <Kpi label="К сборке сегодня" value={<>{fmt.num(data.todayPick.length)} <small className="stock-kpi-unit">{fmt.plural(data.todayPick.length, 'заказ', 'заказа', 'заказов')}</small></>} onClick={() => navigate('/stock/picking')} />
+        <Kpi
+          label="К сборке сегодня"
+          value={<>{fmt.num(data.todayPick.length)} <small className="stock-kpi-unit">{fmt.plural(data.todayPick.length, 'заказ', 'заказа', 'заказов')}</small></>}
+          extra={data.todayPick.length === 0 ? <span className="stock-kpi-next">На завтра: {fmt.count(data.tomorrowPick.length, 'заказ', 'заказа', 'заказов')}</span> : undefined}
+          onClick={() => navigate('/stock/picking')}
+        />
         <Kpi label="Передать курьерам" value={<>{fmt.num(data.toCouriers.length)} <small className="stock-kpi-unit">{fmt.plural(data.toCouriers.length, 'заказ', 'заказа', 'заказов')}</small></>} onClick={() => navigate('/stock/picking')} />
         <Kpi label="Ожидаются поставки" value={<>{fmt.num(data.incoming.length)} <small className="stock-kpi-unit">{fmt.plural(data.incoming.length, 'закупка', 'закупки', 'закупок')}</small></>} onClick={() => navigate('/purchases')} />
-        <Kpi label="Мало в магазине" value={<>{fmt.num(data.shopLow.length)} <small className="stock-kpi-unit">{fmt.plural(data.shopLow.length, 'позиция', 'позиции', 'позиций')}</small></>} onClick={() => navigate('/stock?f=shopLow')} />
+        <Kpi
+          label="Мало в магазине"
+          value={<>{fmt.num(data.shopLow.length)} <small className="stock-kpi-unit">{fmt.plural(data.shopLow.length, 'позиция', 'позиции', 'позиций')}</small></>}
+          extra={data.requests.length ? <span className="stock-kpi-next">Просят продавцы: {fmt.num(data.requests.length)}</span> : undefined}
+          onClick={() => navigate('/stock?f=shopLow')}
+        />
       </div>
 
       <div className="stock-home-grid is-wide-left">
@@ -432,4 +524,37 @@ export default function Home() {
       {docs.element}
     </>
   );
+}
+
+interface MoveRequest {
+  task: Task;
+  p: Product;
+  author: string;
+  shop: number;
+  wh: number;
+  pack: 'pcs' | 'pack' | 'box';
+  packSize: number;
+  packQty: number;
+  qty: number;
+}
+
+/** Сколько перенести по просьбе: число из текста просьбы («12 шт», «2 кор.»), иначе — расчёт «мало в магазине», иначе одна упаковка. Не больше, чем свободно на складе. */
+function requestLine(t: Task, p: Product | undefined, l: StockLine | undefined, author: string): MoveRequest | null {
+  if (!p || !l) return null;
+  const wh = l.info.warehouse.available;
+  const mp = movePack(p);
+  const box = p.packs.find((x) => x.key === 'box');
+  let want = 0;
+  const pcs = /(\d+)\s*шт/i.exec(t.title);
+  const bx = /(\d+)\s*кор/i.exec(t.title);
+  const up = /(\d+)\s*уп/i.exec(t.title);
+  if (pcs) want = Number(pcs[1]);
+  else if (bx) want = Number(bx[1]) * (box?.qty ?? mp.qty);
+  else if (up) want = Number(up[1]) * mp.qty;
+  else if (l.shopMove) want = l.shopMove.qty;
+  else want = mp.qty;
+  const qty = Math.min(want, wh);
+  // упаковками, если ровно делится, иначе штуками
+  const pk = mp.qty > 1 && qty >= mp.qty && qty % mp.qty === 0 ? mp : p.packs[0];
+  return { task: t, p, author, shop: l.info.shop.available, wh, pack: pk.key, packSize: pk.qty, packQty: pk.qty > 1 ? qty / pk.qty : qty, qty };
 }

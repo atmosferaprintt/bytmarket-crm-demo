@@ -3,15 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronRight, FileSpreadsheet, Info, Printer, RefreshCw } from 'lucide-react';
 import { PageHeader } from '../../shell/PageHeader';
 import { EntityLink, useOpenEntity } from '../../shell/entities';
-import { Card, Chip, EmptyState, MoreMenu, Segmented, fmt, toast } from '../../ui';
+import { Card, Chip, EmptyState, MoreMenu, Segmented, cx, fmt, toast } from '../../ui';
 import { ChartLegend, ComboChart, PlanMeter } from '../../ui/charts';
 import { nowDemo, useDB, useDBVersion } from '../../data/store';
 import { useSession } from '../../roles/session';
-import { arrangeSignals, computeSignals, loadResolved, signalsForRole } from './signals';
-import { SignalLine, useSignalActions } from './SignalParts';
+import { arrangeSignals, computeSignals, loadResolved, signalsForRole, trackAttention } from './signals';
+import { AssignedMark, SignalLine, taskOf, useSignalActions, useTaskMarks } from './SignalParts';
 import { PeriodBar } from './PeriodBar';
-import { curName, prevName, rangeText, useSharedPeriod } from './period';
-import { noCostCount } from './analytics';
+import { curName, periodQuery, prevName, rangeText, useSharedPeriod } from './period';
+import { noCostCount, nowAt } from './analytics';
 import { chartPoints, computeOverview, type SeriesKey } from './overviewData';
 import { downloadCsv } from './csv';
 import { KpiTile, deltaOf, type Delta } from './KpiTile';
@@ -26,7 +26,7 @@ export default function OwnerHome() {
   const version = useDBVersion();
   const navigate = useNavigate();
   const open = useOpenEntity();
-  const { can, role } = useSession();
+  const { can, role, me } = useSession();
   const today = db.meta.today;
   // по умолчанию — месяц, в первую неделю месяца — прошлый полный (defaultPeriod); тот же период откроется в отчётах
   const [period, setPeriod] = useSharedPeriod(today);
@@ -36,9 +36,15 @@ export default function OwnerHome() {
   const d = useMemo(() => computeOverview(db, period, nowTime), [db, version, period, nowTime]);
   const points = useMemo(() => chartPoints(db, period, series, nowTime), [db, version, period, series, nowTime]);
   const [resolved] = useState(loadResolved);
-  const arranged = useMemo(() => arrangeSignals(signalsForRole(computeSignals(db, today), role).filter((s) => !resolved[s.id])), [db, version, today, role, resolved]);
-  const signalLines = arranged.important.length + arranged.rest.length;
-  const urgent = arranged.important.filter((s) => s.severity === 'high').length;
+  const all = useMemo(() => signalsForRole(computeSignals(db, today), role), [db, version, today, role]);
+  const active = useMemo(() => all.filter((s) => !resolved[s.id]), [all, resolved]);
+  const arranged = useMemo(() => arrangeSignals(active), [active]);
+  // тот же учёт, что на вкладке «Требует внимания»: что решилось — уходит в «Разобрано сегодня»
+  useMemo(() => trackAttention(role, today, nowAt().slice(11, 16), all, active, arranged.important), [role, today, all, active, arranged]);
+  // число на вкладке и у «Все» — число проблем, а не строк
+  const signalLines = active.length;
+  const urgent = active.filter((s) => s.severity === 'high').length;
+  const marks = useTaskMarks();
   const noCost = useMemo(() => noCostCount(db), [db, version]);
   const actions = useSignalActions();
   const ix = useMemo(() => ({ clients: new Map(db.clients.map((c) => [c.id, c])), suppliers: new Map(db.suppliers.map((s) => [s.id, s])) }), [db, version]);
@@ -49,6 +55,9 @@ export default function OwnerHome() {
   const incomplete = s.costKnownShare < 0.999;
   const curLabel = curName(period, today);
   const prevLabel = prevName(period);
+  const q = periodQuery({ from: d.from, to: d.to });
+  const net = s.grossProfit - d.expenses.total;
+  const prevNet = ps && d.prevExpenses !== null ? ps.grossProfit - d.prevExpenses : null;
 
   const exportCsv = () => {
     const rows: (string | number | null)[][] = [
@@ -62,6 +71,8 @@ export default function OwnerHome() {
     if (seeProfit) {
       rows.push(['Валовая прибыль, ₽', Math.round(s.grossProfit), ps ? Math.round(ps.grossProfit) : null]);
       rows.push(['Маржа, %', Math.round(s.marginPct * 10) / 10, ps ? Math.round(ps.marginPct * 10) / 10 : null]);
+      rows.push(['Расходы, ₽', d.expenses.total, d.prevExpenses]);
+      rows.push(['Прибыль после расходов, ₽', Math.round(net), prevNet !== null ? Math.round(prevNet) : null]);
     }
     rows.push(['Поступило денег, ₽', d.cash.total, d.prevCash]);
     rows.push([]);
@@ -131,7 +142,7 @@ export default function OwnerHome() {
           label="Продажи"
           value={fmt.money(s.revenue)}
           d={delta(s.revenue, ps?.revenue ?? null)}
-          onClick={() => navigate('/reports')}
+          onClick={() => navigate(`/reports?${q}`)}
           extra={
             <div className="ov-kpi-line" title={planTitle}>
               {pl.plan !== null ? (
@@ -155,7 +166,7 @@ export default function OwnerHome() {
             }
             value={fmt.money(s.grossProfit)}
             d={delta(s.grossProfit, ps?.grossProfit ?? null)}
-            onClick={() => navigate('/reports')}
+            onClick={() => navigate(`/reports?${q}`)}
             extra={
               <div className="ov-kpi-line">
                 <span>Маржа</span>
@@ -169,7 +180,7 @@ export default function OwnerHome() {
           label="Поступило денег"
           value={fmt.money(d.cash.total)}
           d={delta(d.cash.total, d.prevCash)}
-          onClick={() => navigate('/money')}
+          onClick={() => navigate(`/money?${q}`)}
           extra={
             <div className="ov-kpi-line" title={`Наличными в кассу: ${fmt.money(d.cash.cash)}. Ожидающие подтверждения переводы не входят`}>
               <span>На счёт</span>
@@ -259,10 +270,32 @@ export default function OwnerHome() {
             ariaLabel={`${series === 'all' ? 'Продажи' : series === 'retail' ? 'Розничные продажи' : 'Оптовые продажи'}: ${curLabel.toLowerCase()} столбцами, ${prevLabel.toLowerCase()} линией`}
             markKey={period.kind === 'today' ? undefined : today}
           />
-          <div className="ov-split">
-            <SplitItem label="Розница" value={fmt.money(s.retail)} d={delta(s.retail, ps?.retail ?? null)} />
-            <SplitItem label="Опт" value={fmt.money(s.wholesale)} d={delta(s.wholesale, ps?.wholesale ?? null)} />
-            <SplitItem label="Средний чек" value={fmt.money(s.avgReceipt)} d={delta(s.avgReceipt, ps?.avgReceipt ?? null)} />
+          <div className="ov-split-wrap">
+            <div className="ov-split">
+              <SplitItem label="Розница" value={fmt.money(s.retail)} d={delta(s.retail, ps?.retail ?? null)} />
+              <SplitItem label="Опт" value={fmt.money(s.wholesale)} d={delta(s.wholesale, ps?.wholesale ?? null)} />
+              <SplitItem label="Средний чек" value={fmt.money(s.avgReceipt)} d={delta(s.avgReceipt, ps?.avgReceipt ?? null)} />
+            </div>
+            {seeProfit ? (
+              <div className="ov-split">
+                <SplitItem label="Валовая прибыль" value={fmt.money(s.grossProfit)} d={delta(s.grossProfit, ps?.grossProfit ?? null)} title="Выручка минус себестоимость проданного" />
+                <SplitItem
+                  label="Расходы"
+                  value={fmt.money(d.expenses.total)}
+                  d={delta(d.expenses.total, d.prevExpenses)}
+                  good="down"
+                  onClick={() => navigate(`/money/expenses?${q}`)}
+                  title={d.expenses.byCategory.length ? `Из журнала денег: ${d.expenses.byCategory.slice(0, 4).map((x) => `${x.category.toLowerCase()} ${fmt.money(x.amount)}`).join(', ')}` : 'Расходов за период не было'}
+                />
+                <SplitItem
+                  label="После расходов"
+                  value={fmt.money(net)}
+                  d={delta(net, prevNet)}
+                  tone={net < 0 ? 'bad' : undefined}
+                  title="Валовая прибыль минус расходы за период из журнала денег: аренда, зарплата, топливо, недостачи"
+                />
+              </div>
+            ) : null}
           </div>
         </Card>
 
@@ -285,7 +318,16 @@ export default function OwnerHome() {
           {signalLines ? (
             <div className="list ov-sig-list">
               {topSignals(arranged.important.length ? arranged.important : arranged.rest, 6).map((sig) => (
-                <SignalLine key={sig.id} s={sig} actionLabel={actions.label(sig)} onAction={() => actions.run(sig)} />
+                <SignalLine
+                  key={sig.id}
+                  s={sig}
+                  actionLabel={actions.label(sig)}
+                  onAction={() => actions.run(sig)}
+                  assigned={(() => {
+                    const t = taskOf(marks, sig);
+                    return t ? <AssignedMark task={t} meId={me.id} db={db} /> : null;
+                  })()}
+                />
               ))}
             </div>
           ) : (
@@ -358,7 +400,7 @@ export default function OwnerHome() {
           </div>
         </Card>
 
-        <Card title="Заказы с задержкой" actions={<GoButton onClick={() => navigate('/overview/attention')} label="Все задержки" />}>
+        <Card title="Заказы с задержкой" actions={<GoButton onClick={() => navigate('/overview/attention?kind=order_delay')} label="Все задержки" />}>
           <div className="ov-four-value">{d.delayed.length ? fmt.count(d.delayed.length, 'заказ', 'заказа', 'заказов') : 'Нет'}</div>
           {delayedTop.length ? (
             <div className="ov-mini">
@@ -424,14 +466,24 @@ function topSignals<T extends { kind: string }>(list: T[], n: number): T[] {
   return out;
 }
 
-function SplitItem({ label, value, d }: { label: string; value: string; d: Delta }) {
-  return (
-    <div>
-      <span className="ov-split-label">
-        {label}
-        {d ? <span className={d.dir === 'up' ? 'c-ok' : d.dir === 'down' ? 'c-bad' : 'muted'}>{d.text}</span> : null}
+function SplitItem({ label, value, d, good = 'up', onClick, title, tone }: { label: string; value: string; d: Delta; good?: 'up' | 'down'; onClick?: () => void; title?: string; tone?: 'bad' }) {
+  const cls = !d || d.dir === 'flat' ? 'muted' : d.dir === good ? 'c-ok' : 'c-bad';
+  const body = (
+    <>
+      <span className="ov-split-label">{label}</span>
+      <span className="ov-split-line">
+        <span className={tone === 'bad' ? 'ov-split-value c-bad' : 'ov-split-value'}>{value}</span>
+        {d ? <span className={cx('ov-split-delta', cls)}>{d.text}</span> : null}
       </span>
-      <span className="ov-split-value">{value}</span>
+    </>
+  );
+  return onClick ? (
+    <button type="button" className="ov-split-item is-click" onClick={onClick} title={title}>
+      {body}
+    </button>
+  ) : (
+    <div className="ov-split-item" title={title}>
+      {body}
     </div>
   );
 }

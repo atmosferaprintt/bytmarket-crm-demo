@@ -16,7 +16,8 @@ const FILTER: FilterDef<ClientRow> = {
     { value: 'all', label: 'Все' },
     { value: 'debt', label: 'С долгом', test: (r) => r.b.debt > 0 },
     { value: 'overdue', label: 'Просрочка', test: (r) => r.b.overdue > 0 },
-    { value: 'stale', label: 'Давно не заказывали', test: (r) => r.stale },
+    // один термин везде — как на рабочем столе и в карточке клиента
+    { value: 'missed', label: 'Пропустили привычный заказ', test: (r) => r.missed },
     { value: 'over', label: 'Сверх лимита', test: (r) => r.overLimit },
     { value: 'retail', label: 'Розница', test: (r) => r.c.priceType === 'retail' },
   ],
@@ -129,7 +130,6 @@ export function ClientsPage() {
     {
       key: 'limit',
       header: 'Остаток лимита',
-      width: 96,
       csv: (r) => (r.c.creditLimit > 0 ? r.b.creditLeft : ''),
       align: 'right',
       render: (r) =>
@@ -147,13 +147,12 @@ export function ClientsPage() {
     {
       key: 'last',
       header: 'Последняя покупка',
-      width: 132,
       render: (r) => (
         <span className="cl-cell-stack">
           <span className="nowrap">{r.b.lastOrderAt ? fmt.relDate(r.b.lastOrderAt, today) : <span className="faint">ещё не покупал</span>}</span>
           {r.missed ? (
             <span title={`Пропустил привычный заказ: обычно заказывает раз в ${fmt.count(r.c.orderEveryDays ?? 0, 'день', 'дня', 'дней')}, с последней покупки прошло ${fmt.count(r.daysSince ?? 0, 'день', 'дня', 'дней')}`}>
-              <Chip tone="warn">Пропустил заказ</Chip>
+              <Chip tone="warn">Пропустил привычный заказ</Chip>
             </span>
           ) : null}
         </span>
@@ -164,7 +163,6 @@ export function ClientsPage() {
     {
       key: 'sales90',
       header: 'Продажи за 90 дней',
-      width: 118,
       csv: (r) => r.sales90,
       align: 'right',
       render: (r) => (r.sales90 ? fmt.money(r.sales90) : <span className="faint">—</span>),

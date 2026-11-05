@@ -1,6 +1,6 @@
 /* Карточка «Закупка» в боковой панели: строки «заказано — принято — брак — причина», подтверждение,
    приёмка (частичная оставляет «ожидается», брак уходит в карантин), оплаты и долг по закупке. */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, PackageCheck, Printer, Wallet } from 'lucide-react';
 import type { EntityDrawerProps } from '../../shell/entities';
 import { EntityLink } from '../../shell/entities';
@@ -17,10 +17,8 @@ import {
   ConfirmButton,
   Drawer,
   EmptyState,
-  Input,
   MoreMenu,
   Notice,
-  Select,
   StatList,
   StatRow,
   StatusChip,
@@ -34,27 +32,27 @@ import {
 import { act } from '../stock/act';
 import { inBoxes } from '../stock/calc';
 import { usePrint } from '../stock/print';
-import { DIFF_REASONS, purchasePayments, purchaseRowOf } from './calc';
+import { purchasePayments, purchaseRowOf } from './calc';
+import { ReceiveBody, recvError, recvPayload, recvRows, type RecvLine } from './receive';
 import { PaySupplierModal } from './PaySupplierModal';
 import './purchases.css';
 
-interface RecvLine {
-  received: string;
-  defect: string;
-  reason: string;
-}
-
-export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
+export default function EntityDrawer({ id, onClose, initialMode = 'view' }: EntityDrawerProps & { initialMode?: 'view' | 'receive' }) {
   const db = useDB();
   const version = useDBVersion();
   const { me, can } = useSession();
   const seeCost = can('seeCost');
   const ix = indexes(db);
   const printer = usePrint();
-  const [mode, setMode] = useState<'view' | 'receive'>('view');
+  const [mode, setMode] = useState<'view' | 'receive'>(initialMode);
   const [recv, setRecv] = useState<Record<string, RecvLine>>({});
   const [final, setFinal] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
+  const errorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [error]);
   const [pay, setPay] = useState(false);
   const pu = get(db, 'purchases', id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -78,38 +76,27 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
   const author = ix.employees.get(pu.authorId)?.name ?? '—';
   const approver = pu.approvedBy ? ix.employees.get(pu.approvedBy)?.name ?? '—' : null;
 
+  // поля приёмки пустые: кладовщик вписывает, что пришло, или нажимает «Всё сходится»
   const startReceive = () => {
-    const r: Record<string, RecvLine> = {};
-    for (const l of pu.lines) r[l.productId] = { received: String(Math.max(l.received ?? 0, l.qty)), defect: String(l.defect), reason: l.diffReason ?? '' };
-    setRecv(r);
+    setRecv({});
     setFinal(false);
     setError(null);
+    setTried(false);
     setMode('receive');
   };
 
-  const recvRows = pu.lines.map((l) => {
-    const v = recv[l.productId] ?? { received: '', defect: '0', reason: '' };
-    const got = v.received === '' ? null : Number(v.received);
-    const bad = Number(v.defect || 0);
-    const mismatch = got !== null && (got !== l.qty || bad > 0);
-    return { l, v, got, bad, mismatch };
-  });
+  const rRows = recvRows(pu, recv, final, ix);
+  const emptyLines = rRows.filter((x) => x.now === null && x.wait > 0).length;
 
   const submitReceive = () => {
     setError(null);
-    for (const x of recvRows) {
-      const p = ix.products.get(x.l.productId);
-      if (x.got === null) return setError(`Укажите, сколько принято: ${p?.name}`);
-      if (x.bad > x.got) return setError(`${p?.name}: брак больше принятого`);
-      if (x.got < (x.l.received ?? 0)) return setError(`${p?.name}: раньше уже приняли ${fmt.qty(x.l.received ?? 0)}. Уменьшить нельзя — оформите списание`);
-      if (x.bad > 0 && !x.v.reason) return setError(`Укажите причину брака: ${p?.name}`);
-      if (final && x.got !== x.l.qty && !x.v.reason) return setError(`Укажите причину расхождения: ${p?.name} — заказано ${fmt.qty(x.l.qty)}, принято ${fmt.qty(x.got)}`);
-    }
-    const lines = recvRows.map((x) => ({ productId: x.l.productId, received: x.got!, defect: x.bad, ...(x.v.reason ? { diffReason: x.v.reason } : {}) }));
-    const payload = { purchaseId: pu.id, lines, final };
-    const r = act('purchase.receive', payload, me.id);
+    setTried(true);
+    const err = recvError(rRows, final);
+    if (err) return setError(err);
+    const r = act('purchase.receive', { purchaseId: pu.id, lines: recvPayload(rRows, final), final }, me.id);
     if (!r.ok) return setError(r.error);
     toast(r.info ? `Приёмка проведена: ${r.info}` : 'Приёмка проведена');
+    setRecv({});
     setMode('view');
   };
 
@@ -253,12 +240,11 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
           </StatList>
         </div>
       ) : (
-        <Notice tone="info" title="Приёмка">
-          Впишите, сколько пришло и сколько брака. Если приехало не всё, остаток останется в «Ожидается». Брак уйдёт в карантин и в продажу не попадёт
-        </Notice>
+        <ReceiveBody pu={pu} rows={rRows} setRecv={setRecv} tried={tried} />
       )}
       {pu.comment && mode === 'view' ? <div className="t-13 ink-2">{pu.comment}</div> : null}
 
+      {mode === 'view' ? (
       <section className="card is-flush">
         <div className="table-scroll">
           <table className="table table-dense pur-lines stock-tight-table">
@@ -266,20 +252,20 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
               <tr>
                 <th>Товар</th>
                 <th className="num">Заказано</th>
-                <th className={mode === 'receive' ? undefined : 'num'}>Принято</th>
-                <th className={mode === 'receive' ? undefined : 'num'}>Брак</th>
+                <th className="num">Принято</th>
+                <th className="num">Брак</th>
                 <th>Причина</th>
-                {seeCost && mode === 'view' ? <th className="num">Цена</th> : null}
-                {seeCost && mode === 'view' ? <th className="num">Сумма</th> : null}
+                {seeCost ? <th className="num">Цена</th> : null}
+                {seeCost ? <th className="num">Сумма</th> : null}
               </tr>
             </thead>
             <tbody>
-              {recvRows.map(({ l, v, got, bad, mismatch }) => {
+              {pu.lines.map((l) => {
                 const p = ix.products.get(l.productId);
                 const short = l.received !== null && l.received < l.qty;
                 const boxes = p ? inBoxes(p, l.qty) : null;
                 return (
-                  <tr key={l.productId} className={cx(mode === 'receive' && mismatch && 'pur-row-diff')}>
+                  <tr key={l.productId}>
                     <td>
                       {p ? (
                         <EntityLink type="product" id={p.id}>
@@ -294,31 +280,11 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
                       <span className="w-600" title={boxes ?? `${l.boxes} × ${l.boxSize}`}>{fmt.qty(l.qty)}</span>
                       <span className="muted nowrap"> · {l.boxes} кор.</span>
                     </td>
-                    {mode === 'receive' ? (
-                      <>
-                        <td>
-                          <Input size="sm" className="num pur-num" inputMode="numeric" value={v.received} onChange={(e) => setRecv((r) => ({ ...r, [l.productId]: { ...v, received: e.target.value.replace(/[^\d]/g, '') } }))} aria-label="Принято" />
-                        </td>
-                        <td>
-                          <Input size="sm" className="num pur-num" inputMode="numeric" value={v.defect} onChange={(e) => setRecv((r) => ({ ...r, [l.productId]: { ...v, defect: e.target.value.replace(/[^\d]/g, '') } }))} aria-label="Брак" />
-                        </td>
-                        <td>
-                          {mismatch || v.reason ? (
-                            <Select size="sm" value={v.reason} placeholder="Причина" onChange={(e) => setRecv((r) => ({ ...r, [l.productId]: { ...v, reason: e.target.value } }))} options={DIFF_REASONS.map((x) => ({ value: x, label: x }))} />
-                          ) : (
-                            <span className="faint">{got === l.qty ? 'сходится' : ''}</span>
-                          )}
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td className={cx('num', short && 'c-warn w-700')}>{l.received === null ? <span className="faint">—</span> : fmt.num(l.received)}</td>
-                        <td className={cx('num', l.defect > 0 && 'c-bad w-700')}>{l.received === null ? <span className="faint">—</span> : l.defect ? fmt.num(l.defect) : <span className="faint">0</span>}</td>
-                        <td>{l.diffReason ? <span className="pur-reason">{l.diffReason}</span> : <span className="faint">—</span>}</td>
-                      </>
-                    )}
-                    {seeCost && mode === 'view' ? <td className="num muted">{fmt.price(l.price)}</td> : null}
-                    {seeCost && mode === 'view' ? <td className="num w-600">{fmt.money((l.received === null ? l.qty : l.received - l.defect) * l.price)}</td> : null}
+                    <td className={cx('num', short && 'c-warn w-700')}>{l.received === null ? <span className="faint">—</span> : fmt.num(l.received)}</td>
+                    <td className={cx('num', l.defect > 0 && 'c-bad w-700')}>{l.received === null ? <span className="faint">—</span> : l.defect ? fmt.num(l.defect) : <span className="faint">0</span>}</td>
+                    <td>{l.diffReason ? <span className="pur-reason">{l.diffReason}</span> : <span className="faint">—</span>}</td>
+                    {seeCost ? <td className="num muted">{fmt.price(l.price)}</td> : null}
+                    {seeCost ? <td className="num w-600">{fmt.money((l.received === null ? l.qty : l.received - l.defect) * l.price)}</td> : null}
                   </tr>
                 );
               })}
@@ -327,22 +293,31 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
               <tr>
                 <td>Итого {fmt.count(pu.lines.length, 'позиция', 'позиции', 'позиций')}</td>
                 <td className="num">{fmt.num(row.qty)}</td>
-                <td className={mode === 'receive' ? undefined : 'num'}>{mode === 'receive' ? fmt.num(recvRows.reduce((z, x) => z + (x.got ?? 0), 0)) : fmt.num(pu.lines.reduce((z, l) => z + (l.received ?? 0), 0))}</td>
-                <td className={mode === 'receive' ? undefined : 'num'}>{mode === 'receive' ? fmt.num(recvRows.reduce((z, x) => z + x.bad, 0)) : fmt.num(row.defect)}</td>
+                <td className="num">{fmt.num(pu.lines.reduce((z, l) => z + (l.received ?? 0), 0))}</td>
+                <td className="num">{fmt.num(row.defect)}</td>
                 <td />
-                {seeCost && mode === 'view' ? <td /> : null}
-                {seeCost && mode === 'view' ? <td className="num">{fmt.money(pu.state === 'ordered' || pu.state === 'draft' ? row.ordered : row.accepted)}</td> : null}
+                {seeCost ? <td /> : null}
+                {seeCost ? <td className="num">{fmt.money(pu.state === 'ordered' || pu.state === 'draft' ? row.ordered : row.accepted)}</td> : null}
               </tr>
             </tfoot>
           </table>
         </div>
       </section>
-
-      {mode === 'receive' && recvRows.some((x) => x.bad > 0) ? (
-        <Notice tone="warn">Брак {fmt.qty(recvRows.reduce((z, x) => z + Math.max(0, x.bad - x.l.defect), 0))} уйдёт в карантин. Поставщику оплачиваем только годный товар</Notice>
       ) : null}
-      {mode === 'receive' && !final && recvRows.some((x) => x.got !== null && x.got < x.l.qty) ? <Notice>Приехало не всё — закупка станет «Принята частично», остальное будет ждать</Notice> : null}
-      {error ? <Notice tone="bad">{error}</Notice> : null}
+
+      {mode === 'receive' && rRows.some((x) => x.defNow > 0) ? (
+        <Notice tone="warn">Брак {fmt.qty(rRows.reduce((z, x) => z + x.defNow, 0))} уйдёт в карантин. Поставщику оплачиваем только годный товар</Notice>
+      ) : null}
+      {mode === 'receive' && !final && (emptyLines > 0 || rRows.some((x) => x.now !== null && x.now < x.wait)) ? (
+        <Notice>
+          {emptyLines ? `Не заполнено ${fmt.count(emptyLines, 'строка', 'строки', 'строк')}. ` : ''}Привезли не всё — закупка станет «Принята частично», остальное будет ждать. Больше не ждём — отметьте «Закрыть закупку»
+        </Notice>
+      ) : null}
+      {error ? (
+        <div ref={errorRef}>
+          <Notice tone="bad">{error}</Notice>
+        </div>
+      ) : null}
 
       {seeCost && mode === 'view' && (pu.state === 'partial' || pu.state === 'received') ? (
         <Card title="Оплаты" flush>
