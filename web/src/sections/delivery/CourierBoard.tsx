@@ -2,7 +2,6 @@
 import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronUp, Clock as ClockIcon, ListOrdered, MessageSquare, Navigation, Package } from 'lucide-react';
 import type { Delivery, ISODate } from '../../data/types';
-import { PAY_METHOD_NAMES } from '../../data/types';
 import { useDB, useDBVersion } from '../../data/store';
 import { courierCash, indexes } from '../../data/selectors';
 import { useSession } from '../../roles/session';
@@ -10,7 +9,7 @@ import { useScoped } from '../../roles/scope';
 import { useOpenEntity } from '../../shell/entities';
 import { Button, EmptyState, cx, fmt } from '../../ui';
 import { CallButton, LateChip, StateChip } from './parts';
-import { byRoute, clockOf, dayLabel, deliveredAt, forDay, kgText, lastFail, mapUrl, placesText, routeUrl, type Clock } from './lib';
+import { byRoute, clockOf, dayLabel, deliveredAt, deliveredMoneyText, forDay, kgText, lastFail, mapUrl, notHandedIn, onHandLabel, onHandSince, placesText, routeUrl, type Clock } from './lib';
 import { actsFor, useDeliveryFlow } from './flow';
 
 /** Мои доставки на день по маршруту. */
@@ -30,14 +29,19 @@ export function useMyDay(day: ISODate) {
   }, [db, version, scoped, day]);
 }
 
-/** «Осталось 4 из 7 · Вручено 3 · На руках 8 450 ₽». */
+/** «Осталось 4 из 7 · Вручено 3 · На руках, с 4 ноября 8 450 ₽»: на руках — все несданные наличные, не только за сегодня. */
 export function CourierSummary({ day }: { day: ISODate }) {
   const db = useDB();
   const { me } = useSession();
-  const { list, active, done } = useMyDay(day);
+  const { list, active, done, c } = useMyDay(day);
   const cash = courierCash(db, me.id);
+  const since = onHandSince(db, me.id);
+  const todayCash = notHandedIn(db, me.id)
+    .filter((d) => (deliveredAt(d) ?? d.date).slice(0, 10) >= c.today)
+    .reduce((z, d) => z + d.collected, 0);
+  const onHandTitle = since && since < c.today ? `За сегодня ${fmt.money(todayCash)}, с прошлых дней ${fmt.money(cash.onHand - todayCash)}` : undefined;
   return (
-    <div className="card dl-sum">
+    <div className="card dl-sum is-cash-wide">
       <div className="dl-sum-item">
         <span className="dl-sum-label">Осталось</span>
         <span className="dl-sum-value">
@@ -48,8 +52,8 @@ export function CourierSummary({ day }: { day: ISODate }) {
         <span className="dl-sum-label">Вручено</span>
         <span className="dl-sum-value">{done.length}</span>
       </div>
-      <div className="dl-sum-item">
-        <span className="dl-sum-label">На руках</span>
+      <div className="dl-sum-item" title={onHandTitle}>
+        <span className="dl-sum-label">{onHandLabel(since, c.today)}</span>
         <span className="dl-sum-value">{fmt.money(cash.onHand)}</span>
       </div>
     </div>
@@ -200,7 +204,7 @@ export function CourierBoard({ day }: { day: ISODate }) {
           <button type="button" className="dl-board-toggle" onClick={() => setShowDone((v) => !v)} aria-expanded={showDone}>
             <span className="grow">
               Вручено · {done.length}
-              {collected ? <span className="muted w-600"> · {fmt.money(collected)}</span> : null}
+              {collected ? <span className="muted w-600"> · получено {fmt.money(collected)}</span> : null}
             </span>
             {showDone ? <ChevronUp /> : <ChevronDown />}
           </button>
@@ -213,12 +217,9 @@ export function CourierBoard({ day }: { day: ISODate }) {
                     <span className="grow col" style={{ gap: 2, minWidth: 0 }}>
                       <span className="w-700 ellipsis">{d.address}</span>
                       <span className="t-12 muted ellipsis">
-                        {ix.clients.get(d.clientId)?.name ?? d.contactName} · {fmt.time(at)}
+                        {ix.clients.get(d.clientId)?.name ?? d.contactName} · вручено в {fmt.time(at)}
                       </span>
-                    </span>
-                    <span className="col" style={{ gap: 2, alignItems: 'flex-end' }}>
-                      <span className="num w-700">{d.collected ? fmt.money(d.collected) : '—'}</span>
-                      {d.collected ? <span className="t-12 muted">{PAY_METHOD_NAMES[d.collectedMethod ?? 'cash']}</span> : null}
+                      <span className="t-13 ink-2 w-600">{deliveredMoneyText(d, ix.clients.get(d.clientId))}</span>
                     </span>
                   </button>
                 );

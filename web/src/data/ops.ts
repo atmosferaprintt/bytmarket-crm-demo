@@ -1979,6 +1979,8 @@ function visitPlan(db: DB, payload: { repId?: ID; clientId: ID; pointId?: ID; da
   const date = isoDate(p.date, 'Дата визита');
   const time = String(p.time ?? '');
   if (!/^\d{2}:\d{2}$/.test(time)) fail('Время визита: в виде «10:30»');
+  // в маршруте дня клиент один раз, даже если у него несколько точек
+  if (db.visits.some((x) => x.repId === repId && x.date === date && x.clientId === client.id)) fail(`${client.name} уже в маршруте на ${dayText(date)}`);
   let order = 0;
   for (const v of db.visits) if (v.repId === repId && v.date === date && v.routeOrder > order) order = v.routeOrder;
   const v: Visit = {

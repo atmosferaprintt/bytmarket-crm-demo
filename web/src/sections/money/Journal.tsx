@@ -277,18 +277,19 @@ export default function Journal() {
       csv: (r) => PAYMENT_STATUS[r.p.status].label,
       width: 150,
       render: (r) => (
-        <div className="col" style={{ gap: 2, alignItems: 'flex-start' }}>
+        <div className="col money-jr-status">
           <StatusChip s={PAYMENT_STATUS[r.p.status]} />
           {r.p.status === 'pending' && perms.confirm ? (
             <button
               type="button"
               className="link-button t-12"
+              title="Подтвердить по выписке банка"
               onClick={(e) => {
                 e.stopPropagation();
                 confirm(r.p.id);
               }}
             >
-              Подтвердить по выписке
+              Подтвердить
             </button>
           ) : null}
           {r.p.status === 'unidentified' && perms.confirm ? (

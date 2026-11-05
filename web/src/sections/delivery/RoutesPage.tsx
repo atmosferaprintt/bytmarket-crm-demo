@@ -9,7 +9,7 @@ import { PageHeader } from '../../shell/PageHeader';
 import { useOpenEntity } from '../../shell/entities';
 import { Avatar, Button, Chip, EmptyState, ProgressBar, cx, fmt, toast } from '../../ui';
 import { DayPicker, LateChip, StateChip, useDayParam } from './parts';
-import { byRoute, clockOf, forDay, kgText, loadsOf, placesText, routeUrl, shortDistrict, telUrl, type Clock, type CourierLoad } from './lib';
+import { byRoute, clockOf, deliveredMoneyText, forDay, kgText, loadsOf, onHandLabel, onHandSince, placesText, routeUrl, shortDistrict, telUrl, type Clock, type CourierLoad } from './lib';
 import { useDeliveryFlow } from './flow';
 
 export function RoutesPage() {
@@ -106,6 +106,7 @@ function RouteColumn({ load, c, canMove }: { load: CourierLoad; c: Clock; canMov
   const open = useOpenEntity();
   const ix = indexes(db);
   const cash = courierCash(db, load.courier.id);
+  const since = onHandSince(db, load.courier.id);
   const remaining = load.list.filter((d) => d.state === 'assigned' || d.state === 'on_way');
   const routePts = remaining.length ? remaining : load.list;
   const movable = load.list.filter((d) => d.state === 'assigned');
@@ -167,7 +168,7 @@ function RouteColumn({ load, c, canMove }: { load: CourierLoad; c: Clock; canMov
         </div>
         <ProgressBar value={load.done} max={Math.max(1, load.points)} />
         <div className="row t-13">
-          <span className="grow muted">На руках</span>
+          <span className="grow muted">{onHandLabel(since, c.today)}</span>
           <span className="num w-700">{fmt.money(cash.onHand)}</span>
         </div>
         {load.collect > 0 ? (
@@ -210,7 +211,7 @@ function RouteColumn({ load, c, canMove }: { load: CourierLoad; c: Clock; canMov
                 </span>
                 <span className="t-12 ink-2">
                   {placesText(d.places)}
-                  {d.collect > 0 ? ` · к получению ${fmt.money(d.collect)}` : ''}
+                  {d.state === 'delivered' ? ` · ${deliveredMoneyText(d, ix.clients.get(d.clientId))}` : d.collect > 0 ? ` · к получению ${fmt.money(d.collect)}` : ''}
                 </span>
               </span>
               {canMove && mi >= 0 && movable.length > 1 ? (

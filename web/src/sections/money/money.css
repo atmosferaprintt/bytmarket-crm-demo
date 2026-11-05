@@ -151,3 +151,7 @@
 .money-phone-card-top { display: flex; align-items: flex-start; gap: var(--sp-3); min-width: 0; }
 .money-phone-card-chips { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .money-phone-card-chips:empty { display: none; }
+
+/* журнал: чип статуса и короткое действие под ним укладываются в высоту обычной строки */
+.money-jr-status { gap: 0; align-items: flex-start; }
+.money-jr-status .link-button { line-height: 14px; }

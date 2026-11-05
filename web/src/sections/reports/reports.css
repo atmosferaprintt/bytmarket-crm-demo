@@ -90,3 +90,6 @@
 .rp-stock-col .chip { height: 18px; font-size: var(--fs-11); padding: 0 7px; }
 @media (max-width: 1360px) { .rp-clients .rp-name { max-width: 200px; } }
 .rp-dates { display: inline-flex; flex-direction: column; white-space: nowrap; line-height: 1.35; }
+
+/* значок «неполные данные» один — в заголовке колонки */
+.rp-head-mark { display: inline-flex; align-items: center; gap: 4px; }

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Info } from 'lucide-react';
 import { Avatar, Card, DataTable, fmt, type Column } from '../../ui';
 import { HBarList, PlanMeter, SegmentBar } from '../../ui/charts';
 import { useDB, useDBVersion } from '../../data/store';
@@ -7,7 +8,7 @@ import { ROLES } from '../../roles/roles';
 import { VISIT_RESULT } from '../../ui';
 import { staffRows, type StaffRow } from './calc';
 import { KpiTile } from '../overview/KpiTile';
-import { DocsDrawer, HowCalc, PartialMark, ReportTop, WrapHead, sum, useReportPeriod, type DocRow } from './parts';
+import { DocsDrawer, HowCalc, ReportTop, WrapHead, sum, useReportPeriod, type DocRow } from './parts';
 import { groupFacts, saleFacts, topCategoryId } from '../overview/analytics';
 import { planProgress } from '../../data/kpis';
 
@@ -33,6 +34,11 @@ export default function StaffReport() {
   const visitsDone = sum(reps, (r) => r.visits!.done);
   const visitsPlanned = sum(reps, (r) => r.visits!.planned);
   const visitOrders = sum(reps, (r) => r.visits!.order);
+  // чеков и заказов; «Средний» = «Продажи» ÷ это число — ровно по тем цифрам, что стоят в строке
+  const docsOf = (r: StaffRow) => r.receipts + r.orders;
+  const avgOf = (r: StaffRow) => (docsOf(r) ? Math.round(r.agg.revenue / docsOf(r)) : 0);
+  const known = (r: StaffRow) => (r.agg.lines ? r.agg.knownLines / r.agg.lines : 1);
+  const partial = rows.some((r) => known(r) < 1);
 
   const cols: Column<StaffRow>[] = [
     {
@@ -53,13 +59,19 @@ export default function StaffReport() {
     { key: 'revenue', header: 'Продажи', align: 'right', render: (r) => fmt.money(r.agg.revenue), sort: (r) => r.agg.revenue, total: (rs) => fmt.money(sum(rs, (r) => r.agg.revenue)) },
     {
       key: 'profit',
-      header: 'Прибыль',
+      header: partial ? (
+        <span className="rp-head-mark" title="Неполные данные: у части проданных товаров не указана себестоимость, поэтому прибыль занижена. Доля строк с себестоимостью — в подсказке у суммы">
+          Прибыль
+          <Info className="rp-warn-icon" aria-label="Неполные данные" />
+        </span>
+      ) : (
+        'Прибыль'
+      ),
       align: 'right',
       hidden: !seeProfit,
       render: (r) => (
-        <span title={r.margin !== null ? `Маржа ${fmt.pct(r.margin)}` : 'Себестоимость неизвестна'}>
+        <span title={[r.margin !== null ? `Маржа ${fmt.pct(r.margin)}` : 'Себестоимость неизвестна', known(r) < 1 ? `себестоимость известна по ${Math.round(known(r) * 100)} % строк` : ''].filter(Boolean).join(', ')}>
           {fmt.money(r.agg.profit)}
-          {r.agg.lines && r.agg.knownLines < r.agg.lines ? <PartialMark share={r.agg.knownLines / r.agg.lines} /> : null}
         </span>
       ),
       sort: (r) => r.agg.profit,
@@ -67,13 +79,25 @@ export default function StaffReport() {
     },
     {
       key: 'docs',
-      header: 'Покупок',
+      header: <WrapHead width={64}>Чеков и заказов</WrapHead>,
       align: 'right',
-      render: (r) => <span title={`Чеков: ${r.receipts}, заказов: ${r.orders}. Повторные покупки: ${r.repeatDocs}`}>{fmt.num(r.receipts + r.orders)}</span>,
-      sort: (r) => r.receipts + r.orders,
-      total: (rs) => fmt.num(sum(rs, (r) => r.receipts + r.orders)),
+      render: (r) => <span title={`Чеков: ${r.receipts}, заказов: ${r.orders}. Повторные покупки: ${r.repeatDocs}`}>{fmt.num(docsOf(r))}</span>,
+      sort: docsOf,
+      csv: docsOf,
+      total: (rs) => fmt.num(sum(rs, docsOf)),
     },
-    { key: 'avg', header: 'Средний', align: 'right', render: (r) => (r.avg ? fmt.money(r.avg) : '—'), sort: (r) => r.avg },
+    {
+      key: 'avg',
+      header: <span title="Продажи ÷ чеков и заказов">Средний</span>,
+      align: 'right',
+      render: (r) => (avgOf(r) ? fmt.money(avgOf(r)) : '—'),
+      sort: avgOf,
+      csv: avgOf,
+      total: (rs) => {
+        const n = sum(rs, docsOf);
+        return n ? fmt.money(Math.round(sum(rs, (r) => r.agg.revenue) / n)) : '—';
+      },
+    },
     { key: 'new', header: 'Новых', align: 'right', render: (r) => (r.newClients ? fmt.num(r.newClients) : '—'), sort: (r) => r.newClients, total: (rs) => fmt.num(sum(rs, (r) => r.newClients)) },
     { key: 'disc', header: 'Скидки', align: 'right', render: (r) => (r.agg.manualDiscount > 0 ? fmt.money(r.agg.manualDiscount) : '—'), sort: (r) => r.agg.manualDiscount, total: (rs) => fmt.money(sum(rs, (r) => r.agg.manualDiscount)) },
     { key: 'ret', header: 'Возвраты', align: 'right', render: (r) => (r.agg.returns ? fmt.money(r.agg.returns) : '—'), sort: (r) => r.agg.returns, total: (rs) => fmt.money(sum(rs, (r) => r.agg.returns)) },
@@ -231,7 +255,7 @@ export default function StaffReport() {
         rows={[
           ['Чей результат', 'Опт засчитывается ответственному за заказ, розница — продавцу, который пробил чек. Одна продажа — один сотрудник, двойного счёта нет. Визит представителя считается визитом, а деньги по заказу с визита — только по заказу.'],
           ['Продажи', 'Как в отчёте по товарам: опт — по отгрузке, розница — по чекам, возвраты — минусом в день возврата.'],
-          ['Чеков и заказов, средний', 'Чеки продажи и заказы (без черновиков и отмен), созданные за период. Средний — их сумма ÷ количество.'],
+          ['Чеков и заказов, средний', 'Чеки продажи и заказы (без черновиков и отмен), созданные за период. Средний — продажи сотрудника ÷ чеков и заказов, по цифрам из той же строки.'],
           ['Новые клиенты', 'Клиент заведён в базе после 5 августа, и первая его покупка — в выбранном периоде. Засчитывается тому, кто её оформил. Повторные — покупки клиентов, которые уже покупали раньше.'],
           ['Скидки и отмены', 'Ручные скидки — то, что сотрудник дал сверх акции. Отмены — заказы ответственного, отменённые за период.'],
           ['Долг клиентов', 'Долг на сегодня по клиентам, закреплённым за сотрудником. Красным — если есть просрочка.'],

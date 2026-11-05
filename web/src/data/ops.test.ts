@@ -598,6 +598,9 @@ describe('ошибка не меняет базу', () => {
     expect(() => op('payment.transfer', { from: 'shop_cash', to: 'bank', amount: 99999999 }, ACCOUNTANT)).toThrow(/Касса магазина/);
     expect(() => op('shift.open', {}, SELLER)).toThrow(/Смена уже открыта/);
     expect(() => op('visit.complete', { visitId: db.visits.find((v) => v.state === 'planned' && v.repId === 'e-abdullaev')!.id, result: 'refusal' }, 'e-abdullaev')).toThrow(/Причина отказа/);
+    // клиент уже в маршруте на сегодня — второй визит к нему (и к другой его точке) не планируется
+    const inRoute = db.visits.find((v) => v.date === T && v.repId === 'e-mironova')!;
+    expect(() => op('visit.plan', { repId: 'e-mironova', clientId: inRoute.clientId, date: T, time: '17:30' }, 'e-mironova')).toThrow(/уже в маршруте/);
     expect(JSON.stringify({ ...db, meta: null })).toBe(after1);
   });
 });

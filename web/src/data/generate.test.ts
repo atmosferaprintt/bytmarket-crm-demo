@@ -5,7 +5,8 @@ import { generate } from './generate';
 import { checkInvariants } from './invariants';
 import { isEan13, isInn } from './codes';
 import { accountBalances, clientBalance, courierCash, orderPayment, salesForPeriod, shiftSummary, stockIndex, supplierBalance } from './selectors';
-import { dow, plusDays } from './dates';
+import { diffDays, dow, plusDays } from './dates';
+import { MISSED_ORDER_FACTOR } from './thresholds';
 
 let db: DB;
 let genMs = 0;
@@ -494,6 +495,50 @@ describe('замечания проверяющих', () => {
       expect(c.name).not.toMatch(/Пятёрочка/);
     }
     expect(db.clients.some((c) => c.name === 'ТСЖ «Звёздный»' && c.kind === 'ooo')).toBe(true);
+  });
+
+  it('имена клиентов уникальны, у ИП фамилии не повторяются (Есенов и Есенова — одна фамилия)', () => {
+    const names = db.clients.map((c) => c.name);
+    expect(new Set(names).size).toBe(names.length);
+    // фамилия в мужской форме: «Есенова» → «Есенов», «Тихонова» → «Тихонов»
+    const root = (s: string): string => (/(ов|ев|ёв|ин|ын)а$/.test(s) ? s.slice(0, -1) : s.endsWith('ая') ? s.slice(0, -2) + 'ий' : s);
+    const seen = new Map<string, string>();
+    for (const c of db.clients.filter((x) => x.kind === 'ip')) {
+      const m = /^ИП (\S+) · /.exec(c.name);
+      expect(m, c.name).not.toBeNull();
+      const r = root(m![1]);
+      expect(seen.get(r), `${c.name} и ${seen.get(r)}`).toBeUndefined();
+      seen.set(r, c.name);
+    }
+    expect(seen.size).toBeGreaterThanOrEqual(40);
+  });
+
+  it('в маршруте представителя на день каждый клиент один раз', () => {
+    const route = new Map<string, Set<string>>();
+    for (const v of db.visits) {
+      const k = v.repId + ' ' + v.date;
+      const s = route.get(k) ?? new Set<string>();
+      expect(s.has(v.clientId), `${k}: ${v.clientId} дважды`).toBe(false);
+      s.add(v.clientId);
+      route.set(k, s);
+    }
+    expect(route.size).toBeGreaterThan(100);
+  });
+
+  it('пропустили привычный заказ: у Соколова 1–2 клиента, у Петровой хотя бы один', () => {
+    // правило раздела «Клиенты»: активный, не розница, нет заказа в работе, с последней покупки больше частоты × MISSED_ORDER_FACTOR
+    const open = new Set(db.orders.filter((o) => o.state === 'request' || o.state === 'confirmed' || o.state === 'draft').map((o) => o.clientId));
+    const missed = (owner: string): string[] =>
+      db.clients
+        .filter((c) => c.ownerId === owner && c.active && c.orderEveryDays && c.segment !== 'retail' && !open.has(c.id))
+        .filter((c) => {
+          const last = clientBalance(db, c.id).lastOrderAt;
+          return last !== null && diffDays(last.slice(0, 10), T) > c.orderEveryDays! * MISSED_ORDER_FACTOR;
+        })
+        .map((c) => c.name);
+    expect(missed('e-sokolov').length).toBeGreaterThanOrEqual(1);
+    expect(missed('e-sokolov').length).toBeLessThanOrEqual(2);
+    expect(missed('e-petrova').length).toBeGreaterThanOrEqual(1);
   });
 
   it('задачи: имя клиента в кавычках не стоит сразу после глагола или предлога без слова «клиент»', () => {

@@ -21,6 +21,7 @@ import {
   SHOP_CHAINS,
   SHOP_NAMES,
   SURNAMES,
+  SURNAMES_SPARE,
   femaleSurname,
 } from './names';
 
@@ -56,11 +57,49 @@ function phone(rng: Rng): string {
   return '+79' + rng.pick(PHONE_CODES).slice(1) + String(rng.int(1000000, 9999999));
 }
 
-function person(rng: Rng, female: boolean): { first: string; last: string; patr: string } {
-  const last = rng.pick(SURNAMES);
+interface Person {
+  first: string;
+  last: string; // в нужном роде: «Есенова»
+  patr: string;
+  root: string; // мужская форма из списка: «Есенов»
+}
+
+function person(rng: Rng, female: boolean): Person {
+  const root = rng.pick(SURNAMES);
   return female
-    ? { first: rng.pick(FEMALE_FIRST), last: femaleSurname(last), patr: rng.pick(FEMALE_PATRONYMIC) }
-    : { first: rng.pick(MALE_FIRST), last, patr: rng.pick(MALE_PATRONYMIC) };
+    ? { first: rng.pick(FEMALE_FIRST), last: femaleSurname(root), patr: rng.pick(FEMALE_PATRONYMIC), root }
+    : { first: rng.pick(MALE_FIRST), last: root, patr: rng.pick(MALE_PATRONYMIC), root };
+}
+
+interface IpOwner {
+  client: Client;
+  root: string;
+  female: boolean;
+  contact?: ClientContact; // карточка владельца в контактах, если она есть
+}
+
+/** У каждого ИП своя фамилия: «ИП Есенов» у трёх разных клиентов выглядит как один клиент с разным долгом.
+    Повторы получают свободную фамилию — сначала ту, которой нет ни у кого из людей в базе. Остальные имена не меняются. */
+function uniqueIpSurnames(rng: Rng, owners: IpOwner[], peopleRoots: Set<string>): void {
+  const used = new Set<string>();
+  const repeats: IpOwner[] = [];
+  for (const x of owners) {
+    if (used.has(x.root)) repeats.push(x);
+    else used.add(x.root);
+  }
+  const pool = [...new Set([...SURNAMES, ...SURNAMES_SPARE])].filter((s) => !used.has(s));
+  const free = [...rng.shuffle(pool.filter((s) => !peopleRoots.has(s))), ...rng.shuffle(pool.filter((s) => peopleRoots.has(s)))];
+  for (const x of repeats) {
+    const root = free.shift();
+    if (!root) throw new Error('Не хватает фамилий для ИП — пополните SURNAMES_SPARE');
+    used.add(root);
+    const was = x.female ? femaleSurname(x.root) : x.root;
+    const now = x.female ? femaleSurname(root) : root;
+    if (!x.client.name.startsWith(`ИП ${was} · `)) throw new Error(`Название ИП не по образцу: ${x.client.name}`);
+    x.client.name = `ИП ${now} · ` + x.client.name.slice(`ИП ${was} · `.length);
+    if (x.contact?.name.endsWith(' ' + was)) x.contact.name = x.contact.name.slice(0, -was.length) + now;
+    x.root = root;
+  }
 }
 
 const NAMES_GEN = new Set(['Николая']);
@@ -169,6 +208,13 @@ export function buildClients(db: DB, rng: Rng, meta: ProdMeta[], startDate: ISOD
   const nextPoint = (): string => 'pt-' + ++pointN;
   const nextContact = (): string => 'ct-' + ++contactN;
   const metas: ClientMeta[] = [];
+  const ipOwners: IpOwner[] = [];
+  const peopleRoots = new Set<string>();
+  const who = (female: boolean): Person => {
+    const p = person(rng, female);
+    peopleRoots.add(p.root);
+    return p;
+  };
   const usedShopNames = new Set<string>();
   const shopName = (): string => {
     for (let i = 0; i < 200; i++) {
@@ -184,7 +230,7 @@ export function buildClients(db: DB, rng: Rng, meta: ProdMeta[], startDate: ISOD
     kind === 'ooo' ? makeInn10('30' + String(rng.int(1000000, 9999999))) : makeInn12('30' + String(rng.int(10000000, 99999999)));
 
   const contact = (roles: string[], female?: boolean): ClientContact => {
-    const p = person(rng, female ?? rng.chance(0.6));
+    const p = who(female ?? rng.chance(0.6));
     return { id: nextContact(), name: `${p.first} ${p.last}`, role: rng.pick(roles), phone: phone(rng) };
   };
 
@@ -244,7 +290,7 @@ export function buildClients(db: DB, rng: Rng, meta: ProdMeta[], startDate: ISOD
     const isChain = def.chain !== null;
     const kind = isChain ? 'ooo' : rng.chance(0.8) ? 'ip' : 'ooo';
     const female = rng.chance(0.6);
-    const owner = person(rng, female);
+    const owner = who(female);
     const brandName = isChain ? def.chain! : shopName();
     const nPoints = isChain ? rng.int(2, 3) : rng.weighted([1, 2, 3], [45, 35, 20]);
     const d0 = rng.pick(districtsForShops);
@@ -269,12 +315,14 @@ export function buildClients(db: DB, rng: Rng, meta: ProdMeta[], startDate: ISOD
       minOrder: rng.weighted([0, 3000, 5000], [15, 60, 25]),
       note: rng.chance(0.35) ? rng.pick(CLIENT_NOTES) : '',
     });
+    if (kind === 'ip') ipOwners.push({ client, root: owner.root, female, contact: contacts[0] });
     metas.push(mk('shop', { delivery: rng.float(0.15, 0.6), pickQ: rng.float(0.32, 0.46), payMethod: rng.weighted(['cash', 'card', 'transfer'] as const, [45, 15, 40]) }, client));
   }
 
   // ---- кафе и гостиницы, клининг ----
   for (const h of HORECA) {
-    const p = person(rng, rng.chance(0.4));
+    const female = rng.chance(0.4);
+    const p = who(female);
     const name = h.kind === 'ip' ? `ИП ${p.last} · ${h.name}` : `ООО «${h.name.replace(/^[^«]*«|»$/g, '')}» · ${h.name.split(' «')[0]}`;
     const brand = h.name.replace(/^[^«]*«|»$/g, '');
     const client = baseClient({
@@ -289,10 +337,12 @@ export function buildClients(db: DB, rng: Rng, meta: ProdMeta[], startDate: ISOD
       minOrder: rng.weighted([0, 3000], [50, 50]),
       note: rng.chance(0.5) ? rng.pick(CLIENT_NOTES) : '',
     });
+    if (h.kind === 'ip') ipOwners.push({ client, root: p.root, female });
     metas.push(mk('horeca', { delivery: 0.85, pickQ: 0.65, payMethod: 'transfer' }, client));
   }
   for (const c of CLEANING) {
-    const p = person(rng, rng.chance(0.5));
+    const female = rng.chance(0.5);
+    const p = who(female);
     const brand = c.name.replace(/^[^«]*«|»$/g, '');
     const name = c.legal ?? (c.kind === 'ip' ? `ИП ${p.last} · ${c.name}` : `ООО «${c.name.replace(/[«»]/g, '')}»`);
     const client = baseClient({
@@ -307,12 +357,14 @@ export function buildClients(db: DB, rng: Rng, meta: ProdMeta[], startDate: ISOD
       minOrder: 5000,
       note: rng.chance(0.4) ? 'Оплата по счёту, закрывающие документы на почту бухгалтеру' : '',
     });
+    if (c.kind === 'ip' && !c.legal) ipOwners.push({ client, root: p.root, female });
     metas.push(mk('cleaning', { delivery: 0.8, pickQ: 0.65, payMethod: 'transfer' }, client));
   }
 
   // ---- рынки (14) ----
   for (let i = 0; i < 14; i++) {
-    const p = person(rng, rng.chance(0.45));
+    const female = rng.chance(0.45);
+    const p = who(female);
     const market = MARKETS[i % MARKETS.length];
     const pav = rng.chance(0.5) ? `павильон ${rng.int(1, 60)}` : `ряд ${rng.int(1, 12)}, место ${rng.int(1, 40)}`;
     const d = market === 'Трусовский рынок' ? 3 : market === 'рынок на Кубанской' ? 1 : 0;
@@ -330,6 +382,7 @@ export function buildClients(db: DB, rng: Rng, meta: ProdMeta[], startDate: ISOD
       minOrder: 10000,
       note: rng.chance(0.4) ? 'Платит наличными при получении' : '',
     });
+    ipOwners.push({ client, root: p.root, female, contact: client.contacts[0] });
     metas.push(mk('market', { delivery: 0.05, pickQ: 0.55, payMethod: rng.weighted(['cash', 'transfer'] as const, [70, 30]) }, client));
   }
 
@@ -410,7 +463,7 @@ export function buildClients(db: DB, rng: Rng, meta: ProdMeta[], startDate: ISOD
   const retailIds: ID[] = [];
   for (let i = 0; i < 25; i++) {
     const female = rng.chance(0.7);
-    const p = person(rng, female);
+    const p = who(female);
     const client = baseClient({
       name: `${p.first} ${p.last}`,
       kind: 'person',
@@ -426,6 +479,8 @@ export function buildClients(db: DB, rng: Rng, meta: ProdMeta[], startDate: ISOD
     metas.push(cm);
     retailIds.push(client.id);
   }
+
+  uniqueIpSurnames(rng.fork('ip-surnames'), ipOwners, peopleRoots);
 
   // старые клиенты — сразу в базу; новые появятся операцией
   for (const m of metas) if (!m.isNew) db.clients.push(m.client);

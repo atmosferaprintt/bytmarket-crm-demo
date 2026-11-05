@@ -316,9 +316,9 @@ export default function OwnerHome() {
                   <span className="ov-mini-date" title={fmt.date(u.dueDate)}>
                     {shortDay(u.dueDate)}
                   </span>
-                  <span className="ov-mini-main">
+                  <span className="ov-mini-main" title={ix.suppliers.get(u.supplierId)?.name}>
                     <EntityLink type="supplier" id={u.supplierId}>
-                      {ix.suppliers.get(u.supplierId)?.name ?? 'Поставщик'}
+                      {shortParty(ix.suppliers.get(u.supplierId)?.name ?? 'Поставщик')}
                     </EntityLink>
                   </span>
                   <span className="ov-mini-val">{fmt.money(u.amount)}</span>
@@ -363,8 +363,8 @@ export default function OwnerHome() {
           {delayedTop.length ? (
             <div className="ov-mini">
               {delayedTop.map((x) => (
-                <button key={x.order.id} type="button" className="ov-mini-row is-click" onClick={() => open('order', x.order.id)} title={x.reason}>
-                  <span className="ov-mini-main">{ix.clients.get(x.order.clientId)?.name ?? `Заказ № ${x.order.number}`}</span>
+                <button key={x.order.id} type="button" className="ov-mini-row is-click" onClick={() => open('order', x.order.id)} title={`${ix.clients.get(x.order.clientId)?.name ?? ''}, заказ № ${x.order.number}. ${x.reason}`}>
+                  <span className="ov-mini-main">{shortParty(ix.clients.get(x.order.clientId)?.name ?? `Заказ № ${x.order.number}`)}</span>
                   <Chip tone={x.tone}>{x.label}</Chip>
                 </button>
               ))}
@@ -383,6 +383,14 @@ const MON_GEN = ['января', 'февраля', 'марта', 'апреля',
 /** «ноября» из 'YYYY-MM' */
 function monthGen(ym: string): string {
   return MON_GEN[+ym.slice(5, 7) - 1];
+}
+
+/** Короткое имя для узкой строки: «ИП Логинова · «Удача»» → «ИП Логинова», «ООО «Бумажный мир Юг»» → «Бумажный мир Юг». Полное — в подсказке. */
+function shortParty(name: string): string {
+  const dot = name.indexOf(' · ');
+  if (dot > 0) return name.slice(0, dot);
+  const q = name.match(/«[^«»]+»/);
+  return q ? q[0] : name;
 }
 
 const MON3 = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];

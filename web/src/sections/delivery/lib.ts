@@ -1,5 +1,5 @@
 /* Доставка: общие расчёты раздела — день, опоздание, загрузка курьеров, ссылки на карты. */
-import type { DB, Delivery, DeliveryState, Employee, ID, ISODate, Order } from '../../data/types';
+import type { Client, DB, Delivery, DeliveryState, Employee, ID, ISODate, Order, PayMethod } from '../../data/types';
 import { nowDemo } from '../../data/store';
 import { fmt } from '../../ui';
 
@@ -204,6 +204,30 @@ export function notHandedIn(db: DB, courierId: ID): Delivery[] {
   return db.deliveries
     .filter((d) => d.courierId === courierId && d.collectedMethod === 'cash' && d.collected > 0 && !d.handedIn)
     .sort((a, b) => (deliveredAt(a) ?? '').localeCompare(deliveredAt(b) ?? ''));
+}
+
+/** С какого дня у курьера на руках несданные наличные; null — на руках ничего. */
+export function onHandSince(db: DB, courierId: ID): ISODate | null {
+  let since: ISODate | null = null;
+  for (const d of notHandedIn(db, courierId)) {
+    const day = (deliveredAt(d) ?? d.date).slice(0, 10);
+    if (!since || day < since) since = day;
+  }
+  return since;
+}
+
+/** «На руках» или «На руках, с 4 ноября» — если среди несданных есть деньги прошлых дней. */
+export function onHandLabel(since: ISODate | null, today: ISODate): string {
+  return since && since < today ? `На руках, с ${fmt.date(since)}` : 'На руках';
+}
+
+const BY_METHOD: Record<PayMethod, string> = { cash: 'наличными', card: 'картой', transfer: 'переводом' };
+
+/** Деньги по вручённой доставке: «получено наличными 14 485 ₽», «оплата по отсрочке», «оплачено заранее». */
+export function deliveredMoneyText(d: Delivery, client: Client | undefined): string {
+  if (d.collected > 0) return `получено ${BY_METHOD[d.collectedMethod ?? 'cash']} ${fmt.money(d.collected)}`;
+  if (d.collect > 0) return 'деньги не получены';
+  return client && client.deferDays > 0 ? 'оплата по отсрочке' : 'оплачено заранее';
 }
 
 /* ---------- ссылки ---------- */

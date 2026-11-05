@@ -94,7 +94,7 @@ const MON_SHORT = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', '
 const MON_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 const WD = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
 const WD_SHORT = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
-const NB = ' ';
+const NB = '\u00a0';
 const wd = (iso: string) => new Date(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10))).getUTCDay();
 const dayLong = (iso: string) => `${+iso.slice(8, 10)}${NB}${MON_GEN[+iso.slice(5, 7) - 1]}`;
 

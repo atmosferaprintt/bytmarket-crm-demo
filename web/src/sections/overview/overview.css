@@ -71,8 +71,9 @@ button.ov-kpi:hover { background: var(--panel); box-shadow: var(--sh-pop); }
 .ov-mini-row.is-click:hover .ov-mini-main { color: var(--link); }
 .ov-mini-date { min-width: 52px; flex: 0 0 auto; color: var(--muted); font-weight: 600; white-space: nowrap; }
 .ov-mini-date.c-bad { color: var(--bad); }
-.ov-mini-main { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
-.ov-mini-main .entity-link { font-weight: 500; color: var(--ink-2); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+/* имя короткое; если всё же не влезло — переносится на вторую строку по словам, без многоточия на полслова */
+.ov-mini-main { flex: 1 1 auto; min-width: 0; color: var(--ink-2); line-height: 1.3; overflow-wrap: normal; word-break: normal; }
+.ov-mini-main .entity-link { font-weight: 500; color: var(--ink-2); white-space: normal; }
 .ov-mini-val { font-weight: 700; white-space: nowrap; }
 .ov-mini-val.is-muted { color: var(--ink-2); font-weight: 600; }
 .ov-mini-empty { padding: 12px 0; color: var(--muted); }

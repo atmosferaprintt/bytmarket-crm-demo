@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Archive, Banknote, Calculator, CalendarX2, Check, ChevronDown, HandCoins, Landmark, PackageMinus, Percent, Timer, Undo2, UserRound } from 'lucide-react';
+import { Archive, Banknote, Calculator, CalendarX2, Check, ChevronDown, CircleHelp, HandCoins, Landmark, PackageMinus, PackageX, Percent, Timer, Undo2, UserRound } from 'lucide-react';
 import { Button, IconTile, cx } from '../../ui';
 import { useDB } from '../../data/store';
 import { useSession } from '../../roles/session';
@@ -14,7 +14,9 @@ import type { Signal, SignalAction, SignalKind } from './signals';
 export const SIGNAL_ICON: Record<SignalKind, ReactNode> = {
   overdue: <HandCoins />,
   payment: <Landmark />,
+  unknown_payment: <CircleHelp />,
   reconcile: <Calculator />,
+  receiving: <PackageX />,
   order_delay: <Timer />,
   stock_low: <PackageMinus />,
   missed_order: <CalendarX2 />,

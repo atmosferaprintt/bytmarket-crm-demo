@@ -15,7 +15,7 @@ import { StockDocButtons, useStockDocs } from './docActions';
 import { useNarrow } from './useNarrow';
 
 type FilterKey = 'all' | StockFlag;
-const FILTERS: { key: FilterKey; label: string }[] = [
+const FILTERS: { key: FilterKey; label: string; hint?: string }[] = [
   { key: 'all', label: 'Все' },
   { key: 'low', label: 'Ниже минимума' },
   { key: 'out', label: 'Нет в наличии' },
@@ -24,7 +24,7 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'reserved', label: 'В резерве' },
   { key: 'expected', label: 'Ожидается' },
   { key: 'quarantine', label: 'В карантине' },
-  { key: 'stale', label: `Без движения ${NO_MOVEMENT_DAYS} дней` },
+  { key: 'stale', label: 'Без движения', hint: `Нет продаж и отгрузок ${NO_MOVEMENT_DAYS} дней и дольше` },
 ];
 
 const MIN_TITLE = 'Сколько держим в магазине на полке / минимальный остаток по магазину и складу вместе';
@@ -292,7 +292,7 @@ export default function StockPage() {
             />
             <Select className="stock-select is-wide" value={cat} onChange={(e) => setCat(e.target.value)} aria-label="Категория" options={[{ value: '', label: 'Все категории' }, ...categoryOptions(db)]} />
             <div className="stock-pills">
-              <Segmented ariaLabel="Отбор" value={flt} onChange={(v) => setFlt(v as FilterKey)} options={FILTERS.map((f) => ({ value: f.key, label: f.label, count: counts[f.key] ?? 0 }))} />
+              <Segmented ariaLabel="Отбор" value={flt} onChange={(v) => setFlt(v as FilterKey)} options={FILTERS.map((f) => ({ value: f.key, label: f.hint ? <span title={f.hint}>{f.label}</span> : f.label, count: counts[f.key] ?? 0 }))} />
             </div>
           </>
         }

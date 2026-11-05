@@ -357,3 +357,6 @@
 .dl-pstat { display: flex; flex-direction: column; gap: 2px; padding: 12px 16px; background: var(--panel); min-width: 0; }
 .dl-pstat .dl-sum-label { overflow: hidden; text-overflow: ellipsis; }
 .dl-pstat-value { font-size: var(--fs-20); font-weight: 700; line-height: var(--lh-tight); white-space: nowrap; }
+
+/* сводка курьера: «На руках, с 4 ноября» — подпись длиннее, колонке денег больше места */
+.dl-sum.is-cash-wide { grid-template-columns: minmax(0, 0.8fr) minmax(0, 0.8fr) minmax(0, 1.4fr); }

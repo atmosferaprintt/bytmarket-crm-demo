@@ -840,9 +840,13 @@ function SuggRow({ it, query, active, onHover, onAdd }: { it: CatalogItem; query
       </span>
       <div className="reg-sugg-name">
         <div className="reg-sugg-title">{highlight(nbUnits(it.p.name), query)}</div>
-        <div className="cell-sub">
-          {it.p.sku}
-          <span className="reg-sugg-code"> · {it.p.packs[0]?.barcode}</span>
+        <div className="cell-sub reg-sugg-sub">
+          <span>
+            {it.p.sku}
+            <span className="reg-sugg-code"> · {it.p.packs[0]?.barcode}</span>
+          </span>
+          {/* чип акции — у названия, чтобы колонки остатка и цены стояли ровно во всех строках */}
+          {info.promo ? <PromoChip promo={info.promo} pct={promoPct(info.base, info.price)} today={db.meta.today} /> : null}
         </div>
       </div>
       <div className="reg-sugg-stock">
@@ -860,13 +864,8 @@ function SuggRow({ it, query, active, onHover, onAdd }: { it: CatalogItem; query
         )}
       </div>
       <div className="reg-sugg-price">
-        {info.promo ? (
-          <>
-            <PromoChip promo={info.promo} pct={promoPct(info.base, info.price)} today={db.meta.today} />
-            <s className="reg-old num">{fmt.price(info.base)}</s>
-          </>
-        ) : null}
         <b className="num">{fmt.price(info.price)}</b>
+        {info.promo ? <s className="reg-old num">{fmt.price(info.base)}</s> : null}
       </div>
       <div className="reg-sugg-act">
         {active ? (

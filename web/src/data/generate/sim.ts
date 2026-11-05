@@ -9,6 +9,7 @@ import type { OpResult, OpType } from '../ops';
 import { get, stockRow } from '../idx';
 import { accountBalances, clientBalance, orderPayment, orderReturns, priceFor, purchaseAccepted, purchasePaid } from '../selectors';
 import { atTime, dayNum, dow, isoDay, minutesOf, plusDays } from '../dates';
+import { MISSED_ORDER_FACTOR } from '../thresholds';
 import { roundRetail } from './catalog';
 import type { ProdMeta } from './catalog';
 import type { AssortItem, ClientMeta } from './clients';
@@ -257,6 +258,17 @@ export function simulate(input: SimInput): SimStats {
   );
   // должники платят с опозданием, но регулярно заказывают: «плохая» дисциплина держала бы их в блоке месяцами
   for (const c of clients) if (overdueSet.has(c.id)) c.discipline = 'late';
+  // «Пропустил привычный заказ» у менеджеров: у Соколова двое, у Петровой один клиент перестали заказывать
+  // на 0,2–0,6 привычного срока позже порога MISSED_ORDER_FACTOR. Должники и лимит впритык не берутся — у них своя история.
+  // метка генератора подобрана так, чтобы остальные показатели демо (дефицит ходовых, заказы в работе) остались прежними
+  const lrng = rng.fork('lapsed-v2');
+  const lapsedFrom = new Map<ID, number>(); // клиент → с этого дня заказов нет
+  for (const [mgr, n] of [[E.sokolov, 2], [E.petrova, 1]] as const) {
+    const pool = clients.filter((c) => c.owner === mgr && c.seg !== 'retail' && !c.isNew && !c.tight && !overdueSet.has(c.id) && c.cadence <= 21);
+    const good = pool.filter((c) => c.discipline === 'good');
+    for (const c of lrng.sample(good.length >= n ? good : pool, n)) lapsedFrom.set(c.id, dayNum(TODAY) - Math.round(c.cadence * lrng.float(MISSED_ORDER_FACTOR + 0.2, MISSED_ORDER_FACTOR + 0.6)));
+  }
+  const lapsed = (cid: ID, d: ISODate): boolean => dayNum(d) >= (lapsedFrom.get(cid) ?? Infinity);
   // у должника не оплачен один счёт: первый со сроком в его окне (5–40 дней назад). Старые оплачены,
   // новые заказы идут дальше (владелец разрешает отгрузку) и оплачиваются по сроку — долг не равен просрочке.
   const orng = rng.fork('overdue');
@@ -594,6 +606,7 @@ export function simulate(input: SimInput): SimStats {
 
   const managerOrder = (cm: ClientMeta, t: ISODateTime, sourceHint?: 'chat' | 'phone'): void => {
     const d = t.slice(0, 10);
+    if (lapsed(cm.id, d)) return; // перестал заказывать — ждёт звонка менеджера
     const mgr = MANAGERS.includes(cm.owner as (typeof MANAGERS)[number]) ? cm.owner : mgrOf(d);
     let source: 'phone' | 'manager' | 'repeat' | 'chat' = sourceHint ?? rng.weighted(['phone', 'manager', 'repeat', 'chat'] as const, [45, 20, 25, 10]);
     let lines: { productId: ID; pack: PackKey; packQty: number }[] = [];
@@ -1176,8 +1189,11 @@ export function simulate(input: SimInput): SimStats {
       const today = dayNum(d);
       const scored = pts.map((x) => ({ ...x, s: today - (lastVisit.get(x.pointId) ?? today - rng.int(5, 20)) + rng.float(0, 4) }));
       scored.sort((a, b) => b.s - a.s);
+      // клиент в маршруте дня один раз: у магазина с несколькими точками — та, где дольше не были
+      const seen = new Set<ID>();
+      const perClient = scored.filter((x) => !seen.has(x.cm.id) && !!seen.add(x.cm.id));
       const k = d === TODAY ? rng.int(6, 8) : rng.weighted([5, 6, 7, 8], [36, 31, 21, 12]);
-      const chosen = scored.slice(0, Math.min(k, scored.length)).sort((a, b) => a.lng - b.lng);
+      const chosen = perClient.slice(0, Math.min(k, perClient.length)).sort((a, b) => a.lng - b.lng);
       const done = d === TODAY ? rng.int(2, 3) : chosen.length;
       let t = 9 * 60 + 25 + rng.int(0, 20);
       chosen.forEach((x, i) => {
@@ -1205,7 +1221,8 @@ export function simulate(input: SimInput): SimStats {
   };
 
   const todayDone = new Map<ID, number>();
-  let todaySecond = false;
+  /** Сколько заявок ждут подтверждения сегодня: вчерашние вечерние и сегодняшние с утренних точек. */
+  const TODAY_REQUESTS = 5;
   const completeVisit = (visitId: ID, cm: ClientMeta, pointId: ID, rep: ID, t: ISODateTime, isToday: boolean): void => {
     if (!isToday && rng.chance(0.03)) {
       run('visit.complete', { visitId, missed: true, comment: 'Не успел — перенёс на следующий маршрут' }, rep, t);
@@ -1215,12 +1232,13 @@ export function simulate(input: SimInput): SimStats {
     // должник по одному счёту всё равно заказывает — заявку подтверждает владелец
     let pOrder = blocked ? (hasStuck(cm.id) ? 0.35 : 0.06) : 0.55;
     if (isToday) {
-      // сегодня у каждого представителя первая точка без долга дала заявку
+      // сегодня у каждого представителя первая точка без долга дала заявку, пока ждущих меньше пяти;
+      // если вчерашних мало — заявку дают и следующие точки, но место под первые точки остальных держим
       const k = (todayDone.get(rep) ?? 0) + (blocked ? 0 : 1);
       todayDone.set(rep, k);
-      const second = k === 2 && !todaySecond;
-      if (second) todaySecond = true; // у одного — ещё и вторая
-      pOrder = blocked ? 0 : k === 1 || second ? 1 : k === 2 ? 0.3 : 0.1;
+      const room = TODAY_REQUESTS - db.orders.filter((o) => o.state === 'request').length;
+      const firstsLeft = REPS.filter((x) => x !== rep && repActive(x, TODAY) && !todayDone.get(x)).length;
+      pOrder = blocked || room <= 0 ? 0 : k === 1 || room > firstsLeft ? 1 : 0;
     }
     if (!isToday && isFirstOrder(cm)) pOrder = 1;
     const r = rng.next();
@@ -1513,7 +1531,7 @@ export function simulate(input: SimInput): SimStats {
     // сегодня менеджеры принимают заказы по телефону — они собираются
     for (const [hhmm, k] of [['10:40', 0], ['12:35', 1]] as const) {
       on(TODAY + 'T' + hhmm, () => {
-        const pool = clients.filter((c) => c.seg !== 'retail' && !c.isNew && cmById.has(c.id) && clientBalance(db, c.id).overdue === 0 && (c.seg === 'horeca' || c.seg === 'cleaning' || c.seg === 'shop'));
+        const pool = clients.filter((c) => c.seg !== 'retail' && !c.isNew && !lapsedFrom.has(c.id) && cmById.has(c.id) && clientBalance(db, c.id).overdue === 0 && (c.seg === 'horeca' || c.seg === 'cleaning' || c.seg === 'shop'));
         const cm = pool[(k * 7 + 3) % pool.length];
         if (cm) managerOrder(cm, TODAY + 'T' + hhmm, k === 1 ? 'chat' : 'phone');
       });
@@ -1525,7 +1543,7 @@ export function simulate(input: SimInput): SimStats {
     on(YESTERDAY + 'T17:30', () => {
       const count = db.deliveries.filter((x) => x.date === TODAY).length;
       const need = Math.max(0, 15 - count);
-      const base = clients.filter((c) => c.seg !== 'retail' && c.seg !== 'market' && !c.isNew && clientBalance(db, c.id).overdue === 0);
+      const base = clients.filter((c) => c.seg !== 'retail' && c.seg !== 'market' && !c.isNew && !lapsedFrom.has(c.id) && clientBalance(db, c.id).overdue === 0);
       const pool = [...rng.shuffle(base.filter((c) => c.client.deferDays === 0)), ...rng.shuffle(base.filter((c) => c.client.deferDays > 0))];
       for (let i = 0; i < need && i < pool.length; i++) {
         const cm = pool[i];

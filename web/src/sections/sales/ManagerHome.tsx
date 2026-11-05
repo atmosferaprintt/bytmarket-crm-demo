@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarClock, ChevronRight, Phone, Plus, Repeat } from 'lucide-react';
+import { CalendarClock, CheckCircle2, ChevronRight, Phone, Plus, Repeat } from 'lucide-react';
 import type { Client, ID, Order } from '../../data/types';
 import { dispatch, useDB, useDBVersion } from '../../data/store';
 import { clientBalance, indexes, salesForPeriod } from './data';
@@ -14,6 +14,7 @@ import { NewOrderDrawer } from './NewOrderDrawer';
 import { useSalesOrders } from './salesScope';
 import { deliveryFailed } from './parts';
 import { fixNo } from './lib';
+import { clientsWithOpenOrders, missedHabitualOrder } from '../clients/lib';
 import './sales.css';
 
 /** Рабочий стол менеджера: заявки, заказы в работе, долги, пропущенные заказы, план и задачи. */
@@ -68,14 +69,16 @@ export default function Home() {
       const prev = lastOrder.get(o.clientId);
       if (!prev || o.createdAt > prev.createdAt) lastOrder.set(o.clientId, o);
     }
+    // одно правило с «Клиентами» и сигналами обзора (missedHabitualOrder): активный, не розница, нет заказа в работе,
+    // с последней покупки прошло больше привычной частоты × MISSED_ORDER_FACTOR
+    const open = clientsWithOpenOrders(db);
     const missed = clients
-      .filter((c) => c.orderEveryDays)
       .map((c) => {
-        const last = lastOrder.get(c.id);
-        const since = last ? fmt.daysBetween(last.createdAt.slice(0, 10), today) : null;
-        return { c, last, since, late: since === null ? 0 : since - (c.orderEveryDays ?? 0) };
+        const lastAt = clientBalance(db, c.id).lastOrderAt;
+        const since = lastAt ? fmt.daysBetween(lastAt.slice(0, 10), today) : null;
+        return { c, last: lastOrder.get(c.id), lastAt, since, late: since === null ? 0 : since - (c.orderEveryDays ?? 0) };
       })
-      .filter((x) => x.last && x.late >= 2 && !requests.some((r) => r.clientId === x.c.id) && !work.some((w) => w.clientId === x.c.id))
+      .filter((x) => missedHabitualOrder(x.c, x.since, open.has(x.c.id)))
       .sort((a, b) => b.late - a.late)
       .slice(0, 6);
 
@@ -183,17 +186,17 @@ export default function Home() {
             </div>
           </Card>
 
-          <Card title="Пропустили привычный заказ" flush>
-            {data.missed.length ? (
+          {data.missed.length ? (
+            <Card title="Пропустили привычный заказ" flush>
               <div className="list">
-                {data.missed.map(({ c, last, late }) => (
+                {data.missed.map(({ c, last, lastAt, late }) => (
                   <div key={c.id} className="list-row">
                     <div className="grow">
                       <EntityLink type="client" id={c.id} className="entity-link">
                         {c.name}
                       </EntityLink>
                       <div className="muted t-12">
-                        Заказывает раз в {fmt.count(c.orderEveryDays ?? 0, 'день', 'дня', 'дней')} · последний {last ? fmt.date(last.createdAt) : '—'}
+                        Заказывает раз в {fmt.count(c.orderEveryDays ?? 0, 'день', 'дня', 'дней')} · последняя покупка {lastAt ? fmt.date(lastAt) : '—'}
                       </div>
                     </div>
                     <Chip tone="warn">Позже на {fmt.count(late, 'день', 'дня', 'дней')}</Chip>
@@ -208,10 +211,14 @@ export default function Home() {
                   </div>
                 ))}
               </div>
-            ) : (
-              <EmptyState title="Все постоянные клиенты заказывают вовремя" />
-            )}
-          </Card>
+            </Card>
+          ) : (
+            // пусто — одна строка вместо большой пустой карточки
+            <div className="card sales-missed-none">
+              <CheckCircle2 />
+              <span>Привычный заказ никто не пропустил: постоянные клиенты заказывают вовремя</span>
+            </div>
+          )}
         </div>
 
         <div className="col-4">

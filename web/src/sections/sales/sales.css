@@ -289,3 +289,7 @@
 /* акция в строке заказа: название и состояние */
 .sales-line-promo { display: flex; align-items: center; gap: 6px; margin-top: 4px; min-width: 0; }
 .sales-line-promo > .ellipsis { min-width: 0; }
+
+/* рабочий стол менеджера: «Пропустили привычный заказ» без строк — одна строка */
+.sales-missed-none { display: flex; align-items: center; gap: 10px; padding: 14px 20px; font-size: var(--fs-14); color: var(--ink-2); }
+.sales-missed-none svg { width: 18px; height: 18px; color: var(--ok); flex: 0 0 auto; }

@@ -14,7 +14,7 @@ import { useScoped } from '../../roles/scope';
 import { Chip, EmptyState, Notice, Segmented, cx, fmt } from '../../ui';
 import { RouteButton } from './CourierBoard';
 import { LateChip, StateChip, useDayParam } from './parts';
-import { byRoute, clockOf, dayLabel, deliveredAt, forDay, lastFail, moneyOfDay, notHandedIn, type Clock } from './lib';
+import { byRoute, clockOf, dayLabel, deliveredAt, deliveredMoneyText, forDay, lastFail, moneyOfDay, notHandedIn, type Clock } from './lib';
 
 /* ---------- «Доставки»: выбор дня и вручённые по дням ---------- */
 
@@ -158,25 +158,27 @@ function DayRow({ d, pos, c, onOpen }: { d: Delivery; pos: number; c: Clock; onO
       : fail
         ? `Не удалось: ${fail.reason.toLowerCase()}`
         : `${ix.clients.get(d.clientId)?.name ?? d.contactName} · ${d.date < c.today ? fmt.dateShort(d.date) + ', ' : ''}${d.interval}`;
-  const money = d.state === 'delivered' ? d.collected : d.collect;
+  const delivered = d.state === 'delivered';
   return (
     <button type="button" className="card dl-cc-row dl-day-row" onClick={onOpen}>
-      <span className={cx('dl-cc-no is-small', d.state === 'delivered' && 'is-done', d.state === 'failed' && 'is-bad')}>{pos}</span>
+      <span className={cx('dl-cc-no is-small', delivered && 'is-done', d.state === 'failed' && 'is-bad')}>{pos}</span>
       <span className="grow col" style={{ gap: 4, minWidth: 0 }}>
         <span className="w-700 ellipsis">{d.address}</span>
         <span className="t-12 muted ellipsis">{sub}</span>
+        {/* у вручённой — что получено, а не «к получению» */}
+        {delivered ? <span className="t-13 ink-2 w-600">{deliveredMoneyText(d, ix.clients.get(d.clientId))}</span> : null}
         <span className="chips">
           <StateChip d={d} />
           <LateChip d={d} c={c} />
         </span>
       </span>
-      {money ? (
+      {delivered ? null : d.collect ? (
         <span className="col" style={{ gap: 2, alignItems: 'flex-end' }}>
-          <span className="num w-700 nowrap">{fmt.money(money)}</span>
-          <span className="t-12 muted nowrap">{d.state === 'delivered' ? PAY_METHOD_NAMES[d.collectedMethod ?? 'cash'] : 'к получению'}</span>
+          <span className="num w-700 nowrap">{fmt.money(d.collect)}</span>
+          <span className="t-12 muted nowrap">к получению</span>
         </span>
       ) : (
-        <span className="t-12 muted nowrap">{d.state === 'delivered' ? 'Без оплаты' : 'Денег не брать'}</span>
+        <span className="t-12 muted nowrap">Денег не брать</span>
       )}
     </button>
   );

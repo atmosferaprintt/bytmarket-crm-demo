@@ -37,20 +37,22 @@ export default function Attention() {
   const active = signals.filter((s) => !resolved[s.id]);
   const done = signals.filter((s) => resolved[s.id]);
   const arranged = useMemo(() => arrangeSignals(active), [signals, resolved]);
-  const pool = view === 'active' ? active : done;
-  const counts = new Map<SignalKind, number>();
-  for (const s of pool) counts.set(s.kind, (counts.get(s.kind) ?? 0) + 1);
-
-  // без фильтра — главное на виду, однотипное мелкое свёрнуто в группы; с фильтром — весь вид списком
-  const grouped = view === 'active' && kind === 'all';
-  const shown = kind === 'all' ? pool : pool.filter((s) => s.kind === kind);
-  const urgentList = grouped ? arranged.important.filter((s) => s.severity === 'high') : shown.filter((s) => s.severity === 'high');
-  const main = grouped ? arranged.important.filter((s) => s.severity === 'medium') : shown.filter((s) => s.severity === 'medium');
-  const small = grouped ? arranged.rest : shown.filter((s) => s.severity === 'low');
   const lines = arranged.important.length + arranged.rest.length;
+
+  // Строки списка. «В работе» — как на экране: главное по одному, однотипное мелкое — одной строкой-группой.
+  // Фильтр по виду показывает те же строки этого вида, поэтому счётчик чипа = число карточек, а сумма чипов = «Все».
+  const rows = view === 'active' ? [...arranged.important, ...arranged.rest] : done;
+  const rowCounts = new Map<SignalKind, number>();
+  for (const s of rows) rowCounts.set(s.kind, (rowCounts.get(s.kind) ?? 0) + 1);
+  const ofKind = (s: Signal) => kind === 'all' || s.kind === kind;
+  const urgentList = (view === 'active' ? arranged.important : done).filter((s) => s.severity === 'high' && ofKind(s));
+  const main = (view === 'active' ? arranged.important : done).filter((s) => s.severity === 'medium' && ofKind(s));
+  const small = (view === 'active' ? arranged.rest : done.filter((s) => s.severity === 'low')).filter(ofKind);
+  const shownCount = urgentList.length + main.length + small.length;
 
   const money = (k: SignalKind[]) => active.filter((s) => k.includes(s.kind)).reduce((z, s) => z + s.amount, 0);
   const urgentCount = arranged.important.filter((s) => s.severity === 'high').length;
+  const delayedOrders = active.filter((s) => s.kind === 'order_delay').length;
 
   const toggle = (s: Signal) => {
     const ids = s.members ? s.members.map((m) => m.id) : [s.id];
@@ -89,9 +91,10 @@ export default function Attention() {
   );
 
   const kindOptions = [
-    // «Все» — строк на экране (группа однотипных — одна строка); вид — сколько сигналов откроется по нему
-    { value: 'all' as KindFilter, label: 'Все', count: view === 'active' ? lines : done.length },
-    ...kinds.filter((k) => counts.get(k.key)).map((k) => ({ value: k.key as KindFilter, label: k.label, count: counts.get(k.key) ?? 0 })),
+    { value: 'all' as KindFilter, label: 'Все', count: rows.length },
+    ...kinds
+      .filter((k) => rowCounts.get(k.key) || k.key === kind)
+      .map((k) => ({ value: k.key as KindFilter, label: <span title={k.hint}>{k.label}</span>, count: rowCounts.get(k.key) ?? 0 })),
   ];
 
   return (
@@ -99,7 +102,20 @@ export default function Attention() {
       <PageHeader
         section="overview"
         counts={{ attention: lines }}
-        actions={<MoreMenu items={[{ label: 'Вернуть все разобранные', icon: <RotateCcw />, onClick: resetAll, disabled: !done.length }]} />}
+        actions={
+          <>
+            <Segmented
+              ariaLabel="Показать"
+              value={view}
+              onChange={setView}
+              options={[
+                { value: 'active', label: 'В работе', count: lines },
+                { value: 'done', label: 'Разобрано', count: done.length },
+              ]}
+            />
+            <MoreMenu items={[{ label: 'Вернуть все разобранные', icon: <RotateCcw />, onClick: resetAll, disabled: !done.length }]} />
+          </>
+        }
       />
 
       <div className="att-summary">
@@ -109,25 +125,15 @@ export default function Attention() {
         {role === 'accountant' ? (
           <Kpi label="Поставщикам на этой неделе" value={fmt.money(money(['supplier']))} onClick={() => setKind('supplier')} />
         ) : (
-          <Kpi label="Заказы с задержкой" value={fmt.num(counts.get('order_delay') ?? 0)} onClick={() => setKind('order_delay')} />
+          <Kpi label="Заказы с задержкой" value={fmt.num(delayedOrders)} onClick={() => setKind('order_delay')} />
         )}
       </div>
 
       <div className="att-toolbar">
         <Segmented ariaLabel="Вид сигнала" value={kind} onChange={setKind} options={kindOptions} />
-        <span className="spacer" />
-        <Segmented
-          ariaLabel="Показать"
-          value={view}
-          onChange={setView}
-          options={[
-            { value: 'active', label: 'В работе', count: lines },
-            { value: 'done', label: 'Разобрано', count: done.length },
-          ]}
-        />
       </div>
 
-      {!shown.length ? (
+      {!shownCount ? (
         <Card>
           <EmptyState icon={<CheckCircle2 />} title={view === 'active' ? 'Сигналов нет' : 'Разобранных пока нет'}>
             {view === 'active' ? 'По этому виду всё в порядке' : 'Отметьте сигнал «Разобрано», чтобы он не мешал'}

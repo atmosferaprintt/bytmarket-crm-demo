@@ -5,7 +5,7 @@ import type { DB, ID, ISODate, RoleKey, TaskLink } from '../../data/types';
 import type { EntityType } from '../../shell/entities';
 import { clientBalances, courierCash, indexes, shiftSummary, stockIndex } from '../../data/selectors';
 import { diffDays, plusDays } from '../../data/dates';
-import { URGENT_OVERDUE_DAYS } from '../../data/thresholds';
+import { MISSED_ORDER_FACTOR, URGENT_OVERDUE_DAYS } from '../../data/thresholds';
 import {
   DEAD_DAYS,
   delayedOrders,
@@ -26,18 +26,32 @@ import {
   type Agg,
 } from './analytics';
 
-export type SignalKind = 'stock_low' | 'dead_stock' | 'overdue' | 'missed_order' | 'margin_drop' | 'order_delay' | 'reconcile' | 'payment' | 'supplier';
+export type SignalKind =
+  | 'stock_low'
+  | 'dead_stock'
+  | 'overdue'
+  | 'missed_order'
+  | 'margin_drop'
+  | 'order_delay'
+  | 'reconcile'
+  | 'receiving'
+  | 'payment'
+  | 'unknown_payment'
+  | 'supplier';
 
-export const SIGNAL_KINDS: { key: SignalKind; label: string }[] = [
-  { key: 'overdue', label: 'Просрочка оплаты' },
-  { key: 'payment', label: 'Платежи' },
-  { key: 'supplier', label: 'Поставщикам' },
-  { key: 'reconcile', label: 'Сверка' },
-  { key: 'order_delay', label: 'Задержка заказа' },
-  { key: 'stock_low', label: 'Заканчивается' },
-  { key: 'missed_order', label: 'Пропустил заказ' },
-  { key: 'margin_drop', label: 'Маржа' },
-  { key: 'dead_stock', label: 'Без движения' },
+/** Виды сигналов: подпись фильтра и подсказка, что внутри. */
+export const SIGNAL_KINDS: { key: SignalKind; label: string; hint: string }[] = [
+  { key: 'overdue', label: 'Просрочка оплаты', hint: 'Покупатели не оплатили в срок' },
+  { key: 'payment', label: 'Ждут подтверждения', hint: 'Переводы покупателей: долг уменьшится после проверки по выписке банка' },
+  { key: 'unknown_payment', label: 'Не опознаны', hint: 'Деньги пришли на счёт, но плательщик не ясен' },
+  { key: 'supplier', label: 'Оплата поставщику', hint: 'Наши платежи поставщикам: просроченные и до воскресенья' },
+  { key: 'reconcile', label: 'Деньги курьеров и кассы', hint: 'Курьер не сдал наличные, в кассе не сошлось при закрытии смены' },
+  { key: 'order_delay', label: 'Задержка заказа', hint: 'Заказ не собран, не отгружен или доставка опаздывает' },
+  { key: 'receiving', label: 'Расхождения при приёмке', hint: 'Поставщик привёз не столько, сколько заказали, или с браком' },
+  { key: 'stock_low', label: 'Заканчивается', hint: 'Ходовой товар закончится раньше, чем придёт новый' },
+  { key: 'missed_order', label: 'Пропустил заказ', hint: 'Постоянный клиент не заказал в привычный срок' },
+  { key: 'margin_drop', label: 'Маржа', hint: 'Категории, где маржа упала к прошлому периоду' },
+  { key: 'dead_stock', label: 'Без движения', hint: `Товары без продаж ${DEAD_DAYS} дней и дольше` },
 ];
 
 export type SignalAction =
@@ -74,8 +88,8 @@ const SEV: Record<Signal['severity'], number> = { high: 0, medium: 1, low: 2 };
 export const SMALL_AMOUNT = 3000;
 
 /* ---------- форматы (как в ui/format, но без React) ---------- */
-const NB = ' ';
-const THIN = ' ';
+const NB = '\u00a0'; // неразрывный пробел: «312 862 ₽» не переносится по частям
+const THIN = '\u00a0';
 const grp = (v: number) => (v < 0 ? '−' : '') + String(Math.abs(Math.round(v))).replace(/\B(?=(\d{3})+(?!\d))/g, THIN);
 const rub = (v: number) => grp(v) + NB + '₽';
 const pcs = (v: number) => grp(v) + NB + 'шт';
@@ -97,6 +111,13 @@ const when = (iso: string, today: ISODate) => {
   const a = diffDays(iso.slice(0, 10), today);
   return a === 0 ? 'сегодня' : a === 1 ? 'вчера' : fmtDay(iso);
 };
+
+/** «ООО «ТД Южный двор»» → «ТД Южный двор»; ИП и прочее — как есть. */
+function supplierRef(name: string | undefined): string {
+  if (!name) return 'без названия';
+  const m = name.match(/^(?:ООО|ОАО|ЗАО|АО|ПАО)\s+(«[^«»]+»)$/);
+  return m ? m[1] : name;
+}
 
 function shortName(name: string): string {
   return name.length > 54 ? name.slice(0, 52).trimEnd() + '…' : name;
@@ -279,8 +300,8 @@ function missedOrderSignals(db: DB, today: ISODate, out: Signal[]) {
     const b = bal.get(c.id);
     if (!b?.lastOrderAt) continue;
     const since = diffDays(b.lastOrderAt.slice(0, 10), today);
-    const grace = Math.max(3, Math.ceil(c.orderEveryDays * 0.5));
-    if (since < c.orderEveryDays + grace) continue;
+    // то же правило, что в «Клиентах» и на рабочем столе менеджера (clients/lib → missedHabitualOrder)
+    if (since <= c.orderEveryDays * MISSED_ORDER_FACTOR) continue;
     const owner = c.ownerId ? ix.employees.get(c.ownerId) : undefined;
     const isRep = !!owner?.roles.includes('rep');
     out.push({
@@ -514,7 +535,7 @@ function reconcileSignals(db: DB, today: ISODate, out: Signal[]) {
     const sup = ix.suppliers.get(pu.supplierId);
     out.push({
       id: 'reconcile:purchase:' + pu.id,
-      kind: 'reconcile',
+      kind: 'receiving',
       severity: value < SMALL_AMOUNT ? 'low' : 'medium',
       title: `Приёмка ${N(pu.number)}: расхождение с заказом`,
       reason: `${sup?.name ?? 'Поставщик'}: ${received < ordered ? `не довезли ${pcs(ordered - received)}` : received > ordered ? `привезли лишние ${pcs(received - ordered)}` : 'количество сошлось'}${defect ? `, брак ${pcs(defect)}` : ''}${reason ? `. Причина: ${reason.toLowerCase()}` : ''}`,
@@ -564,7 +585,7 @@ function paymentSignals(db: DB, today: ISODate, out: Signal[]) {
     } else {
       out.push({
         id: 'payment:' + p.id,
-        kind: 'payment',
+        kind: 'unknown_payment',
         severity: p.amount >= 10000 || age >= 3 ? 'high' : 'medium',
         tag: 'unidentified',
         title: `Поступление ${rub(p.amount)} не опознано`,
@@ -602,7 +623,7 @@ function supplierSignals(db: DB, today: ISODate, out: Signal[]) {
       id: 'supplier:overdue:' + sid,
       kind: 'supplier',
       severity: late >= URGENT_OVERDUE_DAYS && x.sum >= SMALL_AMOUNT ? 'high' : x.sum >= SMALL_AMOUNT ? 'medium' : 'low',
-      title: `${s?.name ?? 'Поставщик'}: просрочен платёж ${rub(x.sum)}`,
+      title: `Просрочена наша оплата поставщику ${supplierRef(s?.name)}: ${rub(x.sum)}`,
       reason: '',
       facts: [
         { label: 'Поставок', value: grp(x.n) },
@@ -623,7 +644,7 @@ function supplierSignals(db: DB, today: ISODate, out: Signal[]) {
       id: 'supplier:week:' + w.weekEnd,
       kind: 'supplier',
       severity: 'medium',
-      title: `Поставщикам к оплате до воскресенья ${rub(w.thisWeekSum)}`,
+      title: `Наши оплаты поставщикам до воскресенья: ${rub(w.thisWeekSum)}`,
       reason: '',
       facts: [
         { label: 'Поставок', value: grp(w.thisWeek.length) },
@@ -648,7 +669,7 @@ export function signalsForRole(list: Signal[], role: RoleKey): Signal[] {
 }
 
 export function kindsForRole(role: RoleKey): typeof SIGNAL_KINDS {
-  if (role === 'accountant') return SIGNAL_KINDS.filter((k) => k.key === 'overdue' || k.key === 'payment' || k.key === 'supplier' || k.key === 'reconcile');
+  if (role === 'accountant') return SIGNAL_KINDS.filter((k) => k.key === 'overdue' || k.key === 'payment' || k.key === 'unknown_payment' || k.key === 'supplier' || k.key === 'reconcile');
   return SIGNAL_KINDS;
 }
 
@@ -657,15 +678,17 @@ export function kindsForRole(role: RoleKey): typeof SIGNAL_KINDS {
 /** Сколько по-настоящему важных сигналов держим на виду. */
 export const IMPORTANT_MAX = 14;
 /** Сколько сигналов одного вида на виду; остальные этого вида — одной строкой-группой. */
-const KIND_CAP: Record<SignalKind, number> = { overdue: 5, payment: 3, supplier: 2, reconcile: 2, order_delay: 3, stock_low: 2, missed_order: 1, margin_drop: 1, dead_stock: 1 };
+const KIND_CAP: Record<SignalKind, number> = { overdue: 5, payment: 3, unknown_payment: 2, supplier: 2, reconcile: 2, receiving: 1, order_delay: 3, stock_low: 2, missed_order: 1, margin_drop: 1, dead_stock: 1 };
 
 const sizeOf = (s: Signal) => s.count ?? 1;
 
 const GROUP_NOUN: Record<SignalKind, (n: number, more: boolean) => string> = {
   overdue: (n, m) => `${m ? 'Ещё ' : ''}${cnt(n, 'клиент', 'клиента', 'клиентов')} с просрочкой оплаты`,
-  payment: (n, m) => `${m ? 'Ещё ' : ''}${cnt(n, 'платёж ждёт', 'платежа ждут', 'платежей ждут')} разбора`,
-  supplier: (n, m) => `${m ? 'Ещё ' : ''}${cnt(n, 'платёж', 'платежа', 'платежей')} поставщикам`,
-  reconcile: (n, m) => `${m ? 'Ещё ' : ''}${cnt(n, 'расхождение', 'расхождения', 'расхождений')} при сверке`,
+  payment: (n, m) => `${m ? 'Ещё ' : ''}${cnt(n, 'перевод ждёт', 'перевода ждут', 'переводов ждут')} подтверждения`,
+  unknown_payment: (n, m) => `${m ? 'Ещё ' : ''}${cnt(n, 'поступление не опознано', 'поступления не опознаны', 'поступлений не опознаны')}`,
+  supplier: (n, m) => `${m ? 'Ещё ' : ''}${cnt(n, 'наша оплата', 'наших оплаты', 'наших оплат')} поставщикам`,
+  reconcile: (n, m) => `${m ? 'Ещё ' : ''}${cnt(n, 'расхождение', 'расхождения', 'расхождений')} по деньгам курьеров и кассы`,
+  receiving: (n, m) => `${m ? 'Ещё ' : ''}${cnt(n, 'приёмка', 'приёмки', 'приёмок')} с расхождением`,
   order_delay: (n, m) => `${m ? 'Ещё ' : ''}${cnt(n, 'заказ', 'заказа', 'заказов')} с задержкой`,
   stock_low: (n, m) => `${m ? 'Ещё ' : ''}${cnt(n, 'ходовой товар заканчивается', 'ходовых товара заканчиваются', 'ходовых товаров заканчиваются')}`,
   missed_order: (n, m) => `${m ? 'Ещё ' : ''}${cnt(n, 'клиент пропустил', 'клиента пропустили', 'клиентов пропустили')} привычный заказ`,
