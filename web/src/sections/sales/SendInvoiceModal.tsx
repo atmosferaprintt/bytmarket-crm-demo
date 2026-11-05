@@ -2,7 +2,7 @@
    Перед отправкой видно, кому и на какой номер уходит сообщение, и что приложено; текст можно поправить. */
 import { useMemo, useState, type ReactNode } from 'react';
 import { FileSpreadsheet, FileText, MessageCircle, Send } from 'lucide-react';
-import type { ChatFile, ID, Order } from '../../data/types';
+import type { ChatFile, ChatPurpose, ID, Order } from '../../data/types';
 import { dispatch, useDB } from '../../data/store';
 import { indexes, orderPayment } from './data';
 import { useSession } from '../../roles/session';
@@ -31,12 +31,14 @@ export interface SendWhatsAppProps {
   /** что показать в сводке над текстом (сумма счёта, долг) */
   rows?: { label: string; value: ReactNode }[];
   okText: string;
+  /** что отправляем: по этому закрываются задачи («отправить счёт», «напомнить об оплате») и видно «напомнили 5 ноября» */
+  purpose?: ChatPurpose;
   onClose: () => void;
   onSent?: () => void;
 }
 
 /** Окно отправки в WhatsApp клиента. Диалога нет — он появится с первым сообщением. */
-export function SendWhatsAppModal({ clientId, title, initialText, file, orderId, rows, okText, onClose, onSent }: SendWhatsAppProps) {
+export function SendWhatsAppModal({ clientId, title, initialText, file, orderId, rows, okText, purpose, onClose, onSent }: SendWhatsAppProps) {
   const db = useDB();
   const { me } = useSession();
   const idx = indexes(db);
@@ -49,12 +51,12 @@ export function SendWhatsAppModal({ clientId, title, initialText, file, orderId,
   const blocked = !wa.connected ? 'WhatsApp не подключён — включите его в настройках, раздел «Подключения».' : !phone ? 'У клиента нет телефона — добавьте его в карточке клиента.' : null;
 
   const send = () => {
-    const r = dispatch('chat.send', { clientId, text, orderId: orderId ?? null, ...(file ? { file } : {}) }, me.id);
+    const r = dispatch('chat.send', { clientId, text, orderId: orderId ?? null, ...(file ? { file } : {}), ...(purpose ? { purpose } : {}) }, me.id);
     if (!r.ok) {
       setError(fixNo(r.error));
       return;
     }
-    toast(okText);
+    toast(r.info ? `${okText}. ${r.info}` : okText);
     onSent?.();
     onClose();
   };
@@ -128,6 +130,7 @@ export function SendInvoiceModal({ order, onClose }: { order: Order; onClose: ()
         { label: 'Расчётный счёт', value: company.account },
       ]}
       okText="Счёт отправлен клиенту в WhatsApp"
+      purpose="invoice"
       onClose={onClose}
     />
   );

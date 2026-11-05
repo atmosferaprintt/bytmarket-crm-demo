@@ -291,6 +291,7 @@ function RemindModal({ clientId, onClose }: { clientId: ID; onClose: () => void 
         { label: 'Просрочено', value: b.overdue > 0 ? <span className="c-bad">{fmt.money(b.overdue)}</span> : fmt.money(0) },
       ]}
       okText="Напоминание отправлено клиенту в WhatsApp"
+      purpose="reminder"
       onClose={onClose}
     />
   );

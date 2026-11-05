@@ -134,12 +134,13 @@ export default function ChatsPage() {
               { label: 'Просрочено', value: b.overdue > 0 ? <span className="c-bad">{fmt.money(b.overdue)}</span> : fmt.money(0) },
             ],
             okText: 'Напоминание отправлено в WhatsApp',
+            purpose: 'reminder',
           }),
       },
       {
         label: 'Акт сверки',
         icon: <FileText />,
-        onClick: () => setSendDialog({ clientId, title: 'Отправить акт сверки', initialText: `Акт сверки на ${fmt.date(today)} — во вложении. Проверьте, пожалуйста, и пришлите подписанный.`, file: actFile(today), okText: 'Акт сверки отправлен в WhatsApp' }),
+        onClick: () => setSendDialog({ clientId, title: 'Отправить акт сверки', initialText: `Акт сверки на ${fmt.date(today)} — во вложении. Проверьте, пожалуйста, и пришлите подписанный.`, file: actFile(today), okText: 'Акт сверки отправлен в WhatsApp', purpose: 'act' }),
       },
       {
         label: 'Прайс-лист',
@@ -151,6 +152,7 @@ export default function ChatsPage() {
             initialText: `Актуальный прайс — во вложении.${promo ? ` Сейчас действует акция «${promo.name}» до ${fmt.date(promo.end)}.` : ''}`,
             file: priceFile(today),
             okText: 'Прайс отправлен в WhatsApp',
+            purpose: 'price',
           }),
       },
     ];
