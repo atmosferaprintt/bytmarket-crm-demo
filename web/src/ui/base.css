@@ -490,6 +490,7 @@ button.list-row:hover, a.list-row:hover { background: var(--row-hover); text-dec
   .seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; flex-wrap: nowrap; }
   .seg::-webkit-scrollbar { display: none; }
   .card-head, .table-toolbar, .page-actions, .card-head > .row { flex-wrap: wrap; }
+  .card-head .nowrap { white-space: normal; }
   .table-toolbar .input-wrap { width: 100%; }
 }
 

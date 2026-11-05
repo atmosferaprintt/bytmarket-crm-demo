@@ -180,7 +180,7 @@ export default function OwnerHome() {
         <KpiTile
           label="Долги покупателей"
           value={fmt.money(d.debt.debt)}
-          d={delta(d.debt.debt, d.prevDebt)}
+          // долг — остаток на дату; сравнение с одним днём прошлого месяца колеблется от оплат в начале месяца и пугает зря
           asOf={asOf}
           dTitle={debtCmpTitle}
           good="down"
@@ -195,7 +195,6 @@ export default function OwnerHome() {
         <KpiTile
           label="Долги поставщикам"
           value={fmt.money(d.sup.debt)}
-          d={delta(d.sup.debt, d.prevSup)}
           asOf={asOf}
           dTitle={debtCmpTitle}
           good="down"
