@@ -279,7 +279,15 @@ export default function Accounts() {
                     </span>
                   </>
                 }
-                amount={<span title="Наличные в кассе: по пересчёту или ожидается">{fmt.money(sum.countedCash ?? sum.expectedCash)}</span>}
+                amount={
+                  <span
+                    className="money-li-stack"
+                    title={`Наличные за смену ${fmt.money(sum.cash)} и размен ${fmt.money(s.openingCash)}${s.closedAt ? (sum.countedCash === null ? '' : ', по пересчёту при закрытии') : ', ожидается сейчас'}`}
+                  >
+                    <span className="money-li-cap">В кассе, с разменом {fmt.money(s.openingCash)}</span>
+                    <span>{fmt.money(sum.countedCash ?? sum.expectedCash)}</span>
+                  </span>
+                }
               />
             ))}
           </div>

@@ -1,8 +1,8 @@
 /* Детали раздела «Продажи», которые нужны в нескольких экранах. */
 import type { ReactNode } from 'react';
-import type { Client, Order } from '../../data/types';
+import type { Client, Delivery, Order, Promo } from '../../data/types';
 import type { ClientBalance, OrderPayment } from '../../data/selectors';
-import { Chip, PAY_STATE, PICK_STATE, ORDER_STATE, SHIP_STATE, StatusChip, cx, fmt, overdueStatus } from '../../ui';
+import { Chip, PAY_STATE, PICK_STATE, PROMO_STATE, ORDER_STATE, SHIP_STATE, StatusChip, cx, fmt, overdueStatus, type StatusDef } from '../../ui';
 
 /** Полоса условий клиента: цены, отсрочка, лимит, долг, просрочка и срок оплаты. */
 export function ConditionsStrip({ client, balance, dueLabel }: { client: Client; balance: ClientBalance; dueLabel: ReactNode }) {
@@ -69,16 +69,35 @@ export function LimitBar({ limit, used, current, label = 'Остаток лим�
   );
 }
 
+/** Доставка не удалась, товар ещё не вернули на склад: заказ не закончен. */
+export function deliveryFailed(o: Order, d: Delivery | undefined): boolean {
+  return o.fulfillment === 'delivery' && !!d && d.state === 'failed' && o.ship !== 'delivered';
+}
+
+/** «Не доставлен» в колонке «Отгрузка»: товар уехал с курьером, но клиент его не получил. */
+export const SHIP_FAILED: StatusDef = { label: 'Не доставлен', tone: 'bad' };
+
+/** Отгрузка заказа одним словом с учётом неудачной доставки. */
+export function shipStatus(o: Order, d: Delivery | undefined): StatusDef {
+  return deliveryFailed(o, d) ? SHIP_FAILED : SHIP_STATE[o.ship];
+}
+
+/** Дни просрочки, которые показываем. По недоставленному заказу просрочку не рисуем: клиент товар не получил. */
+export function shownOverdue(o: Order, pay: OrderPayment, d: Delivery | undefined): number {
+  return deliveryFailed(o, d) ? 0 : pay.overdueDays;
+}
+
 /** Четыре раздельных состояния заказа. */
-export function OrderChips({ o, pay, compact }: { o: Order; pay: OrderPayment; compact?: boolean }) {
+export function OrderChips({ o, pay, delivery, compact }: { o: Order; pay: OrderPayment; delivery?: Delivery; compact?: boolean }) {
   const live = o.state === 'confirmed' || o.state === 'closed';
+  const overdue = shownOverdue(o, pay, delivery);
   return (
     <span className={cx('chips', compact && 'sales-chips-compact')}>
       <StatusChip s={ORDER_STATE[o.state]} />
       {live ? <StatusChip s={PICK_STATE[o.pick]} /> : null}
-      {live ? <StatusChip s={SHIP_STATE[o.ship]} /> : null}
+      {live ? <StatusChip s={shipStatus(o, delivery)} /> : null}
       {live && pay.amount > 0 ? <StatusChip s={PAY_STATE[pay.state]} /> : null}
-      {pay.overdueDays > 0 ? <StatusChip s={overdueStatus(pay.overdueDays)} /> : null}
+      {overdue > 0 ? <StatusChip s={overdueStatus(overdue)} /> : null}
     </span>
   );
 }
@@ -97,9 +116,42 @@ export function Dash() {
   return <span className="faint">—</span>;
 }
 
+export type PromoState = keyof typeof PROMO_STATE;
+
+/** Состояние акции на дату: те же слова, что в разделе «Товары». */
+export function promoStateOf(pr: Promo, today: string): PromoState {
+  if (!pr.active) return 'off';
+  if (pr.start > today) return 'future';
+  if (pr.end < today) return 'ended';
+  return 'active';
+}
+
+/** Подсказка к цене по акции: «Осенняя стирка · действует до 15 ноября». */
+export function promoTitle(pr: Promo, today: string): string {
+  const st = promoStateOf(pr, today);
+  const when = st === 'future' ? `с ${fmt.date(pr.start)}` : st === 'active' ? `до ${fmt.date(pr.end)}` : `${fmt.date(pr.start)} — ${fmt.date(pr.end)}`;
+  return `${pr.name} · ${PROMO_STATE[st].label.toLowerCase()} ${when}`;
+}
+
+/** Чип цены по акции «Акция −10 %»: цвет — по состоянию акции, название и срок — в подсказке. */
+export function PromoChip({ promo, pct, today, short }: { promo: Promo | null | undefined; pct?: number; today?: string; short?: boolean }) {
+  const text = pct ? (short ? `−${fmt.pct(pct, 0)}` : `Акция −${fmt.pct(pct, 0)}`) : 'Акция';
+  if (!promo || !today) return <Chip tone={PROMO_STATE.active.tone}>{text}</Chip>;
+  return (
+    <Chip tone={PROMO_STATE[promoStateOf(promo, today)].tone} title={promoTitle(promo, today)}>
+      {text}
+    </Chip>
+  );
+}
+
+/** Состояние акции чипом: «Действует», «Закончилась»… */
+export function PromoStateChip({ promo, today }: { promo: Promo; today: string }) {
+  return <StatusChip s={PROMO_STATE[promoStateOf(promo, today)]} />;
+}
+
 /** Чип «Акция −5 %», «Скидка −3 %» */
-export function DiscountChip({ promoPct, manualPct }: { promoPct: number; manualPct: number }) {
+export function DiscountChip({ promoPct, manualPct, promo, today }: { promoPct: number; manualPct: number; promo?: Promo | null; today?: string }) {
   if (manualPct > 0) return <Chip tone="info">Скидка −{fmt.pct(manualPct)}</Chip>;
-  if (promoPct > 0) return <Chip tone="green">Акция −{fmt.pct(promoPct, 0)}</Chip>;
+  if (promoPct > 0) return <PromoChip promo={promo} pct={promoPct} today={today} />;
   return <Dash />;
 }

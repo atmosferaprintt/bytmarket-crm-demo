@@ -12,6 +12,7 @@ import { EntityLink, useOpenEntity } from '../../shell/entities';
 import { Button, Card, DataTable, EmptyState, Field, Input, Modal, Notice, Select, StatusChip, QUARANTINE_STATE, fmt, toast, type Column, type FilterDef } from '../../ui';
 import { stockTabCounts } from './picking';
 import { act } from './act';
+import { quarantineCanRelease } from '../../data/ops';
 import { shortWhen } from './useNarrow';
 
 export const Q_SOURCE: Record<QuarantineItem['source'], string> = {
@@ -183,9 +184,15 @@ export default function QuarantinePage() {
       hidden: !canDecide,
       render: (q) => (
         <span className="stock-qactions" onClick={(e) => e.stopPropagation()}>
-          <Button size="sm" icon={<RotateCcw />} onClick={() => release(q)} title="Проверено, товар целый — вернуть в продажу">
-            В продажу
-          </Button>
+          {quarantineCanRelease(q) ? (
+            <Button size="sm" icon={<RotateCcw />} onClick={() => release(q)} title="Проверено, товар целый — вернуть в продажу">
+              В продажу
+            </Button>
+          ) : (
+            <span className="t-12 muted" title="Брак и просроченный товар в продажу не возвращают">
+              Только списание
+            </span>
+          )}
           <Button size="sm" variant="ghost" icon={<Trash2 />} onClick={() => setWo(q)}>
             Списать
           </Button>

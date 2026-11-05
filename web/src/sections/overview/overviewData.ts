@@ -1,7 +1,8 @@
 /* Цифры обзора владельца за выбранный период и сопоставимый прошлый. */
 import type { DB, ID, ISODate } from '../../data/types';
-import { dailySeries, salesForPeriod, supplierBalances, type SalesSummary } from '../../data/selectors';
+import { dailySeries, salesForPeriod, type SalesSummary } from '../../data/selectors';
 import { diffDays } from '../../data/dates';
+import { planProgress, type PlanProgress } from '../../data/kpis';
 import {
   cashIn,
   clientDebtAt,
@@ -10,16 +11,17 @@ import {
   delayedOrders,
   hourlySeries,
   lossesFor,
-  planFor,
   salesUntil,
   stockValue,
   supplierDebtAt,
   supplierDebtNow,
+  supplierWeek,
   type DelayItem,
   type LossSummary,
   type StockValue,
+  type SupplierWeek,
 } from './analytics';
-import { compareRange, fullRange, hasCompare, rangeOf, shiftPeriod, type PeriodState } from './period';
+import { compareRange, fullRange, hasCompare, rangeOf, sameDayPrevPeriod, shiftPeriod, type PeriodState } from './period';
 import type { ComboPoint } from '../../ui/charts';
 
 export type SeriesKey = 'all' | 'retail' | 'wholesale';
@@ -32,16 +34,19 @@ export interface OverviewData {
   cmp: boolean;
   sales: SalesSummary;
   prevSales: SalesSummary | null;
-  plan: number | null;
-  planMonth: number | null;
+  /** План месяца, в который попадает конец периода: одна формула со всеми экранами (planProgress). */
+  plan: PlanProgress;
   cash: { total: number; bank: number; cash: number };
   prevCash: number | null;
+  /** Долги — остаток на сегодня, независимо от периода. Сравнение — с тем же днём прошлого периода. */
+  debtDate: ISODate;
+  debtCmpDate: ISODate | null;
   debt: { debt: number; overdue: number };
   prevDebt: number | null;
   sup: { debt: number; overdue: number };
   prevSup: number | null;
   nextPay: { date: ISODate; amount: number; supplierId: ID } | null;
-  upcoming: { supplierId: ID; purchaseId: ID; amount: number; dueDate: ISODate }[];
+  week: SupplierWeek;
   stock: StockValue;
   losses: LossSummary;
   delayed: DelayItem[];
@@ -56,17 +61,10 @@ export function computeOverview(db: DB, p: PeriodState, nowTime: string): Overvi
   // сегодня ещё не кончилось: сравниваем с тем же днём неделю назад до того же часа
   const partialDay = p.kind === 'today' && p.anchor === today;
   const prevSales = !cmp ? null : partialDay ? salesUntil(db, prev.from, nowTime) : salesForPeriod(db, prev.from, prev.to);
-  const isNow = r.to === today;
   const debtNow = clientDebtNow(db);
-  const debt = isNow ? { debt: debtNow.debt, overdue: debtNow.overdue } : clientDebtAt(db, r.to);
   const supNow = supplierDebtNow(db);
-  const sup = isNow ? { debt: supNow.debt, overdue: supNow.overdue } : { debt: supplierDebtAt(db, r.to), overdue: 0 };
-  const startOk = prev.to >= db.meta.startDate;
-  const upcoming: OverviewData['upcoming'] = [];
-  for (const [sid, b] of supplierBalances(db)) for (const u of b.upcoming) upcoming.push({ supplierId: sid, purchaseId: u.purchaseId, amount: u.amount, dueDate: u.dueDate });
-  upcoming.sort((a, b) => (a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : b.amount - a.amount));
-  const full = fullRange(p);
-  const monthPlan = p.kind === 'month' ? planFor(db, full.from, full.to) : null;
+  const cmpDate = sameDayPrevPeriod(p.kind, today);
+  const debtCmpDate = cmpDate >= db.meta.startDate ? cmpDate : null;
   return {
     from: r.from,
     to: r.to,
@@ -75,16 +73,17 @@ export function computeOverview(db: DB, p: PeriodState, nowTime: string): Overvi
     cmp,
     sales,
     prevSales,
-    plan: planFor(db, r.from, r.to),
-    planMonth: monthPlan,
+    plan: planProgress(db, null, r.to),
     cash: cashIn(db, r.from, r.to),
     prevCash: cmp ? cashIn(db, prev.from, prev.to, partialDay ? nowTime : undefined).total : null,
-    debt,
-    prevDebt: startOk ? clientDebtAt(db, prev.to).debt : null,
-    sup,
-    prevSup: startOk ? supplierDebtAt(db, prev.to) : null,
+    debtDate: today,
+    debtCmpDate,
+    debt: { debt: debtNow.debt, overdue: debtNow.overdue },
+    prevDebt: debtCmpDate ? clientDebtAt(db, debtCmpDate).debt : null,
+    sup: { debt: supNow.debt, overdue: supNow.overdue },
+    prevSup: debtCmpDate ? supplierDebtAt(db, debtCmpDate) : null,
     nextPay: supNow.next,
-    upcoming,
+    week: supplierWeek(db),
     stock: stockValue(db),
     losses: lossesFor(db, r.from, r.to),
     delayed: delayedOrders(db),

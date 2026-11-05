@@ -9,8 +9,9 @@ import { dispatch, useDB, useDBVersion } from '../../data/store';
 import { indexes, shiftSummary } from '../../data/selectors';
 import { useSession } from '../../roles/session';
 import { Button, Checkbox, Chip, Drawer, EmptyState, Field, Notice, QtyInput, Segmented, Select, StatList, StatRow, Textarea, cx, fmt, toast } from '../../ui';
-import { PAY_KIND_NAMES, SHOP_RETURN_REASONS, cardNumber, openShift, packLabel, payKind, refundedByProduct } from './lib';
+import { PAY_KIND_NAMES, SHOP_RETURN_REASONS, cardNumber, fixNo, openShift, packLabel, payKind, refundedByProduct } from './lib';
 import { usePrintReceipt } from './Print';
+import { PromoStateChip } from '../sales/parts';
 import './register.css';
 
 /** Карточка «Чек» в боковой панели. Открывается из любого раздела через ?open=receipt:id; ?refund=1 — сразу возврат. */
@@ -49,7 +50,8 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
     const promo = r.lines.reduce((s, l) => s + (l.promoId ? (l.basePrice - l.price) * l.qty : 0), 0);
     const manual = r.lines.reduce((s, l) => s + (!l.promoId && l.discountPct > 0 ? (l.basePrice - l.price) * l.qty : 0), 0);
     const reasons = [...new Set(r.lines.filter((l) => l.discountPct > 0 && l.discountReason).map((l) => `${fmt.pct(l.discountPct)} · ${l.discountReason}`))];
-    const promoNames = [...new Set(r.lines.map((l) => (l.promoId ? db.promos.find((p) => p.id === l.promoId)?.name : null)).filter(Boolean))] as string[];
+    const promoById = new Map(db.promos.map((p) => [p.id, p]));
+    const promoNames = [...new Set(r.lines.map((l) => (l.promoId ? promoById.get(l.promoId)?.name : null)).filter(Boolean))] as string[];
     const profit = r.lines.every((l) => l.cost !== null) ? r.lines.reduce((s, l) => s + (l.price - (l.cost ?? 0)) * l.qty, 0) : null;
     return {
       seller: ix.employees.get(r.sellerId),
@@ -66,6 +68,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
       manual,
       reasons,
       promoNames,
+      promoById,
       profit,
     };
   }, [db, version, r]);
@@ -125,7 +128,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
           </EntityLink>{' '}
           от {fmt.date(info.orig.at)}
           {info.ret ? ` · причина: ${[...new Set(info.ret.lines.map((l) => RETURN_REASONS[l.reason]))].join(', ').toLowerCase()}` : ''}
-          {info.ret?.comment && !info.ret.comment.startsWith('Возврат по чеку') ? ` · ${info.ret.comment}` : ''}
+          {info.ret?.comment && !info.ret.comment.startsWith('Возврат по чеку') ? ` · ${fixNo(info.ret.comment)}` : ''}
         </Notice>
       ) : null}
 
@@ -143,6 +146,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
             {r.lines.map((l, i) => {
               const p = ix.products.get(l.productId);
               const back = r.kind === 'sale' ? info.refunded.get(l.productId) ?? 0 : 0;
+              const promo = l.promoId ? info.promoById.get(l.promoId) : undefined;
               return (
                 <tr key={i}>
                   <td>
@@ -155,7 +159,12 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
                     )}
                     <div className="cell-sub row" style={{ gap: 6, flexWrap: 'wrap' }}>
                       {p && l.pack !== 'pcs' ? <span>{l.packQty} × {packLabel(p, l.pack)}</span> : null}
-                      {l.promoId ? <Chip tone="green">Акция</Chip> : null}
+                      {promo ? (
+                        <>
+                          <span>Акция «{promo.name}»</span>
+                          <PromoStateChip promo={promo} today={db.meta.today} />
+                        </>
+                      ) : null}
                       {l.discountPct > 0 ? <Chip>−{fmt.pct(l.discountPct)}</Chip> : null}
                       {back > 0 ? <Chip tone="warn">Вернули {fmt.qty(back)}</Chip> : null}
                     </div>
@@ -225,7 +234,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
                   Возврат № {x.number}
                 </EntityLink>
                 <span className="muted t-13">
-                  {fmt.relDate(x.at, db.meta.today)}, {fmt.time(x.at)} · {x.cash > 0 ? 'наличными' : 'на карту'}
+                  {fmt.dateTime(x.at)} · {x.cash > 0 ? 'наличными' : 'на карту'}
                 </span>
                 <span className="spacer" />
                 <span className="w-600 num">−{fmt.money(x.total)}</span>
@@ -298,10 +307,10 @@ function RefundForm({ receiptId, onCancel, onClose, meId }: { receiptId: ID; onC
     );
     setBusy(false);
     if (!res.ok) {
-      setError(res.error);
+      setError(fixNo(res.error));
       return;
     }
-    toast(res.info ?? 'Возврат оформлен');
+    toast(res.info ? fixNo(res.info) : 'Возврат оформлен');
     onCancel();
   };
 

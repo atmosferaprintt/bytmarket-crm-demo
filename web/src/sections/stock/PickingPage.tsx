@@ -20,6 +20,7 @@ import {
   Notice,
   ProgressBar,
   StatusChip,
+  cx,
   DELIVERY_STATE,
   PICK_STATE,
   SHIP_STATE,
@@ -225,7 +226,9 @@ export default function PickingPage() {
   const side = current ? (
     (() => {
       const x = current;
-      const done = checked[x.id] ?? new Set<number>();
+      // собранный заказ — все галочки стоят; при сборке отмечает кладовщик; до начала — пусто
+      const picked = x.o.pick === 'picked';
+      const done = picked ? new Set(x.lines.map((_, i) => i)) : checked[x.id] ?? new Set<number>();
       const allDone = done.size >= x.lines.length;
       const courier = x.delivery?.courierId ? ix.employees.get(x.delivery.courierId)?.name ?? null : null;
       const toggle = (i: number) =>
@@ -291,7 +294,7 @@ export default function PickingPage() {
             {x.delivery ? <StatusChip s={DELIVERY_STATE[x.delivery.state]} /> : null}
           </div>
           <div className="t-13 ink-2 w-600" style={{ marginTop: 8 }}>
-            {x.o.fulfillment === 'delivery' ? `Доставка ${whenText(x, today)}` : 'Самовывоз'} · мест {x.places}
+            {x.o.fulfillment === 'delivery' ? `Доставка ${whenText(x, today)}` : 'Самовывоз'}
           </div>
           {x.delivery ? <div className="t-12 muted" style={{ marginTop: 2 }}>{x.delivery.address}{courier ? ` · курьер ${courier}` : ''}</div> : null}
           {x.o.comment ? <div className="t-13 ink-2" style={{ marginTop: 8 }}>{x.o.comment}</div> : null}
@@ -306,18 +309,23 @@ export default function PickingPage() {
               <ProgressBar value={done.size} max={x.lines.length} thin />
             </div>
           ) : null}
-          <div className="stock-pick-lines" style={{ marginTop: 12 }}>
+          <div className="stock-pick-sum" style={{ marginTop: 12, marginBottom: 8 }}>
+            <span>
+              <b>{fmt.count(x.positions, 'позиция', 'позиции', 'позиций')}</b> · {fmt.qty(x.qty)} · мест {x.places}
+            </span>
+            <span className="muted">Откуда: {LOCATION_NAMES[x.o.location].toLowerCase()}</span>
+          </div>
+          <div className="stock-pick-lines">
             {x.lines.map((l, i) => {
               const isDone = done.has(i);
               const pk = packText(l.rest, l.line.pack, l.line.packSize);
+              const locked = x.o.pick !== 'picking';
               return (
-                <label key={i} className={isDone ? 'stock-pick-line is-done' : 'stock-pick-line'}>
-                  <input type="checkbox" checked={isDone} disabled={x.o.pick !== 'picking'} onChange={() => toggle(i)} aria-label="Отобрано" />
+                <label key={i} className={cx('stock-pick-line', isDone && x.o.pick === 'picking' && 'is-done', locked && 'is-locked')}>
+                  <input type="checkbox" checked={isDone} disabled={locked} onChange={() => toggle(i)} aria-label="Отобрано" />
                   <span style={{ minWidth: 0 }}>
                     <span className="stock-pick-name">{l.p.name}</span>
-                    <span className="cell-sub" style={{ display: 'block' }}>
-                      {l.p.sku} · {LOCATION_NAMES[x.o.location]}
-                    </span>
+                    <span className="stock-pick-sku">{l.p.sku}</span>
                   </span>
                   <span className="stock-pick-qty">
                     <b>{fmt.qty(l.rest)}</b>

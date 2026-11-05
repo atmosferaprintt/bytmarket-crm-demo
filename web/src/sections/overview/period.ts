@@ -1,4 +1,5 @@
 /* Период для обзора и отчётов: вид (день, неделя, месяц, квартал) и дата внутри него. Стрелки сдвигают на один период. */
+import { useState } from 'react';
 import type { ISODate } from '../../data/types';
 import type { DateRange, PeriodKind } from '../../data/selectors';
 import { previousRange } from '../../data/selectors';
@@ -7,6 +8,31 @@ import { dow, firstOfMonth, lastOfMonth, plusDays, plusMonths } from '../../data
 export interface PeriodState {
   kind: PeriodKind;
   anchor: ISODate;
+}
+
+/** Период по умолчанию для обзора и отчётов: месяц. В первую неделю месяца — прошлый полный месяц:
+    пять неполных дней дают ложный минус ко всему. */
+export function defaultPeriod(today: ISODate): PeriodState {
+  return { kind: 'month', anchor: Number(today.slice(8, 10)) <= 7 ? plusDays(firstOfMonth(today), -1) : today };
+}
+
+/* Один выбранный период на обзор и отчёты: перешли с обзора в отчёт — период тот же. Живёт до перезагрузки. */
+let shared: { today: ISODate; period: PeriodState } | null = null;
+
+/** Состояние периода, общее для обзора и отчётов. */
+export function useSharedPeriod(today: ISODate): [PeriodState, (p: PeriodState) => void] {
+  const [period, setLocal] = useState<PeriodState>(() => (shared && shared.today === today ? shared.period : defaultPeriod(today)));
+  const set = (p: PeriodState) => {
+    shared = { today, period: p };
+    setLocal(p);
+  };
+  return [period, set];
+}
+
+/** С каким днём сравнивать остаток «на сегодня» (долги): тот же день прошлого периода. */
+export function sameDayPrevPeriod(kind: PeriodKind, today: ISODate): ISODate {
+  if (kind === 'today' || kind === 'week') return plusDays(today, -7);
+  return plusMonths(today, kind === 'month' ? -1 : -3);
 }
 
 export const PERIOD_KINDS: { value: PeriodKind; label: string }[] = [

@@ -12,6 +12,8 @@ import { TaskModal } from '../../shell/TaskModal';
 import { Button, Card, Chip, EmptyState, Kpi, ProgressBar, StatusChip, cx, fmt, overdueStatus, toast } from '../../ui';
 import { NewOrderDrawer } from './NewOrderDrawer';
 import { useSalesOrders } from './salesScope';
+import { deliveryFailed } from './parts';
+import { fixNo } from './lib';
 import './sales.css';
 
 /** Рабочий стол менеджера: заявки, заказы в работе, долги, пропущенные заказы, план и задачи. */
@@ -30,8 +32,10 @@ export default function Home() {
     const idx = indexes(db);
     const orders = salesOrders;
     const requests = orders.filter((o) => o.state === 'request').sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-    const work = orders.filter((o) => o.state === 'confirmed');
     const dById = new Map(db.deliveries.map((d) => [d.id, d]));
+    // недоставленный заказ снова в работе: диспетчер назначит повтор или вернёт товар на склад
+    const isFailed = (o: Order) => (o.state === 'confirmed' || o.state === 'closed') && deliveryFailed(o, o.deliveryId ? dById.get(o.deliveryId) : undefined);
+    const work = orders.filter((o) => o.state === 'confirmed' || isFailed(o));
     const group = (test: (o: Order) => boolean) => {
       const list = work.filter(test);
       return { n: list.length, sum: list.reduce((s, o) => s + o.total, 0) };
@@ -47,6 +51,7 @@ export default function Home() {
       { key: 'way', label: 'У курьера в пути', ...group((o) => onWay(o)) },
       { key: 'partial', label: 'Отгружены частично', ...group((o) => o.ship === 'partial') },
     ];
+    const failed = group(isFailed);
     const noDelivery = work.filter((o) => o.fulfillment === 'delivery' && !o.deliveryId && o.ship === 'none').length;
 
     const clients = scoped.clients.filter((c) => c.active);
@@ -79,7 +84,7 @@ export default function Home() {
     const fact = salesForPeriod(db, month + '-01', today, { employeeId: me.id }).revenue;
     const tasks = scoped.myTasks.filter((t) => t.state === 'open' && t.due <= today).sort((a, b) => a.due.localeCompare(b.due) || (a.dueTime ?? '99').localeCompare(b.dueTime ?? '99'));
     const workSum = work.reduce((s, o) => s + o.total, 0);
-    return { idx, requests, work, workSum, stages, noDelivery, debts, debtTotal, overdueTotal, missed, plan, fact, tasks };
+    return { idx, requests, work, workSum, stages, failed, noDelivery, debts, debtTotal, overdueTotal, missed, plan, fact, tasks };
   }, [db, version, scoped, salesOrders, me.id, today]);
 
   const daysInMonth = new Date(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0).getDate();
@@ -136,7 +141,7 @@ export default function Home() {
                           <span className="w-600 ellipsis">{c?.name}</span>
                         </div>
                         <div className="muted t-12">
-                          {o.authorId === me.id ? 'Ваш заказ сверх условий' : a?.short} · {fmt.relDate(o.createdAt, today)}, {fmt.time(o.createdAt)} · {fmt.count(o.lines.length, 'позиция', 'позиции', 'позиций')}
+                          {o.authorId === me.id ? 'Ваш заказ сверх условий' : a?.short} · {fmt.dateTime(o.createdAt)} · {fmt.count(o.lines.length, 'позиция', 'позиции', 'позиций')}
                         </div>
                       </div>
                       {o.authorId === me.id ? <Chip tone="warn">У владельца</Chip> : b.maxOverdueDays > 0 ? <StatusChip s={overdueStatus(b.maxOverdueDays)} /> : null}
@@ -162,6 +167,13 @@ export default function Home() {
                   <span className={cx('sales-count', s.n > 0 && 'is-on')}>{s.n}</span>
                 </div>
               ))}
+              {data.failed.n ? (
+                <div className="list-row">
+                  <span className="grow c-bad w-600">Не доставлены</span>
+                  <span className="muted t-12 num">{fmt.money(data.failed.sum)}</span>
+                  <span className="sales-count is-bad">{data.failed.n}</span>
+                </div>
+              ) : null}
               {data.noDelivery ? (
                 <div className="list-row">
                   <span className="grow c-warn w-600">Доставка не оформлена</span>
@@ -239,7 +251,7 @@ export default function Home() {
                       <input type="checkbox" className="task-check" onChange={() => doneTask(t.id)} aria-label="Выполнено" />
                       <span className="grow">
                         <span className="w-600" style={{ display: 'block' }}>
-                          {t.title}
+                          {fixNo(t.title)}
                         </span>
                         <span className={cx('t-12', overdue ? 'c-bad w-600' : 'muted')}>
                           {overdue ? `Просрочена с ${fmt.date(t.due)}` : t.dueTime ? `Сегодня до ${t.dueTime}` : 'Сегодня'}

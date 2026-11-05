@@ -56,6 +56,11 @@ export function orderProblems(db: DB, client: Client, total: number): Problem[] 
   return out;
 }
 
+/** Номер документа в тексте всегда «№ 3589»: с пробелом после знака. Тексты из журнала приходят как «№3589». */
+export function fixNo(s: string): string {
+  return s.replace(/№[\s\u00a0]*(?=\d)/g, '№ ');
+}
+
 export function capitalize(s: string): string {
   return s ? s[0].toUpperCase() + s.slice(1) : s;
 }

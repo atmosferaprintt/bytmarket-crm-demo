@@ -2,9 +2,15 @@
 import type { Client, DB, Delivery, Employee, ID, ISODate, Product, Promo, RoleKey } from '../../data/types';
 import { categoryFamily, clientBalances, courierCash, indexes, stockIndex } from '../../data/selectors';
 import { diffDays, plusDays } from '../../data/dates';
+import { planProgress, type PlanProgress } from '../../data/kpis';
+import { isBelowMin } from '../../data/thresholds';
 import {
   DEAD_DAYS,
+  deliveryLateNow,
   demandIndex,
+  firstPurchaseIndex,
+  newClientIds,
+  nowAt,
   emptyAgg,
   addFact,
   groupFacts,
@@ -14,7 +20,6 @@ import {
   marginOf,
   memoDB,
   outDays,
-  planFor,
   productAgg,
   saleFacts,
   topCategoryId,
@@ -112,7 +117,7 @@ export function groupRows(rows: ProductRow[], by: 'category' | 'brand'): GroupRo
     a.returnsQty += b.returnsQty;
     a.promoDiscount += b.promoDiscount;
     a.manualDiscount += b.manualDiscount;
-    if (b.soldQty > 0) g.skus++;
+    if (b.lines > 0 || b.returnsQty > 0) g.skus++; // тот же счёт, что в рейтинге: товары с продажами или возвратами за период
     g.prevRevenue += r.prevRevenue;
     g.products.push(r.p.id);
   }
@@ -172,7 +177,7 @@ export function deficitRows(db: DB): DeficitRow[] {
       const p = ix.products.get(d.productId);
       if (!p || !p.active) continue;
       const shortage = isShortage(d);
-      const belowMin = d.available < p.minStock;
+      const belowMin = isBelowMin(d.available, p.minStock);
       if (!shortage && !belowMin) continue;
       out.push({
         p,
@@ -208,7 +213,8 @@ export interface ClientRow {
   lastAt: string | null;
   last30: number;
   prev30: number;
-  activity: 'drop' | 'stopped' | 'growth' | 'flat' | 'new';
+  activity: 'drop' | 'stopped' | 'growth' | 'flat' | 'new' | 'back';
+  isNew: boolean; // новый клиент за период — то же правило, что в отчёте «Сотрудники»
   activityPct: number | null;
   debt: number;
   overdue: number;
@@ -304,6 +310,7 @@ export function clientRows(db: DB, from: ISODate, to: ISODate): ClientRow[] {
     }
     const bal = clientBalances(db);
     const onTime = paidOnTimeIndex(db);
+    const fresh = newClientIds(db, from, to);
     const rows: ClientRow[] = [];
     for (const c of db.clients) {
       const a = agg.get(c.id) ?? emptyAgg();
@@ -316,8 +323,10 @@ export function clientRows(db: DB, from: ISODate, to: ISODate): ClientRow[] {
       let activity: ClientRow['activity'] = 'flat';
       let activityPct: number | null = null;
       if (pr30 > 0) activityPct = ((l30 - pr30) / pr30) * 100;
-      if (pr30 > 0 && l30 === 0) activity = 'stopped';
-      else if (pr30 === 0 && l30 > 0) activity = 'new';
+      const isNew = fresh.has(c.id);
+      if (isNew) activity = 'new';
+      else if (pr30 > 0 && l30 === 0) activity = 'stopped';
+      else if (pr30 === 0 && l30 > 0) activity = 'back';
       else if (activityPct !== null && activityPct <= -30 && pr30 >= 3000) activity = 'drop';
       else if (activityPct !== null && activityPct >= 25) activity = 'growth';
       const has = catsByClient.get(c.id) ?? new Set<ID>();
@@ -337,6 +346,7 @@ export function clientRows(db: DB, from: ISODate, to: ISODate): ClientRow[] {
         prev30: pr30,
         activity,
         activityPct,
+        isNew,
         debt: b?.debt ?? 0,
         overdue: b?.overdue ?? 0,
         overdueDays: b?.maxOverdueDays ?? 0,
@@ -365,7 +375,7 @@ export interface StaffRow {
   cancelled: number;
   clientsDebt: number;
   clientsOverdue: number;
-  plan: number | null;
+  plan: PlanProgress; // план месяца — planProgress, одна формула со всеми экранами
   visits: VisitStat | null;
 }
 
@@ -386,17 +396,12 @@ export function staffRows(db: DB, from: ISODate, to: ISODate): StaffRow[] {
     const hi = to + 'T99';
     const facts = saleFacts(db, from, to);
     const agg = groupFacts(facts, (f) => f.employeeId);
-    // первая покупка клиента за всю историю — кому засчитан новый клиент
-    const first = new Map<ID, { date: ISODate; emp: ID | null }>();
-    for (const f of saleFacts(db, db.meta.startDate, db.meta.today)) {
-      if (!f.clientId || f.isReturn || first.has(f.clientId)) continue;
-      first.set(f.clientId, { date: f.date, emp: f.employeeId });
-    }
-    const createdAfterStart = new Set(db.clients.filter((c) => c.createdAt >= db.meta.startDate).map((c) => c.id));
+    // новый клиент засчитан тому, кто оформил его первую покупку; правило — newClientIds, как в отчёте «Клиенты»
+    const first = firstPurchaseIndex(db);
     const newBy = new Map<ID, number>();
-    for (const [cid, x] of first) {
-      if (x.date < from || x.date > to || !x.emp || !createdAfterStart.has(cid)) continue;
-      newBy.set(x.emp, (newBy.get(x.emp) ?? 0) + 1);
+    for (const cid of newClientIds(db, from, to)) {
+      const emp = first.get(cid)?.employeeId;
+      if (emp) newBy.set(emp, (newBy.get(emp) ?? 0) + 1);
     }
     const receipts = new Map<ID, { n: number; sum: number; repeat: number }>();
     for (const r of db.receipts) {
@@ -468,8 +473,8 @@ export function staffRows(db: DB, from: ISODate, to: ISODate): StaffRow[] {
       const a = agg.get(e.id) ?? emptyAgg();
       const rc = receipts.get(e.id);
       const oc = orders.get(e.id);
-      const plan = planFor(db, from, to, e.id);
-      if (!a.lines && !a.returnsQty && !oc?.n && !rc?.n && !plan && !visits.get(e.id)) continue;
+      const plan = planProgress(db, e.id, to);
+      if (!a.lines && !a.returnsQty && !oc?.n && !rc?.n && plan.plan === null && !visits.get(e.id)) continue;
       const docsN = (rc?.n ?? 0) + (oc?.n ?? 0);
       const docsSum = (rc?.sum ?? 0) + (oc?.sum ?? 0);
       rows.push({
@@ -497,7 +502,7 @@ export function staffRows(db: DB, from: ISODate, to: ISODate): StaffRow[] {
 
 /* ---------- акции ---------- */
 
-export type PromoState = 'running' | 'future' | 'ended' | 'off';
+export type PromoState = 'active' | 'future' | 'ended' | 'off'; // слова — PROMO_STATE
 
 export interface PromoRow {
   pr: Promo;
@@ -553,7 +558,7 @@ export function promoRows(db: DB, from: ISODate, to: ISODate): PromoRow[] {
       const rec = receiptsWith.get(pr.id);
       let wSum = 0;
       for (const id of rec ?? []) wSum += rIx.get(id)?.total ?? 0;
-      const state: PromoState = !pr.active ? 'off' : pr.start > today ? 'future' : pr.end < today ? 'ended' : 'running';
+      const state: PromoState = !pr.active ? 'off' : pr.start > today ? 'future' : pr.end < today ? 'ended' : 'active';
       // сравнение: дни акции (до сегодня) против стольких же дней перед ней; с учётом аудитории
       const dFrom = pr.start < db.meta.startDate ? db.meta.startDate : pr.start;
       const dTo = pr.end > today ? today : pr.end;
@@ -609,14 +614,16 @@ export function promoRows(db: DB, from: ISODate, to: ISODate): PromoRow[] {
         absentProducts: absent,
       });
     }
-    const rank: Record<PromoState, number> = { running: 0, future: 1, ended: 2, off: 3 };
+    const rank: Record<PromoState, number> = { active: 0, future: 1, ended: 2, off: 3 };
     return rows.sort((a, b) => rank[a.state] - rank[b.state] || b.agg.revenue - a.agg.revenue);
   });
 }
 
 /* ---------- доставка ---------- */
 
-export type DeliveryOutcome = 'on_time' | 'late' | 'failed' | 'open';
+/** on_time — вручена вовремя; late — вручена с опозданием; late_now — не вручена, а интервал уже прошёл (как «Опаздывают» на экране доставки);
+    failed — не доставлена; open — в работе и пока в срок. */
+export type DeliveryOutcome = 'on_time' | 'late' | 'late_now' | 'failed' | 'open';
 
 export interface DeliveryFact {
   d: Delivery;
@@ -625,10 +632,11 @@ export interface DeliveryFact {
   repeat: boolean;
   lastReason: string | null;
   underpaid: boolean;
+  spent: boolean; // курьер уже выезжал — расход на доставку случился
 }
 
-export function deliveryFacts(db: DB, from: ISODate, to: ISODate): DeliveryFact[] {
-  return memoDB(db, `rp-deliv|${from}|${to}`, () => {
+export function deliveryFacts(db: DB, from: ISODate, to: ISODate, now: string = nowAt()): DeliveryFact[] {
+  return memoDB(db, `rp-deliv|${from}|${to}|${now}`, () => {
     const out: DeliveryFact[] = [];
     for (const d of db.deliveries) {
       if (d.date < from || d.date > to) continue;
@@ -640,6 +648,7 @@ export function deliveryFacts(db: DB, from: ISODate, to: ISODate): DeliveryFact[
         const onTime = !failed.length && done.at.slice(0, 10) <= d.date && done.at.slice(11, 16) <= end;
         outcome = onTime ? 'on_time' : 'late';
       } else if (d.state === 'failed' || d.state === 'returned') outcome = 'failed';
+      else if (deliveryLateNow(d, now)) outcome = 'late_now';
       out.push({
         d,
         outcome,
@@ -647,10 +656,17 @@ export function deliveryFacts(db: DB, from: ISODate, to: ISODate): DeliveryFact[
         repeat: d.attempts.length > 1,
         lastReason: failed.length ? failed[failed.length - 1].reason : null,
         underpaid: d.state === 'delivered' && d.collect > 0 && d.collected < d.collect,
+        spent: d.attempts.length > 0 || d.state === 'on_way',
       });
     }
     return out;
   });
+}
+
+/** Доля «вовремя»: врученные вовремя ÷ (врученные + опаздывающие сейчас). Неудачные считаются отдельно. */
+export function onTimeShare(onTime: number, late: number, lateNow: number): number | null {
+  const base = onTime + late + lateNow;
+  return base > 0 ? onTime / base : null;
 }
 
 export interface CourierRow {
@@ -659,6 +675,7 @@ export interface CourierRow {
   delivered: number;
   onTime: number;
   late: number;
+  lateNow: number;
   failedAttempts: number;
   repeat: number;
   cost: number;
@@ -666,11 +683,12 @@ export interface CourierRow {
   onHand: number;
 }
 
+/** Курьеры. Расходы — по тем же правилам, что итог «Расходы на доставку»: доставки, на которые курьер уже выезжал. */
 export function courierRows(db: DB, facts: DeliveryFact[]): CourierRow[] {
   const m = new Map<ID, CourierRow>();
   for (const e of db.employees) {
     if (!e.roles.includes('courier')) continue;
-    m.set(e.id, { e, total: 0, delivered: 0, onTime: 0, late: 0, failedAttempts: 0, repeat: 0, cost: 0, collected: 0, onHand: courierCash(db, e.id).onHand });
+    m.set(e.id, { e, total: 0, delivered: 0, onTime: 0, late: 0, lateNow: 0, failedAttempts: 0, repeat: 0, cost: 0, collected: 0, onHand: courierCash(db, e.id).onHand });
   }
   for (const f of facts) {
     const r = f.d.courierId ? m.get(f.d.courierId) : undefined;
@@ -679,9 +697,10 @@ export function courierRows(db: DB, facts: DeliveryFact[]): CourierRow[] {
     if (f.outcome === 'on_time' || f.outcome === 'late') r.delivered++;
     if (f.outcome === 'on_time') r.onTime++;
     if (f.outcome === 'late') r.late++;
+    if (f.outcome === 'late_now') r.lateNow++;
     r.failedAttempts += f.failedAttempts;
     if (f.repeat) r.repeat++;
-    r.cost += f.d.cost;
+    if (f.spent) r.cost += f.d.cost;
     r.collected += f.d.collected;
   }
   return [...m.values()].sort((a, b) => b.total - a.total);

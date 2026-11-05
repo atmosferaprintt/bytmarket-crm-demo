@@ -6,13 +6,17 @@ import { useDB, useDBVersion } from '../../data/store';
 import { useSession } from '../../roles/session';
 import { PageHeader } from '../../shell/PageHeader';
 import { useOpenEntity } from '../../shell/entities';
-import { Button, DataTable, Select, STOCK_LEVEL, fmt, type Column, type FilterDef } from '../../ui';
+import { Button, DataTable, Select, fmt, type Column, type FilterDef } from '../../ui';
 import { categoryFamily } from '../../data/selectors';
-import { catalogMode, catalogRows, promosToday, type CatalogMode, type CatalogRow, type StockLevel } from './lib';
-import { LevelChip, PriceCell, PromoChip } from './bits';
+import { NO_MOVEMENT_DAYS } from '../../data/thresholds';
+import { useNarrow } from '../stock/useNarrow';
+import { statusRank } from '../stock/StockStatus';
+import { catalogCount, catalogMode, catalogRows, promosToday, type CatalogMode, type CatalogRow } from './lib';
+import { PriceCell, PromoChip, Qty, StockChip } from './bits';
 import ProductForm from './ProductForm';
 
-const LEVEL_ORDER: Record<StockLevel, number> = { out: 0, low: 1, ok: 2, inactive: 3 };
+const AVAIL_TITLE = 'Доступно = магазин + склад − резерв';
+const WH_TITLE = 'На складе для опта = склад − резерв: столько можно обещать оптовому клиенту';
 
 function nameCell(r: CatalogRow) {
   return (
@@ -30,15 +34,14 @@ function stateFilter(mode: CatalogMode): FilterDef<CatalogRow> {
       showCounts: true,
       options: [
         { value: 'all', label: 'Все' },
-        { value: 'low', label: 'Ниже минимума', test: (r) => r.level === 'low' },
-        { value: 'out', label: 'Нет в наличии', test: (r) => r.level === 'out' },
+        { value: 'low', label: 'Ниже минимума', test: (r) => r.belowMin },
+        { value: 'out', label: 'Нет в наличии', test: (r) => r.out },
         { value: 'promo', label: 'Акция', test: (r) => r.p.active && !!r.promo },
-        { value: 'soon', label: 'Скоро срок', test: (r) => r.expirySoon },
-        { value: 'idle', label: 'Без движения', test: (r) => r.idle },
+        { value: 'soon', label: 'Истекает срок', test: (r) => r.expirySoon },
+        { value: 'idle', label: `Без движения ${NO_MOVEMENT_DAYS} дней`, test: (r) => r.idle },
         { value: 'off', label: 'Не продаются', test: (r) => !r.p.active },
       ],
     };
-  const lvl = (r: CatalogRow) => (mode === 'seller' ? r.shopLevel : r.whLevel);
   const promo = (r: CatalogRow) => (mode === 'seller' ? r.retail.promo : r.wholesale.promo ?? r.retail.promo);
   return {
     key: 'state',
@@ -47,16 +50,19 @@ function stateFilter(mode: CatalogMode): FilterDef<CatalogRow> {
     options: [
       { value: 'all', label: 'Все' },
       { value: 'promo', label: 'Акция', test: (r) => !!promo(r) },
-      { value: 'have', label: mode === 'seller' ? 'Есть в магазине' : 'Есть на складе', test: (r) => lvl(r) !== 'out' },
-      { value: 'out', label: 'Нет в наличии', test: (r) => lvl(r) === 'out' },
-      { value: 'soon', label: 'Скоро срок', test: (r) => r.expirySoon },
+      mode === 'seller'
+        ? { value: 'have', label: 'Есть в магазине', test: (r) => r.stock.shop.available > 0 }
+        : { value: 'have', label: 'Есть на складе для опта', test: (r) => r.whAvailable > 0 },
+      { value: 'out', label: 'Нет в наличии', test: (r) => r.out },
+      { value: 'soon', label: 'Истекает срок', test: (r) => r.expirySoon },
     ],
   };
 }
 
-function columnsFor(mode: CatalogMode): Column<CatalogRow>[] {
+function columnsFor(mode: CatalogMode, narrow: boolean): Column<CatalogRow>[] {
+  const sumOf = (get: (r: CatalogRow) => number) => (rows: CatalogRow[]) => fmt.num(rows.reduce((s, r) => s + get(r), 0));
   const head: Column<CatalogRow>[] = [
-    { key: 'sku', header: 'Артикул', width: 92, render: (r) => <span className="muted">{r.p.sku}</span>, sort: (r) => r.p.sku, csv: (r) => r.p.sku },
+    { key: 'sku', header: 'Артикул', className: 'prd-col-sku', render: (r) => <span className="muted">{r.p.sku}</span>, sort: (r) => r.p.sku, csv: (r) => r.p.sku, total: () => 'Итого' },
     {
       key: 'name',
       header: 'Название',
@@ -66,88 +72,90 @@ function columnsFor(mode: CatalogMode): Column<CatalogRow>[] {
       className: 'prd-col-name',
       total: (rows) => fmt.count(rows.length, 'товар', 'товара', 'товаров'),
     },
-    { key: 'brand', header: 'Бренд', render: (r) => <span className="prd-clip" title={r.brand}>{r.brand}</span>, sort: (r) => r.brand, csv: (r) => r.brand, className: 'prd-col-brand' },
+    { key: 'brand', header: 'Бренд', render: (r) => r.brand, sort: (r) => r.brand, csv: (r) => r.brand, className: 'prd-col-nowrap' },
     {
       key: 'category',
       header: 'Категория',
-      render: (r) => <span className="prd-clip" title={r.subcategory}>{r.category}</span>,
+      hidden: narrow,
+      render: (r) => <span title={r.subcategory}>{r.category}</span>,
       sort: (r) => r.category,
       csv: (r) => `${r.category} · ${r.subcategory}`,
-      className: 'prd-col-cat',
+      className: 'prd-col-nowrap',
     },
-    { key: 'packs', header: 'Упаковки', render: (r) => <span className="muted nowrap t-12">{r.packs}</span>, csv: (r) => r.packs },
   ];
-  const sumOf = (get: (r: CatalogRow) => number) => (rows: CatalogRow[]) => fmt.num(rows.reduce((s, r) => s + get(r), 0));
+  const packs: Column<CatalogRow> = { key: 'packs', header: 'Упаковки', className: 'prd-col-nowrap', render: (r) => <span className="muted t-12">{r.packs}</span>, csv: (r) => r.packs };
+  const avail: Column<CatalogRow> = {
+    key: 'avail',
+    header: 'Доступно',
+    align: 'right',
+    render: (r) => (
+      <span
+        className={r.available > 0 && r.belowMin ? 'w-700 c-warn' : undefined}
+        title={`${AVAIL_TITLE}: ${fmt.num(r.stock.shop.onHand)} + ${fmt.num(r.stock.warehouse.onHand)} − ${fmt.num(r.stock.total.reserved)}`}
+      >
+        <Qty v={r.available} strong />
+      </span>
+    ),
+    sort: (r) => r.available,
+    csv: (r) => r.available,
+    total: sumOf((r) => r.available),
+  };
 
   if (mode === 'full')
     return [
       ...head,
       { key: 'retail', header: 'Розница', align: 'right', render: (r) => <PriceCell info={r.retail} />, sort: (r) => r.retail.price, csv: (r) => r.retail.price },
       { key: 'wholesale', header: 'Опт', align: 'right', render: (r) => <PriceCell info={r.wholesale} />, sort: (r) => r.wholesale.price, csv: (r) => r.wholesale.price },
-      { key: 'shop', header: 'Магазин', align: 'right', render: (r) => fmt.num(r.stock.shop.onHand), sort: (r) => r.stock.shop.onHand, total: sumOf((r) => r.stock.shop.onHand) },
-      { key: 'wh', header: 'Склад', align: 'right', render: (r) => fmt.num(r.stock.warehouse.onHand), sort: (r) => r.stock.warehouse.onHand, total: sumOf((r) => r.stock.warehouse.onHand) },
-      {
-        key: 'avail',
-        header: 'Доступно',
-        align: 'right',
-        render: (r) => (
-          <span className="w-700" title={`Склад ${fmt.num(r.stock.warehouse.onHand)} минус резерв ${fmt.num(r.stock.warehouse.reserved)}: столько можно обещать оптом`}>
-            {fmt.num(r.stock.warehouse.available)}
-          </span>
-        ),
-        sort: (r) => r.stock.warehouse.available,
-        total: sumOf((r) => r.stock.warehouse.available),
-      },
+      { key: 'shop', header: 'Магазин', align: 'right', render: (r) => fmt.num(r.stock.shop.onHand), sort: (r) => r.stock.shop.onHand, csv: (r) => r.stock.shop.onHand, total: sumOf((r) => r.stock.shop.onHand) },
+      { key: 'wh', header: 'Склад', align: 'right', render: (r) => fmt.num(r.stock.warehouse.onHand), sort: (r) => r.stock.warehouse.onHand, csv: (r) => r.stock.warehouse.onHand, total: sumOf((r) => r.stock.warehouse.onHand) },
+      avail,
       {
         key: 'status',
         header: 'Статус',
-        render: (r) => (
-          <span className="prd-chips">
-            {r.level !== 'ok' || !r.promo ? <LevelChip level={r.level} /> : null}
-            {r.promo && r.p.active ? <PromoChip promo={r.promo} short={r.level !== 'ok'} /> : null}
-          </span>
-        ),
-        sort: (r) => LEVEL_ORDER[r.level],
-        csv: (r) => STOCK_LEVEL[r.level].label + (r.promo ? ', акция' : ''),
+        className: 'prd-col-nowrap',
+        render: (r) => <StockChip row={r} />,
+        sort: (r) => statusRank(r.line),
+        csv: (r) => r.status?.label ?? 'В наличии',
       },
     ];
 
   if (mode === 'seller')
     return [
       ...head,
+      packs,
       { key: 'price', header: 'Цена', align: 'right', render: (r) => <PriceCell info={r.retail} strong />, sort: (r) => r.retail.price, csv: (r) => r.retail.price },
-      { key: 'promo', header: 'Акция', render: (r) => (r.retail.promo ? <PromoChip promo={r.retail.promo} short /> : null), sort: (r) => (r.retail.promo ? 0 : 1), csv: (r) => r.retail.promo?.name ?? '' },
+      { key: 'promo', header: 'Акция', className: 'prd-col-nowrap', render: (r) => (r.retail.promo ? <PromoChip promo={r.retail.promo} short /> : null), sort: (r) => (r.retail.promo ? 0 : 1), csv: (r) => r.retail.promo?.name ?? '' },
       {
         key: 'shop',
         header: 'В магазине',
         align: 'right',
-        render: (r) => (r.stock.shop.available > 0 ? <span className="w-700">{fmt.num(r.stock.shop.available)}</span> : <LevelChip level="out" />),
+        render: (r) => <Qty v={r.stock.shop.available} strong />,
         sort: (r) => r.stock.shop.available,
+        csv: (r) => r.stock.shop.available,
         total: sumOf((r) => r.stock.shop.available),
       },
-      { key: 'wh', header: 'На складе', align: 'right', render: (r) => fmt.num(r.stock.warehouse.available), sort: (r) => r.stock.warehouse.available, total: sumOf((r) => r.stock.warehouse.available) },
+      avail,
     ];
 
-  const promo = (r: CatalogRow) => r.wholesale.promo ?? r.retail.promo;
   return [
     ...head,
+    packs,
     { key: 'wholesale', header: 'Опт', align: 'right', render: (r) => <PriceCell info={r.wholesale} strong />, sort: (r) => r.wholesale.price, csv: (r) => r.wholesale.price },
     { key: 'retail', header: 'Розница', align: 'right', render: (r) => <PriceCell info={r.retail} />, sort: (r) => r.retail.price, csv: (r) => r.retail.price },
-    { key: 'promo', header: 'Акция', render: (r) => (promo(r) ? <PromoChip promo={promo(r)!} short /> : null), sort: (r) => (promo(r) ? 0 : 1), csv: (r) => promo(r)?.name ?? '' },
+    avail,
     {
-      key: 'avail',
-      header: 'Доступно на складе',
+      key: 'whAvail',
+      header: 'На\u00a0складе для\u00a0опта',
       align: 'right',
-      render: (r) =>
-        r.stock.warehouse.available > 0 ? (
-          <span className="w-700" title="Склад минус резерв: столько можно обещать оптом">
-            {fmt.num(r.stock.warehouse.available)}
-          </span>
-        ) : (
-          <LevelChip level="out" />
-        ),
-      sort: (r) => r.stock.warehouse.available,
-      total: sumOf((r) => r.stock.warehouse.available),
+      className: 'prd-th-wrap',
+      render: (r) => (
+        <span title={WH_TITLE}>
+          <Qty v={r.whAvailable} strong />
+        </span>
+      ),
+      sort: (r) => r.whAvailable,
+      csv: (r) => r.whAvailable,
+      total: sumOf((r) => r.whAvailable),
     },
   ];
 }
@@ -165,10 +173,12 @@ export default function Catalog() {
   const [supplier, setSupplier] = useState('');
   const [adding, setAdding] = useState(false);
 
+  const narrow = useNarrow();
   const all = useMemo(() => {
     const rows = catalogRows(db);
     return mode === 'full' ? rows : rows.filter((r) => r.p.active);
   }, [db, version, mode]);
+  const count = useMemo(() => catalogCount(db, mode), [db, version, mode]);
 
   const catOptions = useMemo(
     () => db.categories.filter((c) => !c.parentId).sort((a, b) => a.name.localeCompare(b.name, 'ru')).map((c) => ({ value: c.id, label: c.name })),
@@ -183,14 +193,14 @@ export default function Catalog() {
   }, [all, cat, brand, supplier, db]);
 
   const filters = useMemo(() => [stateFilter(mode)], [mode]);
-  const columns = useMemo(() => columnsFor(mode), [mode]);
+  const columns = useMemo(() => columnsFor(mode, narrow), [mode, narrow]);
   const promoCount = useMemo(() => promosToday(db).length, [db, version]);
 
   return (
     <>
       <PageHeader
         section="products"
-        counts={{ catalog: all.length, pricing: promoCount }}
+        counts={{ catalog: count, pricing: promoCount }}
         actions={
           can('editCatalog') ? (
             <Button variant="primary" icon={<Plus />} onClick={() => setAdding(true)}>
@@ -218,7 +228,7 @@ export default function Catalog() {
           mode === 'full'
             ? [
                 { name: 'Нужно заказать', search: '', filters: { state: 'low' }, sort: { key: 'avail', dir: 'asc' } },
-                { name: 'Лежит без продаж', search: '', filters: { state: 'idle' }, sort: { key: 'wh', dir: 'desc' } },
+                { name: 'Без движения', search: '', filters: { state: 'idle' }, sort: { key: 'wh', dir: 'desc' } },
               ]
             : [{ name: 'Акции', search: '', filters: { state: 'promo' }, sort: { key: 'name', dir: 'asc' } }]
         }

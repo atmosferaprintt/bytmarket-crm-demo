@@ -64,7 +64,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         }
       }
     }
-    if (sees('sales') && digits.length >= 2) {
+    // заказы ищем по номеру, только если запрос — номер: «3587», «№ 3587» (а не «persil 1,3»)
+    if (sees('sales') && digits.length >= 2 && /^[№#\s\d]+$/.test(q.trim())) {
       let n = 0;
       for (let i = scoped.orders.length - 1; i >= 0 && n < 5; i--) {
         const o = scoped.orders[i];

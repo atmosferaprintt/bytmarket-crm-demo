@@ -11,6 +11,13 @@ import { purchaseRows } from './calc';
 import { usePurchaseCounts } from './counts';
 import { useNarrow } from '../stock/useNarrow';
 
+/** «Наталья Викторовна Гречко, менеджер» → «Наталья Гречко»: имя и фамилия, полностью — в подсказке. */
+function shortPerson(contact: string): string {
+  const name = contact.split(',')[0].trim();
+  const parts = name.split(/\s+/);
+  return parts.length === 3 ? `${parts[0]} ${parts[2]}` : name;
+}
+
 interface Row {
   id: string;
   s: Supplier;
@@ -60,17 +67,22 @@ export default function SuppliersPage() {
       header: 'Поставщик',
       sort: (r) => r.s.name,
       csv: (r) => r.s.name,
+      render: (r) => <div className="cell-title nowrap">{r.s.name}</div>,
+    },
+    {
+      key: 'contact',
+      header: 'Контакт',
+      sort: (r) => r.s.contact,
+      csv: (r) => `${r.s.contact} ${r.s.phone}`,
       render: (r) => (
-        <div>
-          <div className="cell-title nowrap">{r.s.name}</div>
-          <div className="cell-sub pur-contact" title={`${r.s.contact} · ${fmt.phone(r.s.phone)}`}>
-            {r.s.contact.split(',')[0]} · {fmt.phone(r.s.phone)}
-          </div>
+        <div title={r.s.contact} className="pur-contact-cell">
+          <div className="nowrap">{shortPerson(r.s.contact)}</div>
+          <div className="cell-sub nowrap">{fmt.phone(r.s.phone)}</div>
         </div>
       ),
     },
     { key: 'lead', header: 'Срок поставки', align: 'right', sort: (r) => r.s.leadDays, csv: (r) => r.s.leadDays, render: (r) => fmt.count(r.s.leadDays, 'день', 'дня', 'дней') },
-    { key: 'defer', header: 'Отсрочка', align: 'right', sort: (r) => r.s.deferDays, csv: (r) => r.s.deferDays, render: (r) => (r.s.deferDays ? fmt.count(r.s.deferDays, 'день', 'дня', 'дней') : 'предоплата') },
+    { key: 'defer', header: <span title="Сколько дней поставщик ждёт нашу оплату после приёмки">Наша отсрочка</span>, align: 'right', sort: (r) => r.s.deferDays, csv: (r) => r.s.deferDays, render: (r) => (r.s.deferDays ? fmt.count(r.s.deferDays, 'день', 'дня', 'дней') : 'предоплата') },
     { key: 'min', header: 'Мин. заказ', align: 'right', hidden: !seeCost || narrow, sort: (r) => r.s.minOrder, csv: (r) => r.s.minOrder, render: (r) => (r.s.minOrder ? fmt.money(r.s.minOrder) : '—') },
     { key: 'purchases', header: 'Закупок', align: 'right', sort: (r) => r.purchases, csv: (r) => r.purchases, render: (r) => fmt.num(r.purchases), total: (rs) => fmt.num(rs.reduce((z, r) => z + r.purchases, 0)) },
     { key: 'inWay', header: 'В пути', align: 'right', sort: (r) => r.inWay, csv: (r) => r.inWay, render: (r) => (r.inWay ? <span className="w-700">{r.inWay}</span> : <span className="faint">0</span>), total: (rs) => fmt.num(rs.reduce((z, r) => z + r.inWay, 0)) },
@@ -116,7 +128,7 @@ export default function SuppliersPage() {
           <Kpi label="Ближайший платёж" value={next ? <>{fmt.money(next.amount)} <small className="stock-kpi-unit">{fmt.relDate(next.dueDate, today)}</small></> : '—'} />
         </div>
       ) : null}
-      <div className="stock-tight">
+      <div className="stock-tight pur-tight">
       <DataTable
         id="purchases-suppliers"
         rows={rows}

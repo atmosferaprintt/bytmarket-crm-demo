@@ -5,7 +5,7 @@ import { dispatch, useDB, useDBVersion } from '../../data/store';
 import { indexes, orderPayment, orderReturns } from './data';
 import { useSession } from '../../roles/session';
 import { Button, Field, Input, Modal, Notice, QtyInput, Segmented, Select, StatList, StatRow, cx, fmt, toast } from '../../ui';
-import { productName } from './lib';
+import { fixNo, productName } from './lib';
 import './sales.css';
 
 export interface ReturnModalProps {
@@ -94,11 +94,11 @@ export function ReturnModal({ orderId, onClose, onDone }: ReturnModalProps) {
     );
     setBusy(false);
     if (!r.ok) {
-      setError(r.error);
+      setError(fixNo(r.error));
       return;
     }
     sent.current = true;
-    toast(r.info ?? 'Возврат оформлен, товар на проверке');
+    toast(r.info ? fixNo(r.info) : 'Возврат оформлен, товар на проверке');
     if (r.id) onDone?.(r.id);
     onClose();
   };

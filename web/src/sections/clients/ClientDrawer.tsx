@@ -34,6 +34,7 @@ import {
   type Column,
 } from '../../ui';
 import { ClientFormModal } from './ClientForm';
+import { visitTimes } from './parts';
 import { PlanVisitModal } from './PlanVisitModal';
 import { clientRows, kindName, mapUrl, ordersByClient, priceTypeName, segmentName, telUrl, useIsPhone, visitsByClient } from './lib';
 import './clients.css';
@@ -577,10 +578,10 @@ function VisitsTab({ visits, c }: { visits: Visit[]; c: Client }) {
           <div key={v.id} className="cl-list-row is-top">
             <span className="cl-visit-date">
               <span className="w-600">{fmt.relDate(v.date, today)}</span>
-              <span className="muted t-12">{v.time}</span>
             </span>
             <span className="cl-list-main">
               <span className="w-600">{pt?.name ?? c.name}</span>
+              <span className="t-12 ink-2 w-600">{visitTimes(v)}</span>
               <span className="muted t-12">
                 {idx.employees.get(v.repId)?.short}
                 {v.refusalReason ? ` · ${v.refusalReason}` : ''}

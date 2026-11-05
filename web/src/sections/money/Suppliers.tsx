@@ -9,9 +9,9 @@ import { PageHeader } from '../../shell/PageHeader';
 import { useOpenEntity } from '../../shell/entities';
 import { Button, Card, DataTable, EmptyState, MoreMenu, StatusChip, fmt, overdueStatus, type Column } from '../../ui';
 import { MoneyModalHost, useMoneyMenu, type MoneyModal } from './actions';
-import { deferText, useMoneyPerms, weekEnd, weekStart } from './lib';
+import { deferText, supplierWeekDues, useMoneyPerms, weekStart } from './lib';
 import { useMoneyCounts } from './counts';
-import { MoneyLi } from './parts';
+import { MoneyLi, useNarrow } from './parts';
 
 interface SRow {
   s: Supplier;
@@ -36,6 +36,7 @@ export default function SupplierDebts() {
   const [modal, setModal] = useState<MoneyModal>(null);
   const menu = useMoneyMenu(setModal, ['supplier']);
   const today = db.meta.today;
+  const narrow = useNarrow();
 
   const { rows, buckets } = useMemo(() => {
     const bal = supplierBalances(db);
@@ -48,10 +49,18 @@ export default function SupplierDebts() {
       for (const u of b.upcoming) dues.push({ purchaseId: u.purchaseId, number: purchases.get(u.purchaseId)?.number ?? 0, supplier: s, dueDate: u.dueDate, amount: u.amount });
     }
     dues.sort((a, z) => a.dueDate.localeCompare(z.dueDate) || a.number - z.number);
-    const w1 = weekEnd(today);
+    // «Эта неделя» — просроченные и к оплате до воскресенья: то же определение, что на рабочем столе и в обзоре владельца
+    const week = supplierWeekDues(db);
+    const inWeek = new Set(week.items.map((x) => x.purchaseId));
+    const w1 = week.sunday;
     const w2 = plusDays(w1, 7);
     const buckets = [
-      { key: 'this', title: 'Эта неделя', range: `${fmt.date(weekStart(today))} — ${fmt.date(w1)}`, items: dues.filter((d) => d.dueDate <= w1) },
+      {
+        key: 'this',
+        title: 'Эта неделя',
+        range: week.overdue > 0 ? `Просрочено и до ${fmt.date(w1)}` : `${fmt.date(weekStart(today))} — ${fmt.date(w1)}`,
+        items: dues.filter((d) => inWeek.has(d.purchaseId)),
+      },
       { key: 'next', title: 'Следующая неделя', range: `${fmt.date(plusDays(w1, 1))} — ${fmt.date(w2)}`, items: dues.filter((d) => d.dueDate > w1 && d.dueDate <= w2) },
       { key: 'later', title: 'Позже', range: `с ${fmt.date(plusDays(w2, 1))}`, items: dues.filter((d) => d.dueDate > w2) },
     ];
@@ -71,7 +80,7 @@ export default function SupplierDebts() {
         </div>
       ),
     },
-    { key: 'defer', header: 'Отсрочка нам', sort: (r) => r.s.deferDays, csv: (r) => r.s.deferDays, width: 110, render: (r) => deferText(r.s.deferDays) },
+    { key: 'defer', header: 'Наша отсрочка', sort: (r) => r.s.deferDays, csv: (r) => r.s.deferDays, width: 110, render: (r) => deferText(r.s.deferDays) },
     {
       key: 'debt',
       header: 'Долг',
@@ -97,10 +106,10 @@ export default function SupplierDebts() {
       header: 'Ближайший платёж',
       sort: (r) => r.next?.dueDate ?? null,
       csv: (r) => (r.next ? `${r.next.dueDate} ${r.next.amount}` : ''),
-      width: 240,
+      width: narrow ? 180 : 240,
       render: (r) =>
         r.next ? (
-          <span className="row" style={{ gap: 8 }}>
+          <span className={narrow ? 'money-next is-stack' : 'money-next'}>
             <span className="nowrap">{fmt.relDate(r.next.dueDate, today)}</span>
             <span className="w-600 num">{fmt.money(r.next.amount)}</span>
             {r.next.dueDate < today ? <StatusChip s={overdueStatus(fmt.daysBetween(r.next.dueDate, today))} /> : null}

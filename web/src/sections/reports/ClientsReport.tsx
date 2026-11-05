@@ -6,18 +6,19 @@ import { useSession } from '../../roles/session';
 import { CLIENT_SEGMENT_NAMES, type ClientSegment } from '../../data/types';
 import { clientRows, type ClientRow } from './calc';
 import { KpiTile } from '../overview/KpiTile';
-import { HowCalc, PartialMark, ReportTop, sum, useReportPeriod } from './parts';
+import { HowCalc, PartialMark, ReportTop, WrapHead, sum, useReportPeriod } from './parts';
 import { clientDebtNow } from '../overview/analytics';
 
 function Activity({ r }: { r: ClientRow }) {
   if (r.activity === 'stopped') return <Chip tone="bad" title={`Последние 30 дней покупок нет, до этого — ${fmt.money(r.prev30)}`}>Перестал покупать</Chip>;
   if (r.activity === 'drop') return <Chip tone="bad" title={`30 дней: ${fmt.money(r.last30)}, до этого: ${fmt.money(r.prev30)}`}>Снижение {fmt.delta(r.activityPct, 0)}</Chip>;
   if (r.activity === 'growth') return <Chip tone="ok" title={`30 дней: ${fmt.money(r.last30)}, до этого: ${fmt.money(r.prev30)}`}>Рост {fmt.delta(r.activityPct, 0)}</Chip>;
-  if (r.activity === 'new') return <Chip tone="info">Новый</Chip>;
+  if (r.activity === 'new') return <Chip tone="info" title="Заведён при нас и впервые купил в выбранном периоде">Новый</Chip>;
+  if (r.activity === 'back') return <Chip tone="info" title={`До этого 30 дней не покупал. За последние 30 дней — ${fmt.money(r.last30)}`}>Снова покупает</Chip>;
   return <Chip title={`30 дней: ${fmt.money(r.last30)}, до этого: ${fmt.money(r.prev30)}`}>Ровно</Chip>;
 }
 
-const ACTIVITY_TEXT: Record<ClientRow['activity'], string> = { stopped: 'Перестал покупать', drop: 'Снижение', growth: 'Рост', new: 'Новый', flat: 'Ровно' };
+const ACTIVITY_TEXT: Record<ClientRow['activity'], string> = { stopped: 'Перестал покупать', drop: 'Снижение', growth: 'Рост', new: 'Новый', back: 'Снова покупает', flat: 'Ровно' };
 
 export default function ClientsReport() {
   const db = useDB();
@@ -33,6 +34,7 @@ export default function ClientsReport() {
   const revenue = sum(rows, (r) => r.agg.revenue);
   const docs = sum(rows, (r) => r.docs);
   const falling = rows.filter((r) => r.activity === 'drop' || r.activity === 'stopped');
+  const newCount = rows.filter((r) => r.isNew).length;
   const offer = rows.filter((r) => r.missing.length > 0 && r.agg.revenue > 0).slice(0, 40);
 
   const segs = (Object.keys(CLIENT_SEGMENT_NAMES) as ClientSegment[]).filter((s) => rows.some((r) => r.c.segment === s));
@@ -47,6 +49,7 @@ export default function ClientsReport() {
       showCounts: true,
       options: [
         { value: 'all', label: 'Все' },
+        { value: 'new', label: 'Новые', test: (r) => r.isNew },
         { value: 'drop', label: 'Снизили активность', test: (r) => r.activity === 'drop' || r.activity === 'stopped' },
         { value: 'overdue', label: 'С просрочкой', test: (r) => r.overdue > 0 },
       ],
@@ -88,7 +91,7 @@ export default function ClientsReport() {
     { key: 'avg', header: 'Средний', align: 'right', render: (r) => (r.docs ? fmt.money(r.avg) : '—'), sort: (r) => r.avg },
     {
       key: 'freq',
-      header: 'Раз в, дней',
+      header: <WrapHead width={84}>Заказывает раз в … дней</WrapHead>,
       align: 'right',
       render: (r) => {
         const n = r.everyDays ?? r.c.orderEveryDays;
@@ -97,7 +100,7 @@ export default function ClientsReport() {
       sort: (r) => r.everyDays ?? r.c.orderEveryDays ?? 999,
       csv: (r) => r.everyDays ?? r.c.orderEveryDays ?? '',
     },
-    { key: 'last', header: 'Последняя', align: 'right', render: (r) => fmt.relDate(r.lastAt, today), sort: (r) => r.lastAt ?? '', csv: (r) => r.lastAt?.slice(0, 10) ?? '' },
+    { key: 'last', header: <WrapHead width={78}>Последняя покупка</WrapHead>, align: 'right', render: (r) => fmt.relDate(r.lastAt, today), sort: (r) => r.lastAt ?? '', csv: (r) => r.lastAt?.slice(0, 10) ?? '' },
     { key: 'activity', header: 'Активность', render: (r) => <Activity r={r} />, sort: (r) => r.activityPct ?? (r.activity === 'new' ? 999 : 0), csv: (r) => ACTIVITY_TEXT[r.activity] },
     {
       key: 'debt',
@@ -146,13 +149,13 @@ export default function ClientsReport() {
       <ReportTop />
       <div className="rp-kpis">
         <KpiTile label="Покупали за период" value={fmt.count(buying.length, 'клиент', 'клиента', 'клиентов')} />
-        <KpiTile label="Продажи клиентам" value={fmt.money(revenue)} />
-        <KpiTile label="Средний заказ" value={fmt.money(docs ? revenue / docs : 0)} />
-        <KpiTile label="Долг покупателей" value={fmt.money(debt.debt)} extra={<div className="rp-kpi-line">Просрочено <b className={debt.overdue ? 'c-bad' : undefined}>{fmt.money(debt.overdue)}</b></div>} />
+        <KpiTile label="Продажи клиентам" value={fmt.money(revenue)} extra={<div className="rp-kpi-line">Средний заказ <b>{fmt.money(docs ? revenue / docs : 0)}</b></div>} />
+        <KpiTile label="Новые клиенты" value={fmt.num(newCount)} title="Заведены при нас и впервые купили в выбранном периоде. Так же считает отчёт «Сотрудники»" />
+        <KpiTile label="Долг покупателей" value={fmt.money(debt.debt)} asOf={`на ${fmt.date(today)}`} extra={<div className="rp-kpi-line">Просрочено <b className={debt.overdue ? 'c-bad' : undefined}>{fmt.money(debt.overdue)}</b></div>} />
         <KpiTile label="Снизили активность" value={fmt.count(falling.length, 'клиент', 'клиента', 'клиентов')} />
       </div>
 
-      <div className="rp-tight">
+      <div className="rp-tight rp-clients">
       <DataTable
         id="rp-clients"
         title="Клиенты"
@@ -187,7 +190,8 @@ export default function ClientsReport() {
           ['Продажи клиента', 'Оптовые заказы — по отгрузке, розница — по чекам с привязанной картой клиента. Чеки без клиента сюда не входят. Возвраты вычитаются в день возврата.'],
           ['Покупок и средний заказ', 'Число разных заказов и чеков клиента с продажей за период. Средний заказ = продажи ÷ покупок.'],
           ['Частота', 'Средний промежуток между днями покупок за всю историю в базе (с 5 августа). Если покупок меньше трёх — привычный срок из карточки клиента.'],
-          ['Активность', 'Продажи за последние 30 дней против 30 дней перед ними. Снижение — меньше на 30 % и больше; «Перестал покупать» — за 30 дней покупок нет. Не зависит от выбранного периода.'],
+          ['Новые клиенты', 'Клиент заведён в базе при нас (после 5 августа) и впервые купил в выбранном периоде. Тот же счёт — в отчёте «Сотрудники».'],
+          ['Активность', 'Продажи за последние 30 дней против 30 дней перед ними. Снижение — меньше на 30 % и больше; «Перестал покупать» — за 30 дней покупок нет; «Снова покупает» — вернулся после 30 дней без покупок.'],
           ['Долг и просрочка', 'На сегодня: отгружено минус оплачено по каждому заказу. Просрочка — заказы, у которых прошёл срок оплаты (дата отгрузки + отсрочка клиента). Цифры совпадают с разделом «Деньги».'],
           ['Платит в срок', 'Доля заказов с наступившим сроком, оплаченных полностью до срока. Учитываются только проведённые оплаты.'],
           ['Можно предложить', 'Категории, которые берут 60 % клиентов того же типа, а этот клиент у нас не берёт.'],

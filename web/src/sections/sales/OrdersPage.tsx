@@ -16,7 +16,6 @@ import {
   ORDER_STATE,
   PAY_STATE,
   PICK_STATE,
-  SHIP_STATE,
   SearchInput,
   Segmented,
   StatusChip,
@@ -28,7 +27,7 @@ import {
   type FilterDef,
 } from '../../ui';
 import { NewOrderDrawer } from './NewOrderDrawer';
-import { Dash, OrderChips } from './parts';
+import { Dash, OrderChips, deliveryFailed, shipStatus, shownOverdue } from './parts';
 import { norm, useIsPhone, useMedia } from './lib';
 import { useTabCounts } from './tabCounts';
 
@@ -39,6 +38,9 @@ export interface OrderRow {
   owner?: Employee;
   pay: OrderPayment;
   delivery?: Delivery;
+  /** доставка не удалась — заказ не закончен, просрочку не показываем */
+  failed: boolean;
+  overdue: number;
   text: string;
 }
 
@@ -56,28 +58,35 @@ export function useOrderRows(): OrderRow[] {
         const client = idx.clients.get(o.clientId);
         const point = client?.points.find((p) => p.id === o.pointId) ?? client?.points[0];
         const owner = o.ownerId ? idx.employees.get(o.ownerId) : undefined;
+        const pay = orderPayment(db, o);
+        const delivery = o.deliveryId ? dById.get(o.deliveryId) : undefined;
         return {
           o,
           client,
           point,
           owner,
-          pay: orderPayment(db, o),
-          delivery: o.deliveryId ? dById.get(o.deliveryId) : undefined,
-          text: [`№${o.number}`, String(o.number), client?.name ?? '', client?.phone ?? '', point?.name ?? '', point?.address ?? '', owner?.name ?? ''].join(' '),
+          pay,
+          delivery,
+          failed: deliveryFailed(o, delivery),
+          overdue: shownOverdue(o, pay, delivery),
+          text: [`№${o.number}`, `№ ${o.number}`, String(o.number), client?.name ?? '', client?.phone ?? '', point?.name ?? '', point?.address ?? '', owner?.name ?? ''].join(' '),
         };
       })
       .sort((a, b) => b.o.createdAt.localeCompare(a.o.createdAt) || b.o.number - a.o.number);
   }, [db, version, orders]);
 }
 
-type StateKey = 'all' | 'draft' | 'request' | 'work' | 'wait' | 'overdue' | 'closed' | 'cancelled';
+const shippedAll = (r: OrderRow) => r.o.ship === 'shipped' || r.o.ship === 'delivered';
+
+type StateKey = 'all' | 'draft' | 'request' | 'work' | 'wait' | 'overdue' | 'shipped' | 'cancelled';
+/** «В работе» и «Отгружены» вместе — все подтверждённые заказы: недоставленный заказ снова в работе. */
 const STATE_TESTS: Record<Exclude<StateKey, 'all'>, (r: OrderRow) => boolean> = {
   draft: (r) => r.o.state === 'draft',
   request: (r) => r.o.state === 'request',
-  work: (r) => r.o.state === 'confirmed',
+  work: (r) => live(r.o) && (!shippedAll(r) || r.failed),
   wait: (r) => live(r.o) && r.pay.debt > 0,
-  overdue: (r) => r.pay.overdueDays > 0,
-  closed: (r) => r.o.state === 'closed',
+  overdue: (r) => r.overdue > 0,
+  shipped: (r) => live(r.o) && shippedAll(r) && !r.failed,
   cancelled: (r) => r.o.state === 'cancelled',
 };
 
@@ -97,16 +106,17 @@ export default function OrdersPage() {
   const showOwner = role === 'owner' || role === 'accountant';
   const ownerColumn = showOwner && !narrow;
   const ownerInSub = showOwner && narrow;
+  const allLabel = role === 'manager' || role === 'rep' ? 'Все мои' : 'Все';
 
   const filters = useMemo<FilterDef<OrderRow>[]>(() => {
-    const opts: FilterDef<OrderRow>['options'] = [{ value: 'all', label: 'Все' }];
+    const opts: FilterDef<OrderRow>['options'] = [{ value: 'all', label: allLabel }];
     if (hasDrafts) opts.push({ value: 'draft', label: 'Черновики', test: STATE_TESTS.draft });
     opts.push(
       { value: 'request', label: 'Заявки', test: STATE_TESTS.request },
       { value: 'work', label: 'В работе', test: STATE_TESTS.work },
       { value: 'wait', label: 'Ждут оплаты', test: STATE_TESTS.wait },
       { value: 'overdue', label: 'Просрочены', test: STATE_TESTS.overdue },
-      { value: 'closed', label: 'Завершены', test: STATE_TESTS.closed },
+      { value: 'shipped', label: 'Отгружены', test: STATE_TESTS.shipped },
       { value: 'cancelled', label: 'Отменены', test: STATE_TESTS.cancelled },
     );
     const week = fmt.addDays(today, -6);
@@ -126,13 +136,13 @@ export default function OrdersPage() {
         ],
       },
     ];
-  }, [hasDrafts, today]);
+  }, [hasDrafts, today, allLabel]);
 
   const columns = useMemo<Column<OrderRow>[]>(
     () => [
       {
         key: 'number',
-        header: 'Заказ',
+        header: '№ и дата',
         sort: (r) => r.o.number,
         csv: (r) => r.o.number,
         render: (r) => (
@@ -194,9 +204,9 @@ export default function OrdersPage() {
       {
         key: 'ship',
         header: 'Отгрузка',
-        sort: (r) => (live(r.o) ? ['none', 'partial', 'shipped', 'delivered'].indexOf(r.o.ship) : -1),
-        csv: (r) => (live(r.o) ? SHIP_STATE[r.o.ship].label : ''),
-        render: (r) => (live(r.o) ? <StatusChip s={SHIP_STATE[r.o.ship]} /> : <Dash />),
+        sort: (r) => (!live(r.o) ? -1 : r.failed ? 0.5 : ['none', 'partial', 'shipped', 'delivered'].indexOf(r.o.ship)),
+        csv: (r) => (live(r.o) ? shipStatus(r.o, r.delivery).label : ''),
+        render: (r) => (live(r.o) ? <StatusChip s={shipStatus(r.o, r.delivery)} /> : <Dash />),
       },
       {
         key: 'pay',
@@ -214,8 +224,8 @@ export default function OrdersPage() {
         render: (r) =>
           r.pay.debt > 0 ? (
             <span className="sales-debt">
-              <span className={cx('w-600', r.pay.overdueDays > 0 && 'c-bad')}>{fmt.money(r.pay.debt)}</span>
-              {r.pay.overdueDays > 0 ? <StatusChip s={overdueStatus(r.pay.overdueDays)} /> : r.o.dueDate ? <span className="cell-sub">до {fmt.dateShort(r.o.dueDate)}</span> : null}
+              <span className={cx('w-600', r.overdue > 0 && 'c-bad')}>{fmt.money(r.pay.debt)}</span>
+              {r.overdue > 0 ? <StatusChip s={overdueStatus(r.overdue)} /> : r.o.dueDate && !r.failed ? <span className="cell-sub">до {fmt.dateShort(r.o.dueDate)}</span> : null}
             </span>
           ) : (
             <Dash />
@@ -260,7 +270,7 @@ export default function OrdersPage() {
           filters={filters}
           defaultSort={{ key: 'number', dir: 'desc' }}
           onRowClick={(r) => openEntity('order', r.o.id)}
-          exportName={isRep ? 'Мои заявки' : 'Заказы'}
+          exportName={isRep ? 'Мои заказы' : 'Заказы'}
           presetViews={presetViews}
           totalLabel={(n) => `Итого · ${fmt.count(n, 'заказ', 'заказа', 'заказов')}`}
           rowClassName={(r) => (r.o.state === 'cancelled' ? 'sales-row-off' : undefined)}
@@ -276,10 +286,9 @@ export default function OrdersPage() {
 /* ---------- телефон представителя: карточки ---------- */
 
 function PhoneOrders({ rows, onOpen }: { rows: OrderRow[]; onOpen: (r: OrderRow) => void }) {
-  const db = useDB();
   const [q, setQ] = useState('');
-  const [f, setF] = useState<'all' | 'request' | 'work' | 'wait' | 'closed'>('all');
-  const today = db.meta.today;
+  const { role } = useSession();
+  const [f, setF] = useState<'all' | 'request' | 'work' | 'wait' | 'shipped'>('all');
   const searched = useMemo(() => {
     if (!q.trim()) return rows;
     const t = norm(q.trim()).split(/\s+/);
@@ -293,7 +302,7 @@ function PhoneOrders({ rows, onOpen }: { rows: OrderRow[]; onOpen: (r: OrderRow)
     request: searched.filter(STATE_TESTS.request).length,
     work: searched.filter(STATE_TESTS.work).length,
     wait: searched.filter(STATE_TESTS.wait).length,
-    closed: searched.filter(STATE_TESTS.closed).length,
+    shipped: searched.filter(STATE_TESTS.shipped).length,
   };
   const shown = (f === 'all' ? searched : searched.filter(STATE_TESTS[f])).slice(0, 40);
   return (
@@ -304,11 +313,11 @@ function PhoneOrders({ rows, onOpen }: { rows: OrderRow[]; onOpen: (r: OrderRow)
           value={f}
           onChange={setF}
           options={[
-            { value: 'all', label: 'Все', count: counts.all },
+            { value: 'all', label: role === 'manager' || role === 'rep' ? 'Все мои' : 'Все', count: counts.all },
             { value: 'request', label: 'Заявки', count: counts.request },
             { value: 'work', label: 'В работе', count: counts.work },
             { value: 'wait', label: 'Ждут оплаты', count: counts.wait },
-            { value: 'closed', label: 'Завершены', count: counts.closed },
+            { value: 'shipped', label: 'Отгружены', count: counts.shipped },
           ]}
         />
       </div>
@@ -317,17 +326,17 @@ function PhoneOrders({ rows, onOpen }: { rows: OrderRow[]; onOpen: (r: OrderRow)
           <button key={r.o.id} type="button" className="card sales-order-card" onClick={() => onOpen(r)}>
             <div className="row">
               <span className="w-700 t-14">№ {r.o.number}</span>
-              <span className="muted t-12">{fmt.relDate(r.o.createdAt, today)}, {fmt.time(r.o.createdAt)}</span>
+              <span className="muted t-12">{fmt.dateTime(r.o.createdAt)}</span>
               <span className="spacer" />
               <span className="w-700 t-16 num">{fmt.money(r.o.total)}</span>
             </div>
             <div className="w-600 t-14 ellipsis">{r.client?.name}</div>
             <div className="muted t-12 ellipsis">{r.point?.address ?? ''}</div>
-            <OrderChips o={r.o} pay={r.pay} />
+            <OrderChips o={r.o} pay={r.pay} delivery={r.delivery} />
             {r.pay.debt > 0 ? (
-              <div className={cx('t-13 w-600', r.pay.overdueDays > 0 ? 'c-bad' : 'ink-2')}>
+              <div className={cx('t-13 w-600', r.overdue > 0 ? 'c-bad' : 'ink-2')}>
                 Долг {fmt.money(r.pay.debt)}
-                {r.o.dueDate && r.pay.overdueDays === 0 ? ` · оплата до ${fmt.date(r.o.dueDate)}` : ''}
+                {r.o.dueDate && r.overdue === 0 && !r.failed ? ` · оплата до ${fmt.date(r.o.dueDate)}` : ''}
               </div>
             ) : null}
           </button>

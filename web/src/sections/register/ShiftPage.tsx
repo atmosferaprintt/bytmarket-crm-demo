@@ -9,7 +9,8 @@ import { PageHeader } from '../../shell/PageHeader';
 import { useOpenEntity } from '../../shell/entities';
 import { Button, Card, Chip, ConfirmButton, DataTable, Drawer, EmptyState, Field, Kpi, MoneyInput, Notice, StatList, StatRow, fmt, toast, type Column } from '../../ui';
 import { OpenShiftCard, ShiftBadge } from './ShiftParts';
-import { PAY_KIND_NAMES, openShift, payKind, receiptContents, receiptsOfShift } from './lib';
+import { useMedia } from '../sales/lib';
+import { PAY_KIND_NAMES, fixNo, openShift, payKind, receiptContents, receiptsOfShift } from './lib';
 
 interface Row {
   s: Shift;
@@ -33,6 +34,7 @@ export default function ShiftPage() {
   const [error, setError] = useState<string | null>(null);
   const [closed, setClosed] = useState<{ number: number; info: string; diff: number } | null>(null);
   const [view, setView] = useState<Shift | null>(null);
+  const phone = useMedia('(max-width: 760px)');
 
   const rows = useMemo<Row[]>(() => {
     const ix = indexes(db);
@@ -60,17 +62,18 @@ export default function ShiftPage() {
     const n = shift.number;
     const r = dispatch('shift.close', { shiftId: shift.id, countedCash: Number(counted) }, me.id);
     if (!r.ok) {
-      setError(r.error);
+      setError(fixNo(r.error));
       return;
     }
+    const info = r.info ? fixNo(r.info) : 'Смена закрыта';
     setError(null);
-    setClosed({ number: n, info: r.info ?? 'Смена закрыта', diff: diff ?? 0 });
+    setClosed({ number: n, info, diff: diff ?? 0 });
     setCounted('');
-    toast(`Смена № ${n} закрыта. ${r.info ?? ''}`.trim());
+    toast(`Смена № ${n} закрыта. ${r.info ? info : ''}`.trim());
   };
 
   const columns: Column<Row>[] = [
-    { key: 'date', header: 'Дата', render: (x) => <span className="nowrap">{fmt.date(x.s.openedAt)}, {fmt.weekday(x.s.openedAt, true)}</span>, sort: (x) => x.s.openedAt, csv: (x) => fmt.dateShort(x.s.openedAt, true) },
+    { key: 'date', header: 'Дата', render: (x) => <span className="nowrap">{fmt.dateShort(x.s.openedAt)}, {fmt.weekday(x.s.openedAt, true)}</span>, sort: (x) => x.s.openedAt, csv: (x) => fmt.dateShort(x.s.openedAt, true) },
     { key: 'number', header: 'Смена', render: (x) => <span className="cell-title">№ {x.s.number}</span>, sort: (x) => x.s.number },
     { key: 'seller', header: 'Продавец', render: (x) => <span className="nowrap">{x.seller}</span>, sort: (x) => x.seller, hidden: role === 'seller' },
     { key: 'time', header: 'Время', render: (x) => <span className="num nowrap">{fmt.time(x.s.openedAt)}–{x.s.closedAt ? fmt.time(x.s.closedAt) : 'сейчас'}</span>, csv: (x) => `${fmt.time(x.s.openedAt)}–${x.s.closedAt ? fmt.time(x.s.closedAt) : ''}` },
@@ -110,11 +113,18 @@ export default function ShiftPage() {
       {shift && sum ? (
         <div className="reg-shift-grid">
           <div className="col-4" style={{ minWidth: 0 }}>
-            <div className="grid-4">
+            <div className="grid-4 reg-shift-kpis">
               <Kpi label="Чеков" value={fmt.num(sum.receipts)} />
               <Kpi label="Выручка" value={fmt.money(sum.total)} />
               <Kpi label="Средний чек" value={fmt.money(sum.receipts ? Math.round(sum.total / sum.receipts) : 0)} />
-              <Kpi label="В кассе" value={fmt.money(sum.expectedCash)} />
+              <Kpi
+                label={
+                  <span title={`Размен ${fmt.money(shift.openingCash)} + наличные за смену ${fmt.money(sum.cash)} (продажи минус сдача и возвраты наличными)`}>
+                    Наличные в ящике за смену, с разменом
+                  </span>
+                }
+                value={fmt.money(sum.expectedCash)}
+              />
             </div>
             <Card
               title={`Смена № ${shift.number}`}
@@ -127,7 +137,7 @@ export default function ShiftPage() {
               <div className="grid-2 reg-shift-stats">
                 <StatList>
                   <StatRow label="Продавец" value={seller?.name ?? '—'} />
-                  <StatRow label="Открыта" value={`${fmt.relDate(shift.openedAt, today)}, ${fmt.time(shift.openedAt)}`} />
+                  <StatRow label="Открыта" value={fmt.dateTime(shift.openedAt)} />
                   <StatRow label="Чеков продажи" value={fmt.num(sum.receipts)} />
                   <StatRow label="Возвраты" value={sum.refundsCount ? `${fmt.count(sum.refundsCount, 'чек', 'чека', 'чеков')} · ${fmt.money(sum.refunds)}` : 'нет'} />
                 </StatList>
@@ -151,12 +161,14 @@ export default function ShiftPage() {
             >
               <div className="t-13 ink-2">Пересчитайте наличные в кассе вместе с разменом и введите сумму.</div>
               <Field label="Пересчитано наличных">
-                <MoneyInput value={counted} onChange={setCounted} size="lg" placeholder={fmt.num(sum.expectedCash)} autoFocus />
+                <MoneyInput value={counted} onChange={setCounted} size="lg" autoFocus={!phone} ariaLabel="Пересчитано наличных, ₽" />
               </Field>
-              <StatList>
-                <StatRow label="Ожидалось" value={fmt.money(sum.expectedCash)} />
-                <StatRow label="Пересчитано" value={counted === '' ? '—' : fmt.money(Number(counted))} />
-              </StatList>
+              {counted !== '' ? (
+                <StatList>
+                  <StatRow label="Ожидалось" value={fmt.money(sum.expectedCash)} />
+                  <StatRow label="Пересчитано" value={fmt.money(Number(counted))} />
+                </StatList>
+              ) : null}
               {diff === null ? null : diff === 0 ? (
                 <div className="reg-change">
                   <span className="reg-change-label">Касса сошлась</span>
@@ -256,7 +268,7 @@ function LastShiftCard({ shift, onOpen }: { shift: Shift; onOpen: () => void }) 
       <div className="grid-2 reg-shift-stats">
         <StatList>
           <StatRow label="Продавец" value={seller?.name ?? '—'} />
-          <StatRow label="Время" value={`${fmt.relDate(shift.openedAt, db.meta.today)}, ${fmt.time(shift.openedAt)}–${fmt.time(shift.closedAt)}`} />
+          <StatRow label="Время" value={`${fmt.dateTime(shift.openedAt)}–${fmt.time(shift.closedAt)}`} />
           <StatRow label="Чеков продажи" value={fmt.num(sum.receipts)} />
           <StatRow label="Выручка" value={fmt.money(sum.total)} />
           <StatRow label="Возвраты" value={sum.refundsCount ? `${fmt.count(sum.refundsCount, 'чек', 'чека', 'чеков')} · ${fmt.money(sum.refunds)}` : 'нет'} />
@@ -317,7 +329,7 @@ function ShiftDrawer({ shift, onClose }: { shift: Shift; onClose: () => void }) 
         columns={[
           { key: 'n', header: 'Чек', render: (r) => <span className="cell-title">№ {r.number}</span>, sort: (r) => r.number },
           { key: 't', header: 'Время', render: (r) => fmt.time(r.at), sort: (r) => r.at },
-          { key: 'c', header: 'Состав', render: (r) => <span className="ellipsis reg-td-contents" style={{ display: 'block' }}>{receiptContents(db, r)}</span> },
+          { key: 'c', header: 'Состав', className: 'reg-col-contents', render: (r) => <span className="reg-clip" title={receiptContents(db, r)}>{receiptContents(db, r)}</span> },
           { key: 'p', header: 'Оплата', render: (r) => <Chip tone={r.kind === 'refund' ? 'warn' : 'neutral'}>{PAY_KIND_NAMES[payKind(r)]}</Chip> },
           {
             key: 's',

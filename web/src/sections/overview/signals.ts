@@ -1,10 +1,11 @@
-/* «Требует внимания»: объяснимые сигналы по §13. Каждый — причина простыми словами, подтверждающие цифры,
-   ответственный сотрудник и одно действие. Чистый расчёт без React: computeSignals(db, today).
-   Им пользуется и рабочий стол бухгалтера. */
-import type { DB, ID, ISODate, TaskLink } from '../../data/types';
+/* «Требует внимания»: объяснимые сигналы по §13. Каждый — что случилось, подтверждающие цифры,
+   ответственный сотрудник и одно действие. Чистый расчёт без React:
+   computeSignals(db) — все сигналы; signalsForRole — что видит роль; arrangeSignals — главное на виду, однотипное мелкое — группами. */
+import type { DB, ID, ISODate, RoleKey, TaskLink } from '../../data/types';
 import type { EntityType } from '../../shell/entities';
 import { clientBalances, courierCash, indexes, shiftSummary, stockIndex } from '../../data/selectors';
 import { diffDays, plusDays } from '../../data/dates';
+import { URGENT_OVERDUE_DAYS } from '../../data/thresholds';
 import {
   DEAD_DAYS,
   delayedOrders,
@@ -14,8 +15,10 @@ import {
   isShortage,
   lastSaleIndex,
   memoDB,
+  nowAt,
   outDays,
   saleFacts,
+  supplierWeek,
   topCategoryId,
   emptyAgg,
   addFact,
@@ -23,11 +26,12 @@ import {
   type Agg,
 } from './analytics';
 
-export type SignalKind = 'stock_low' | 'dead_stock' | 'overdue' | 'missed_order' | 'margin_drop' | 'order_delay' | 'reconcile' | 'payment';
+export type SignalKind = 'stock_low' | 'dead_stock' | 'overdue' | 'missed_order' | 'margin_drop' | 'order_delay' | 'reconcile' | 'payment' | 'supplier';
 
 export const SIGNAL_KINDS: { key: SignalKind; label: string }[] = [
   { key: 'overdue', label: 'Просрочка оплаты' },
   { key: 'payment', label: 'Платежи' },
+  { key: 'supplier', label: 'Поставщикам' },
   { key: 'reconcile', label: 'Сверка' },
   { key: 'order_delay', label: 'Задержка заказа' },
   { key: 'stock_low', label: 'Заканчивается' },
@@ -52,17 +56,21 @@ export interface Signal {
   kind: SignalKind;
   severity: 'high' | 'medium' | 'low';
   title: string;
-  reason: string;
+  reason: string; // пусто, если заголовок и цифры уже всё говорят
   facts: SignalFact[];
-  amount: number; // сколько денег за этим стоит, ₽ — для порядка и отсечения шума
+  amount: number; // сколько денег за этим стоит, ₽ — для порядка
   responsibleId: ID | null;
   action: SignalAction;
   subject: { type: EntityType; id: ID } | null; // запись, к которой относится сигнал
   date: ISODate; // когда возник
+  money: boolean; // денежный сигнал: его видит бухгалтер
+  tag?: 'pending' | 'unidentified'; // для платежей: ждёт подтверждения или не опознан
+  count?: number; // сколько случаев за сигналом (сводный «ещё N товаров»), по умолчанию 1
+  members?: Signal[]; // для группы однотипных: что внутри
 }
 
 const SEV: Record<Signal['severity'], number> = { high: 0, medium: 1, low: 2 };
-/** Сигналы на сумму меньше этой показываются одной строкой. */
+/** Сигналы на сумму меньше этой — мелкие. */
 export const SMALL_AMOUNT = 3000;
 
 /* ---------- форматы (как в ui/format, но без React) ---------- */
@@ -79,11 +87,16 @@ const plural = (n: number, one: string, few: string, many: string) => {
   if (b === 1) return one;
   return many;
 };
+const cnt = (n: number, one: string, few: string, many: string) => `${grp(n)}${NB}${plural(n, one, few, many)}`;
 const days = (n: number) => `${n}${NB}${plural(n, 'день', 'дня', 'дней')}`;
 const pct1 = (v: number) => String(Math.round(v * 10) / 10).replace('.', ',') + NB + '%';
 const signed = (v: number) => (v > 0 ? '+' : v < 0 ? '−' : '') + pct1(Math.abs(v));
 const pp = (v: number) => (v > 0 ? '+' : v < 0 ? '−' : '') + String(Math.round(Math.abs(v) * 10) / 10).replace('.', ',') + NB + 'п.' + NB + 'п.';
 const perDay = (v: number) => (v >= 10 ? grp(v) : String(Math.round(v * 10) / 10).replace('.', ','));
+const when = (iso: string, today: ISODate) => {
+  const a = diffDays(iso.slice(0, 10), today);
+  return a === 0 ? 'сегодня' : a === 1 ? 'вчера' : fmtDay(iso);
+};
 
 function shortName(name: string): string {
   return name.length > 54 ? name.slice(0, 52).trimEnd() + '…' : name;
@@ -105,72 +118,56 @@ function people(db: DB) {
 
 /* ---------- расчёт ---------- */
 
-export function computeSignals(db: DB, today: ISODate = db.meta.today): Signal[] {
-  return memoDB(db, 'signals|' + today, () => {
+export function computeSignals(db: DB, today: ISODate = db.meta.today, now: string = nowAt()): Signal[] {
+  return memoDB(db, `signals|${today}|${now}`, () => {
     const out: Signal[] = [];
     stockSignals(db, today, out);
     deadStockSignals(db, today, out);
     overdueSignals(db, today, out);
     missedOrderSignals(db, today, out);
     marginSignals(db, today, out);
-    delaySignals(db, out);
+    delaySignals(db, now, out);
     reconcileSignals(db, today, out);
     paymentSignals(db, today, out);
-    out.sort((a, b) => SEV[a.severity] - SEV[b.severity] || b.amount - a.amount);
+    supplierSignals(db, today, out);
+    out.sort(bySeverity);
     return out;
   });
 }
 
+const bySeverity = (a: Signal, b: Signal) => SEV[a.severity] - SEV[b.severity] || b.amount - a.amount;
+
 function stockSignals(db: DB, today: ISODate, out: Signal[]) {
   const ix = indexes(db);
   const { buyer } = people(db);
-  const list = [...demandIndex(db).values()]
-    .filter((d) => isShortage(d) && ix.products.get(d.productId)?.active)
-    .sort((a, b) => b.revenue30 - a.revenue30);
-  const MAX = 10;
-  list.slice(0, MAX).forEach((d) => {
+  const list = [...demandIndex(db).values()].filter((d) => isShortage(d) && ix.products.get(d.productId)?.active).sort((a, b) => b.revenue30 - a.revenue30);
+  for (const d of list) {
     const p = ix.products.get(d.productId)!;
     const cover = d.cover === null ? 0 : Math.floor(d.cover);
-    const sold = d.available <= 0 && d.expected <= 0;
+    const none = d.available <= 0;
     const atRisk = Math.round(d.daily * p.retailPrice * Math.max(1, d.leadDays + 2 - cover));
+    const facts: SignalFact[] = [
+      { label: 'Продано за 30 дней', value: pcs(d.sold30) },
+      { label: 'Доступно', value: pcs(d.available), tone: none ? 'bad' : undefined },
+      { label: 'Ожидается', value: pcs(d.expected) },
+    ];
+    // «хватит на меньше дня» рядом с «доступно 0» — повтор; показываем запас, только если товар есть
+    if (!none) facts.push({ label: 'Хватит на', value: cover < 1 ? 'меньше дня' : days(cover), tone: 'warn' });
     out.push({
       id: 'stock_low:' + p.id,
       kind: 'stock_low',
-      severity: sold || cover < 2 ? 'high' : 'medium',
-      title: sold ? `${shortName(p.name)} закончился` : `${shortName(p.name)} заканчивается`,
-      reason: sold
-        ? `Ходовой товар: продавался по ${perDay(d.daily)} шт в день, сейчас его нет ни в магазине, ни на складе`
-        : cover <= d.leadDays
-          ? `Продаётся по ${perDay(d.daily)} шт в день. Запаса хватит ${cover < 1 ? 'меньше чем на день' : `на ${days(cover)}`}, а поставка идёт ${days(d.leadDays)} — закончится раньше, чем приедет`
-          : `Продаётся по ${perDay(d.daily)} шт в день. Запаса хватит на ${days(cover)}, поставка идёт ${days(d.leadDays)} — заказать нужно ${cover - d.leadDays <= 1 ? 'сегодня или завтра' : `в ближайшие ${days(cover - d.leadDays)}`}`,
-      facts: [
-        { label: 'Продано за 30 дней', value: pcs(d.sold30) },
-        { label: 'Доступно', value: pcs(d.available), tone: d.available <= 0 ? 'bad' : undefined },
-        { label: 'Ожидается', value: pcs(d.expected) },
-        { label: 'Хватит на', value: cover < 1 ? 'меньше дня' : days(cover), tone: 'warn' },
-      ],
+      severity: (none && d.expected <= 0) || cover < 2 ? 'high' : 'medium',
+      title: none ? `${shortName(p.name)} закончился` : `${shortName(p.name)} заканчивается`,
+      reason: none
+        ? `Ходовой товар, продавался по ${perDay(d.daily)} шт в день`
+        : `Продаётся по ${perDay(d.daily)} шт в день, поставка идёт ${days(d.leadDays)} — ${cover <= d.leadDays ? 'закончится раньше, чем приедет' : `заказать нужно ${cover - d.leadDays <= 1 ? 'сегодня или завтра' : `в ближайшие ${days(cover - d.leadDays)}`}`}`,
+      facts,
       amount: atRisk,
       responsibleId: buyer,
       action: { type: 'go', to: '/purchases/suggest', label: 'Заказать', fallback: { type: 'open', entity: 'product', id: p.id, label: 'Открыть' } },
       subject: { type: 'product', id: p.id },
       date: today,
-    });
-  });
-  const rest = list.slice(MAX);
-  if (rest.length) {
-    const sum = rest.reduce((s, d) => s + d.daily * (ix.products.get(d.productId)?.retailPrice ?? 0) * d.leadDays, 0);
-    out.push({
-      id: 'stock_low:rest',
-      kind: 'stock_low',
-      severity: 'low',
-      title: `Ещё ${rest.length} ${plural(rest.length, 'ходовой товар заканчивается', 'ходовых товара заканчиваются', 'ходовых товаров заканчиваются')}`,
-      reason: 'Запаса меньше, чем срок поставки. Полный список — в предложении на закупку',
-      facts: [{ label: 'Товаров', value: `${grp(rest.length)} ${plural(rest.length, 'товар', 'товара', 'товаров')}` }],
-      amount: Math.round(sum),
-      responsibleId: buyer,
-      action: { type: 'go', to: '/purchases/suggest', label: 'Открыть список', fallback: { type: 'go', to: '/reports?list=deficit', label: 'Открыть список', fallback: { type: 'task', link: null, title: 'Проверить заканчивающиеся товары', assigneeId: buyer, label: 'Задача' } } },
-      subject: null,
-      date: today,
+      money: false,
     });
   }
 }
@@ -180,14 +177,14 @@ function deadStockSignals(db: DB, today: ISODate, out: Signal[]) {
   const last = lastSaleIndex(db);
   const border = plusDays(today, -DEAD_DAYS);
   const { owner } = people(db);
-  const items: { id: ID; name: string; qty: number; value: number; last: ISODate | undefined; absent: number }[] = [];
+  const items: { id: ID; name: string; qty: number; value: number; last: ISODate | undefined }[] = [];
   for (const p of db.products) {
     const s = si.get(p.id);
     if (!s || s.total.onHand <= 0 || p.cost === null) continue;
     if (!isDead(p, last.get(p.id), border)) continue;
     const absent = outDays(db, p.id, border, today);
     if (absent > DEAD_DAYS / 2) continue; // товара почти не было — отсутствие продаж не говорит о спросе
-    items.push({ id: p.id, name: p.name, qty: s.total.onHand, value: s.total.onHand * p.cost, last: last.get(p.id), absent });
+    items.push({ id: p.id, name: p.name, qty: s.total.onHand, value: s.total.onHand * p.cost, last: last.get(p.id) });
   }
   items.sort((a, b) => b.value - a.value);
   const big = items.filter((x) => x.value >= 5000).slice(0, 6);
@@ -198,7 +195,7 @@ function deadStockSignals(db: DB, today: ISODate, out: Signal[]) {
       kind: 'dead_stock',
       severity: x.value >= 20000 ? 'medium' : 'low',
       title: `${shortName(x.name)}: без продаж ${since !== null ? days(since) : 'с начала учёта'}`,
-      reason: `Лежит ${pcs(x.qty)} на ${rub(x.value)} по себестоимости, а продаж не было ${since !== null ? 'с ' + fmtDay(x.last!) : 'ни разу за три месяца'}. Товар всё это время был в наличии`,
+      reason: 'Товар всё это время был в наличии — дело не в остатке',
       facts: [
         { label: 'Остаток', value: pcs(x.qty) },
         { label: 'По себестоимости', value: rub(x.value), tone: 'warn' },
@@ -209,6 +206,7 @@ function deadStockSignals(db: DB, today: ISODate, out: Signal[]) {
       action: { type: 'go', to: '/products/pricing', label: 'Акция', fallback: { type: 'open', entity: 'product', id: x.id, label: 'Открыть' } },
       subject: { type: 'product', id: x.id },
       date: today,
+      money: false,
     });
   }
   const rest = items.filter((x) => !big.includes(x));
@@ -218,14 +216,16 @@ function deadStockSignals(db: DB, today: ISODate, out: Signal[]) {
       id: 'dead_stock:rest',
       kind: 'dead_stock',
       severity: 'low',
-      title: `Ещё ${rest.length} ${plural(rest.length, 'товар', 'товара', 'товаров')} без движения ${DEAD_DAYS} дней`,
-      reason: `Вместе на ${rub(sum)} по себестоимости. Список — в отчёте по товарам`,
-      facts: [{ label: 'Сумма', value: rub(sum) }],
+      title: `${cnt(rest.length, 'товар', 'товара', 'товаров')} без движения ${DEAD_DAYS} дней`,
+      reason: 'Каждый меньше чем на 5 000 ₽. Список — в отчёте по товарам',
+      facts: [{ label: 'По себестоимости', value: rub(sum) }],
       amount: Math.round(sum),
       responsibleId: owner,
       action: { type: 'go', to: '/reports?list=dead', label: 'Открыть отчёт', fallback: { type: 'task', link: null, title: 'Разобрать товары без движения', assigneeId: owner, label: 'Задача' } },
       subject: null,
       date: today,
+      money: false,
+      count: rest.length,
     });
   }
 }
@@ -242,7 +242,9 @@ function overdueSignals(db: DB, today: ISODate, out: Signal[]) {
     const c = ix.clients.get(cid);
     if (!c) continue;
     const overLimit = b.creditLimit > 0 && b.debt > b.creditLimit;
-    const severity: Signal['severity'] = b.overdue < SMALL_AMOUNT ? 'low' : b.overdue >= 20000 || b.maxOverdueDays >= 14 || overLimit ? 'high' : 'medium';
+    // меньше URGENT_OVERDUE_DAYS дней — ещё не «срочно», а «важно»
+    const severity: Signal['severity'] =
+      b.overdue < SMALL_AMOUNT ? 'low' : b.maxOverdueDays < URGENT_OVERDUE_DAYS ? 'medium' : b.overdue >= 20000 || b.maxOverdueDays >= 14 || overLimit ? 'high' : 'medium';
     const lp = lastPay.get(cid);
     const facts: SignalFact[] = [
       { label: 'Просрочено', value: rub(b.overdue), tone: 'bad' },
@@ -255,15 +257,14 @@ function overdueSignals(db: DB, today: ISODate, out: Signal[]) {
       kind: 'overdue',
       severity,
       title: `${c.name}: просрочка ${days(b.maxOverdueDays)}`,
-      reason:
-        `Срок оплаты по отгрузке прошёл ${days(b.maxOverdueDays)} назад, деньги не пришли` +
-        (overLimit ? `. Долг больше кредитного лимита на ${rub(b.debt - b.creditLimit)}` : ''),
+      reason: overLimit ? `Долг больше кредитного лимита на ${rub(b.debt - b.creditLimit)}` : '',
       facts,
       amount: b.overdue,
       responsibleId: c.ownerId,
       action: { type: 'task', link: { type: 'client', id: cid }, title: `Напомнить об оплате: просрочено ${rub(b.overdue)}`, assigneeId: c.ownerId, label: 'Напомнить' },
       subject: { type: 'client', id: cid },
       date: today,
+      money: true,
     });
   }
 }
@@ -287,9 +288,8 @@ function missedOrderSignals(db: DB, today: ISODate, out: Signal[]) {
       kind: 'missed_order',
       severity: b.avgOrder >= SMALL_AMOUNT && since >= c.orderEveryDays * 2 ? 'medium' : 'low',
       title: `${c.name}: пропущен привычный заказ`,
-      reason: `Обычно заказывает раз в ${days(c.orderEveryDays)}, а с последнего заказа прошло ${days(since)}`,
+      reason: `Заказывает раз в ${days(c.orderEveryDays)}, а с последнего заказа прошло ${days(since)}`,
       facts: [
-        { label: 'Обычно', value: `раз в ${days(c.orderEveryDays)}` },
         { label: 'Последний заказ', value: fmtDay(b.lastOrderAt), tone: 'warn' },
         { label: 'Средний заказ', value: rub(b.avgOrder) },
       ],
@@ -304,6 +304,7 @@ function missedOrderSignals(db: DB, today: ISODate, out: Signal[]) {
       },
       subject: { type: 'client', id: c.id },
       date: today,
+      money: false,
     });
   }
 }
@@ -356,8 +357,8 @@ function marginSignals(db: DB, today: ISODate, out: Signal[]) {
       const topPromo = [...a.promoName.entries()].sort((x, y) => y[1] - x[1])[0];
       const name = topPromo ? promos.get(topPromo[0])?.name : null;
       reason = `Продажи выросли за счёт акции${name ? ` «${name}»` : ''}: со скидкой продано ${Math.round(promoShareCur * 100)} % выручки, месяцем раньше — ${Math.round(promoSharePrev * 100)} %`;
-    } else if (manualCur - manualPrev > 0.01) reason = 'Продажи выросли, но чаще дают ручную скидку: прибыль растёт медленнее выручки';
-    else reason = 'Продажи выросли за счёт товаров с низкой маржой: прибыль растёт медленнее выручки';
+    } else if (manualCur - manualPrev > 0.01) reason = 'Чаще дают ручную скидку: прибыль растёт медленнее выручки';
+    else reason = 'Больше продают товаров с низкой наценкой: прибыль растёт медленнее выручки';
     const profitDelta = a.profit - b.profit;
     out.push({
       id: 'margin_drop:' + catId,
@@ -375,43 +376,52 @@ function marginSignals(db: DB, today: ISODate, out: Signal[]) {
       action: { type: 'go', to: `/reports?cat=${catId}`, label: 'Разобрать', fallback: { type: 'task', link: null, title: `Разобрать маржу: ${cat?.name ?? ''}`, assigneeId: owner, label: 'Задача' } },
       subject: null,
       date: today,
+      money: false,
     });
   }
 }
 
-const DELAY_TITLE: Record<string, (n: number) => string> = {
-  picking: (n) => `Заказ №${NB}${n} задержан на сборке`,
-  not_shipped: (n) => `Заказ №${NB}${n} собран, но не отгружен`,
-  waiting_courier: (n) => `Заказ №${NB}${n} ждёт курьера`,
-  late: (n) => `Доставка заказа №${NB}${n} опаздывает`,
-  failed: (n) => `Заказ №${NB}${n} не доставлен`,
-  rescheduled: (n) => `Доставка заказа №${NB}${n} перенесена`,
+const N = (n: number) => `№${NB}${n}`;
+const DELAY_TITLE: Record<string, (n: number, days: number) => string> = {
+  picking: (n) => `Заказ ${N(n)} задержан на сборке`,
+  partial: (n) => `Заказ ${N(n)} отгружен частично`,
+  not_shipped: (n) => `Заказ ${N(n)} собран, но не отгружен`,
+  waiting_courier: (n) => `Заказ ${N(n)} ждёт курьера`,
+  late: (n, d) => `Доставка заказа ${N(n)} опаздывает${d > 0 ? ` на ${days(d)}` : ''}`,
+  failed: (n) => `Заказ ${N(n)} не доставлен`,
+  rescheduled: (n) => `Доставка заказа ${N(n)} перенесена`,
 };
 
-function delaySignals(db: DB, out: Signal[]) {
+function delaySignals(db: DB, now: string, out: Signal[]) {
   const ix = indexes(db);
-  for (const d of delayedOrders(db)) {
+  for (const d of delayedOrders(db, now)) {
     const o = d.order;
     const c = ix.clients.get(o.clientId);
     const severity: Signal['severity'] =
-      d.kind === 'rescheduled' ? 'low' : d.kind === 'failed' || d.kind === 'late' || (d.kind === 'not_shipped' && d.days >= 2) || (d.kind === 'picking' && d.days >= 3) ? 'high' : 'medium';
+      d.kind === 'rescheduled'
+        ? 'low'
+        : d.kind === 'failed' || (d.kind === 'late' && (d.minutes ?? 0) >= 60) || (d.kind === 'not_shipped' && d.days >= 2) || (d.kind === 'partial' && d.days >= 2) || (d.kind === 'picking' && d.days >= 3)
+          ? 'high'
+          : 'medium';
     const viaDelivery = d.deliveryId && (d.kind === 'failed' || d.kind === 'late' || d.kind === 'waiting_courier' || d.kind === 'rescheduled');
+    const facts: SignalFact[] = [
+      { label: 'Клиент', value: c?.name ?? '—' },
+      { label: 'Сумма', value: rub(o.total) },
+    ];
+    if (d.days > 0 && d.kind !== 'late') facts.push({ label: 'Ждёт', value: days(d.days), tone: 'warn' });
     out.push({
       id: 'order_delay:' + o.id,
       kind: 'order_delay',
       severity,
-      title: DELAY_TITLE[d.kind](o.number),
+      title: DELAY_TITLE[d.kind](o.number, d.days),
       reason: d.reason,
-      facts: [
-        { label: 'Клиент', value: c?.name ?? '—' },
-        { label: 'Сумма', value: rub(o.total) },
-        ...(d.days > 0 ? [{ label: 'Ждёт', value: days(d.days), tone: 'warn' as const }] : []),
-      ],
+      facts,
       amount: o.total,
       responsibleId: d.responsibleId,
       action: viaDelivery ? { type: 'open', entity: 'delivery', id: d.deliveryId!, label: 'Открыть' } : { type: 'open', entity: 'order', id: o.id, label: 'Открыть' },
       subject: { type: 'order', id: o.id },
       date: db.meta.today,
+      money: false,
     });
   }
 }
@@ -433,11 +443,11 @@ function reconcileSignals(db: DB, today: ISODate, out: Signal[]) {
       kind: 'reconcile',
       severity: diff >= 1000 ? 'high' : diff >= 200 ? 'medium' : 'low',
       title: `Касса ${fmtDay(date)}: ${short ? 'не хватает' : 'лишние'} ${rub(diff)}`,
-      reason: `При закрытии смены №${NB}${s.number} пересчитали ${rub(sum.countedCash ?? 0)}, а по чекам должно быть ${rub(sum.expectedCash)}`,
+      reason: '',
       facts: [
-        { label: 'Должно быть', value: rub(sum.expectedCash) },
-        { label: 'Пересчитано', value: rub(sum.countedCash ?? 0) },
-        { label: 'Разница', value: (short ? '−' : '+') + rub(diff), tone: short ? 'bad' : 'warn' },
+        { label: 'Смена', value: N(s.number) },
+        { label: 'По чекам', value: rub(sum.expectedCash) },
+        { label: 'Пересчитали', value: rub(sum.countedCash ?? 0), tone: short ? 'bad' : 'warn' },
       ],
       amount: diff,
       responsibleId: s.sellerId,
@@ -449,6 +459,7 @@ function reconcileSignals(db: DB, today: ISODate, out: Signal[]) {
       },
       subject: null,
       date,
+      money: true,
     });
   }
   // курьер не сдал деньги
@@ -464,11 +475,10 @@ function reconcileSignals(db: DB, today: ISODate, out: Signal[]) {
       kind: 'reconcile',
       severity: cc.onHand >= 10000 || diffDays(oldest, today) >= 2 ? 'high' : 'medium',
       title: `${e.name} не сдал ${rub(cc.onHand)}`,
-      reason: `Деньги с ${list.length} ${plural(list.length, 'доставки', 'доставок', 'доставок')} у курьера с ${fmtDay(oldest)}, в кассу не сданы`,
+      reason: '',
       facts: [
-        { label: 'На руках', value: rub(cc.onHand), tone: 'bad' },
         { label: 'Доставок', value: grp(list.length) },
-        { label: 'С какого дня', value: fmtDay(oldest) },
+        { label: 'Деньги на руках с', value: fmtDay(oldest), tone: 'warn' },
       ],
       amount: cc.onHand,
       responsibleId: e.id,
@@ -480,9 +490,10 @@ function reconcileSignals(db: DB, today: ISODate, out: Signal[]) {
       },
       subject: null,
       date: oldest,
+      money: true,
     });
   }
-  // приёмка с расхождением
+  // приёмка с расхождением — товарный сигнал, бухгалтеру не показываем
   for (const pu of db.purchases) {
     if (!pu.receivedAt || pu.receivedAt.slice(0, 10) < border) continue;
     let ordered = 0;
@@ -505,7 +516,7 @@ function reconcileSignals(db: DB, today: ISODate, out: Signal[]) {
       id: 'reconcile:purchase:' + pu.id,
       kind: 'reconcile',
       severity: value < SMALL_AMOUNT ? 'low' : 'medium',
-      title: `Приёмка №${NB}${pu.number}: расхождение с заказом`,
+      title: `Приёмка ${N(pu.number)}: расхождение с заказом`,
       reason: `${sup?.name ?? 'Поставщик'}: ${received < ordered ? `не довезли ${pcs(ordered - received)}` : received > ordered ? `привезли лишние ${pcs(received - ordered)}` : 'количество сошлось'}${defect ? `, брак ${pcs(defect)}` : ''}${reason ? `. Причина: ${reason.toLowerCase()}` : ''}`,
       facts: [
         { label: 'Заказано', value: pcs(ordered) },
@@ -518,6 +529,7 @@ function reconcileSignals(db: DB, today: ISODate, out: Signal[]) {
       action: { type: 'open', entity: 'purchase', id: pu.id, label: 'Открыть' },
       subject: { type: 'purchase', id: pu.id },
       date: pu.receivedAt.slice(0, 10),
+      money: false,
     });
   }
 }
@@ -535,37 +547,195 @@ function paymentSignals(db: DB, today: ISODate, out: Signal[]) {
         id: 'payment:' + p.id,
         kind: 'payment',
         severity: age >= 2 ? 'high' : p.amount < SMALL_AMOUNT ? 'low' : 'medium',
+        tag: 'pending',
         title: `Перевод ${rub(p.amount)} ждёт подтверждения`,
-        reason: `${c?.name ?? 'Клиент'} прислал подтверждение перевода ${fmtDay(date)}. Пока банк не подтвердит, долг не уменьшается`,
+        reason: 'Пока банк не подтвердит, долг клиента не уменьшается',
         facts: [
-          { label: 'Сумма', value: rub(p.amount) },
-          { label: 'Прислали', value: age === 0 ? 'сегодня' : age === 1 ? 'вчера' : fmtDay(date) },
+          { label: 'Клиент', value: c?.name ?? '—' },
+          { label: 'Прислали', value: when(date, today) },
         ],
         amount: p.amount,
         responsibleId: accountant,
         action: { type: 'go', to: '/money', label: 'Проверить', fallback: { type: 'task', link: { type: 'payment', id: p.id }, title: 'Проверить перевод по выписке', assigneeId: accountant, label: 'Задача' } },
         subject: c ? { type: 'client', id: c.id } : null,
         date,
+        money: true,
       });
     } else {
       out.push({
         id: 'payment:' + p.id,
         kind: 'payment',
         severity: p.amount >= 10000 || age >= 3 ? 'high' : 'medium',
+        tag: 'unidentified',
         title: `Поступление ${rub(p.amount)} не опознано`,
-        reason: `Пришло на расчётный счёт ${fmtDay(date)}, плательщик не ясен — долг никому не уменьшен${p.comment ? `. Назначение: «${p.comment}»` : ''}`,
-        facts: [
-          { label: 'Сумма', value: rub(p.amount) },
-          { label: 'Пришло', value: fmtDay(date) },
-        ],
+        reason: `Плательщик не ясен — долг никому не уменьшен${p.comment ? `. Назначение: «${p.comment}»` : ''}`,
+        facts: [{ label: 'Пришло на счёт', value: when(date, today) }],
         amount: p.amount,
         responsibleId: accountant,
         action: { type: 'go', to: '/money', label: 'Разнести', fallback: { type: 'task', link: { type: 'payment', id: p.id }, title: 'Определить плательщика', assigneeId: accountant, label: 'Задача' } },
         subject: null,
         date,
+        money: true,
       });
     }
   }
+}
+
+/** Долги поставщикам: просроченные — по поставщику, к оплате до воскресенья — одной строкой. Как в «Деньги → Долги поставщикам». */
+function supplierSignals(db: DB, today: ISODate, out: Signal[]) {
+  const ix = indexes(db);
+  const { accountant } = people(db);
+  const w = supplierWeek(db);
+  const go = (label: string, title: string): SignalAction => ({ type: 'go', to: '/money/suppliers', label, fallback: { type: 'task', link: null, title, assigneeId: accountant, label: 'Задача' } });
+  const bySup = new Map<ID, { sum: number; n: number; oldest: ISODate }>();
+  for (const u of w.overdue) {
+    const x = bySup.get(u.supplierId) ?? { sum: 0, n: 0, oldest: u.dueDate };
+    x.sum += u.amount;
+    x.n++;
+    if (u.dueDate < x.oldest) x.oldest = u.dueDate;
+    bySup.set(u.supplierId, x);
+  }
+  for (const [sid, x] of bySup) {
+    const s = ix.suppliers.get(sid);
+    const late = diffDays(x.oldest, today);
+    out.push({
+      id: 'supplier:overdue:' + sid,
+      kind: 'supplier',
+      severity: late >= URGENT_OVERDUE_DAYS && x.sum >= SMALL_AMOUNT ? 'high' : x.sum >= SMALL_AMOUNT ? 'medium' : 'low',
+      title: `${s?.name ?? 'Поставщик'}: просрочен платёж ${rub(x.sum)}`,
+      reason: '',
+      facts: [
+        { label: 'Поставок', value: grp(x.n) },
+        { label: 'Срок был', value: fmtDay(x.oldest), tone: 'bad' },
+        { label: 'Просрочка', value: days(late), tone: 'bad' },
+      ],
+      amount: x.sum,
+      responsibleId: accountant,
+      action: go('Оплатить', `Оплатить поставщику: ${s?.name ?? ''}, ${rub(x.sum)}`),
+      subject: { type: 'supplier', id: sid },
+      date: x.oldest,
+      money: true,
+    });
+  }
+  if (w.thisWeekSum > 0) {
+    const first = w.thisWeek[0];
+    out.push({
+      id: 'supplier:week:' + w.weekEnd,
+      kind: 'supplier',
+      severity: 'medium',
+      title: `Поставщикам к оплате до воскресенья ${rub(w.thisWeekSum)}`,
+      reason: '',
+      facts: [
+        { label: 'Поставок', value: grp(w.thisWeek.length) },
+        { label: 'Ближайший платёж', value: `${fmtDay(first.dueDate)}, ${rub(first.amount)}` },
+      ],
+      amount: w.thisWeekSum,
+      responsibleId: accountant,
+      action: go('График', 'Подготовить платежи поставщикам на неделю'),
+      subject: null,
+      date: today,
+      money: true,
+    });
+  }
+}
+
+/* ---------- кому что показывать ---------- */
+
+/** Бухгалтеру — только деньги: оплаты и просрочки, переводы и неопознанные поступления, кассы и деньги курьеров, долги поставщикам. */
+export function signalsForRole(list: Signal[], role: RoleKey): Signal[] {
+  if (role === 'accountant') return list.filter((s) => s.money);
+  return list;
+}
+
+export function kindsForRole(role: RoleKey): typeof SIGNAL_KINDS {
+  if (role === 'accountant') return SIGNAL_KINDS.filter((k) => k.key === 'overdue' || k.key === 'payment' || k.key === 'supplier' || k.key === 'reconcile');
+  return SIGNAL_KINDS;
+}
+
+/* ---------- главное на виду, однотипное — группой ---------- */
+
+/** Сколько по-настоящему важных сигналов держим на виду. */
+export const IMPORTANT_MAX = 14;
+/** Сколько сигналов одного вида на виду; остальные этого вида — одной строкой-группой. */
+const KIND_CAP: Record<SignalKind, number> = { overdue: 5, payment: 3, supplier: 2, reconcile: 2, order_delay: 3, stock_low: 2, missed_order: 1, margin_drop: 1, dead_stock: 1 };
+
+const sizeOf = (s: Signal) => s.count ?? 1;
+
+const GROUP_NOUN: Record<SignalKind, (n: number, more: boolean) => string> = {
+  overdue: (n, m) => `${m ? 'Ещё ' : ''}${cnt(n, 'клиент', 'клиента', 'клиентов')} с просрочкой оплаты`,
+  payment: (n, m) => `${m ? 'Ещё ' : ''}${cnt(n, 'платёж ждёт', 'платежа ждут', 'платежей ждут')} разбора`,
+  supplier: (n, m) => `${m ? 'Ещё ' : ''}${cnt(n, 'платёж', 'платежа', 'платежей')} поставщикам`,
+  reconcile: (n, m) => `${m ? 'Ещё ' : ''}${cnt(n, 'расхождение', 'расхождения', 'расхождений')} при сверке`,
+  order_delay: (n, m) => `${m ? 'Ещё ' : ''}${cnt(n, 'заказ', 'заказа', 'заказов')} с задержкой`,
+  stock_low: (n, m) => `${m ? 'Ещё ' : ''}${cnt(n, 'ходовой товар заканчивается', 'ходовых товара заканчиваются', 'ходовых товаров заканчиваются')}`,
+  missed_order: (n, m) => `${m ? 'Ещё ' : ''}${cnt(n, 'клиент пропустил', 'клиента пропустили', 'клиентов пропустили')} привычный заказ`,
+  margin_drop: (n, m) => `${m ? 'Ещё ' : ''}${cnt(n, 'категория', 'категории', 'категорий')} с падением маржи`,
+  dead_stock: (n, m) => `${m ? 'Ещё ' : ''}${cnt(n, 'товар', 'товара', 'товаров')} без движения ${DEAD_DAYS} дней`,
+};
+
+/** Что показать одной цифрой у группы: деньги, если они есть, иначе количество. */
+function groupFact(kind: SignalKind, members: Signal[]): SignalFact {
+  const sum = members.reduce((z, s) => z + s.amount, 0);
+  if (kind === 'stock_low' || kind === 'missed_order' || kind === 'margin_drop') {
+    const n = members.reduce((z, s) => z + sizeOf(s), 0);
+    return { label: 'Сколько', value: kind === 'margin_drop' ? cnt(n, 'категория', 'категории', 'категорий') : kind === 'stock_low' ? cnt(n, 'товар', 'товара', 'товаров') : cnt(n, 'клиент', 'клиента', 'клиентов') };
+  }
+  return { label: kind === 'overdue' ? 'Просрочено' : kind === 'dead_stock' ? 'По себестоимости' : 'Сумма', value: rub(sum), tone: kind === 'overdue' ? 'bad' : undefined };
+}
+
+export interface Arranged {
+  important: Signal[]; // «Срочно» и «Важно», не больше IMPORTANT_MAX
+  rest: Signal[]; // «Остальное»: группы однотипных и одиночные мелкие
+}
+
+/** Главное на виду: по важности и сумме, не больше KIND_CAP одного вида и IMPORTANT_MAX всего.
+    Остальное однотипное сворачивается в одну строку-группу на вид. */
+export function arrangeSignals(list: Signal[]): Arranged {
+  const sorted = [...list].sort(bySeverity);
+  const important: Signal[] = [];
+  const per = new Map<SignalKind, number>();
+  const restBy = new Map<SignalKind, Signal[]>();
+  for (const s of sorted) {
+    const n = per.get(s.kind) ?? 0;
+    if (s.severity !== 'low' && !s.count && important.length < IMPORTANT_MAX && n < KIND_CAP[s.kind]) {
+      important.push(s);
+      per.set(s.kind, n + 1);
+    } else {
+      const a = restBy.get(s.kind) ?? [];
+      a.push(s);
+      restBy.set(s.kind, a);
+    }
+  }
+  const rest: Signal[] = [];
+  for (const k of SIGNAL_KINDS) {
+    const members = restBy.get(k.key);
+    if (!members?.length) continue;
+    if (members.length === 1) {
+      rest.push({ ...members[0], severity: 'low' });
+      continue;
+    }
+    const n = members.reduce((z, s) => z + sizeOf(s), 0);
+    const sum = members.reduce((z, s) => z + s.amount, 0);
+    const resp = new Set(members.map((s) => s.responsibleId));
+    rest.push({
+      id: 'group:' + k.key,
+      kind: k.key,
+      severity: 'low',
+      title: GROUP_NOUN[k.key](n, (per.get(k.key) ?? 0) > 0),
+      reason: '',
+      facts: [groupFact(k.key, members)],
+      amount: sum,
+      responsibleId: resp.size === 1 ? [...resp][0] : null,
+      action: { type: 'go', to: `/overview/attention?kind=${k.key}`, label: 'Показать', fallback: { type: 'task', link: null, title: `Разобрать: ${k.label.toLowerCase()}`, assigneeId: null, label: 'Задача' } },
+      subject: null,
+      date: members[0].date,
+      money: members.every((s) => s.money),
+      count: n,
+      members,
+    });
+  }
+  rest.sort((a, b) => b.amount - a.amount);
+  return { important, rest };
 }
 
 /* ---------- «Разобрано»: хранится у пользователя, чтобы не шуметь ---------- */

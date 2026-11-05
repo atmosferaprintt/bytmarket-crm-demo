@@ -5,7 +5,9 @@ import {
   ArrowDown,
   ArrowUp,
   Check,
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
   CircleCheck,
   Percent,
   Plus,
@@ -30,6 +32,7 @@ import {
   DISCOUNT_REASONS,
   EMPTY_CART,
   PACK_SHORT,
+  fixNo,
   PAY_KIND_NAMES,
   buildCatalog,
   cardNumber,
@@ -57,6 +60,8 @@ import { ClientPicker } from './ClientPicker';
 import { ReturnLookup, useOpenRefund } from './ReturnLookup';
 import { OpenShiftCard, ShiftBadge } from './ShiftParts';
 import { usePrintReceipt } from './Print';
+import { PromoChip } from '../sales/parts';
+import { useMedia } from '../sales/lib';
 
 /* ---------- черновик чека сохраняется сам ---------- */
 
@@ -162,6 +167,9 @@ export default function SalePage() {
   const paidAtRef = useRef(0);
   const searchRef = useRef<HTMLInputElement>(null);
   const linesRef = useRef<HTMLDivElement>(null);
+  // телефон: чек — сворачиваемая панель снизу, «Оплатить» всегда на виду
+  const phone = useMedia('(max-width: 760px)');
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const focusSearch = useCallback(() => {
     window.setTimeout(() => searchRef.current?.focus(), 0);
@@ -436,7 +444,7 @@ export default function SalePage() {
     busyRef.current = false;
     setPayBusy(false);
     if (!res.ok) {
-      setPayError(res.error);
+      setPayError(fixNo(res.error));
       return;
     }
     const rec = getDB().receipts.find((x) => x.id === res.id);
@@ -485,6 +493,11 @@ export default function SalePage() {
 
   /* ---------- разметка ---------- */
   const hint = query.trim() ? `Найдено ${fmt.num(found.total)}` : 'Ходовые товары';
+  const sheetSummary = priced.lines.length
+    ? `${fmt.count(priced.lines.length, 'позиция', 'позиции', 'позиций')} · ${fmt.qty(priced.pieces)}`
+    : done
+      ? `Оплачено · чек № ${done.number}${done.change > 0 ? ` · сдача ${fmt.money(done.change)}` : ''}`
+      : 'Чек пуст';
 
   return (
     <>
@@ -510,7 +523,7 @@ export default function SalePage() {
         }
       />
 
-      <div className="reg-pos">
+      <div className={cx('reg-pos', phone && shift && 'has-sheet')}>
         <div className="col-4" style={{ minWidth: 0 }}>
           <Card className="reg-search-card">
             <div className="input-wrap has-icon reg-search">
@@ -519,7 +532,7 @@ export default function SalePage() {
                 className="input input-lg"
                 value={query}
                 autoFocus
-                placeholder="Сканируйте штрихкод или введите название"
+                placeholder={phone ? 'Штрихкод или название' : 'Сканируйте штрихкод или введите название'}
                 aria-label="Поиск товара"
                 onChange={(e) => {
                   setQuery(e.target.value);
@@ -607,10 +620,10 @@ export default function SalePage() {
                     <tr>
                       <th>Чек</th>
                       <th>Время</th>
-                      <th>Состав</th>
+                      <th className="reg-col-contents">Состав</th>
                       <th>Оплата</th>
                       <th className="num">Сумма</th>
-                      <th style={{ width: 44 }} />
+                      <th className="reg-col-menu" aria-label="Действия" />
                     </tr>
                   </thead>
                   <tbody>
@@ -618,16 +631,16 @@ export default function SalePage() {
                       <tr key={r.id} className="is-clickable" onClick={() => openEntity('receipt', r.id)}>
                         <td className="cell-title nowrap">№ {r.number}</td>
                         <td className="num">{fmt.time(r.at)}</td>
-                        <td className="reg-td-contents">
-                          <span className="ellipsis" style={{ display: 'block' }}>
+                        <td className="reg-col-contents">
+                          <span className="reg-clip" title={receiptContents(db, r)}>
                             {receiptContents(db, r)}
                           </span>
                         </td>
                         <td>
                           <Chip tone={r.kind === 'refund' ? 'warn' : 'neutral'}>{PAY_KIND_NAMES[payKind(r)]}</Chip>
                         </td>
-                        <td className="num w-600">{r.kind === 'refund' ? `−${fmt.money(r.total)}` : fmt.money(r.total)}</td>
-                        <td className="num" onClick={(e) => e.stopPropagation()}>
+                        <td className="num w-600 nowrap">{r.kind === 'refund' ? `−${fmt.money(r.total)}` : fmt.money(r.total)}</td>
+                        <td className="reg-col-menu" onClick={(e) => e.stopPropagation()}>
                           <MoreMenu
                             size="sm"
                             items={[
@@ -649,7 +662,17 @@ export default function SalePage() {
         </div>
 
         {shift ? (
-          <section className="card reg-receipt" aria-label="Чек">
+          <section className={cx('card reg-receipt', phone && 'is-sheet', phone && sheetOpen && 'is-open')} aria-label="Чек">
+            {phone ? (
+              <button type="button" className="reg-sheet-bar" aria-expanded={sheetOpen} onClick={() => setSheetOpen((v) => !v)}>
+                <span className="reg-sheet-title">
+                  <span className="w-700 t-14">Чек № {nextNumber}</span>
+                  <span className="t-12 muted ellipsis">{sheetSummary}</span>
+                </span>
+                <span className="reg-sheet-total num">{fmt.money(priced.total)}</span>
+                {sheetOpen ? <ChevronDown /> : <ChevronUp />}
+              </button>
+            ) : null}
             <div className="card-head">
               <h2 className="card-title nowrap">Чек № {nextNumber}</h2>
               {priced.lines.length ? <Chip>{fmt.count(priced.lines.length, 'позиция', 'позиции', 'позиций')}</Chip> : null}
@@ -673,6 +696,7 @@ export default function SalePage() {
                     key={l.key}
                     l={l}
                     discountPct={cart.discountPct}
+                    today={db.meta.today}
                     fresh={l.key === lastKey}
                     error={lineErrors[l.key]}
                     onQty={(v) => setLineQty(l, v)}
@@ -817,7 +841,8 @@ function SuggRow({ it, query, active, onHover, onAdd }: { it: CatalogItem; query
       <div className="reg-sugg-name">
         <div className="reg-sugg-title">{highlight(nbUnits(it.p.name), query)}</div>
         <div className="cell-sub">
-          {it.p.sku} · {it.p.packs[0]?.barcode}
+          {it.p.sku}
+          <span className="reg-sugg-code"> · {it.p.packs[0]?.barcode}</span>
         </div>
       </div>
       <div className="reg-sugg-stock">
@@ -837,7 +862,7 @@ function SuggRow({ it, query, active, onHover, onAdd }: { it: CatalogItem; query
       <div className="reg-sugg-price">
         {info.promo ? (
           <>
-            <Chip tone="green">Акция −{promoPct(info.base, info.price)} %</Chip>
+            <PromoChip promo={info.promo} pct={promoPct(info.base, info.price)} today={db.meta.today} />
             <s className="reg-old num">{fmt.price(info.base)}</s>
           </>
         ) : null}
@@ -875,7 +900,9 @@ function ReceiptLineRow({
   onRemove,
   onDone,
   discountPct,
+  today,
 }: {
+  today: string;
   l: PricedLine;
   discountPct: number;
   fresh: boolean;
@@ -920,7 +947,7 @@ function ReceiptLineRow({
         <span className="nowrap num reg-line-calc" title={unitBase > unitPrice ? `Без скидки ${fmt.price(unitBase)}` : undefined}>
           {fmt.price(unitPrice)} × {l.packQty}
         </span>
-        {l.promo ? <Chip tone="green">−{promoPct(l.base, l.promoPrice)} %</Chip> : l.discounted ? <Chip>−{fmt.pct(discountPct)}</Chip> : null}
+        {l.promo ? <PromoChip promo={l.promo} pct={promoPct(l.base, l.promoPrice)} today={today} short /> : l.discounted ? <Chip>−{fmt.pct(discountPct)}</Chip> : null}
         <button type="button" className="reg-icon-btn reg-line-x" aria-label="Убрать из чека" onClick={onRemove}>
           <X />
         </button>

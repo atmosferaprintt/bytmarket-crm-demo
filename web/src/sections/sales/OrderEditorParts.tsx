@@ -6,7 +6,7 @@ import { useDB, useDBVersion } from '../../data/store';
 import { indexes, priceFor, stockIndex, type RepeatPreviewResult } from './data';
 import { Button, Checkbox, Chip, Field, Input, Modal, Notice, STOCK_LEVEL, StatusChip, cx, fmt } from '../../ui';
 import { linePackLabel, norm, productName } from './lib';
-import { PriceCell } from './parts';
+import { PriceCell, PromoChip } from './parts';
 
 /* ---------- поиск товара: штрихкод, название, артикул ---------- */
 
@@ -128,7 +128,7 @@ export function ProductSearch({ priceType, onPick, autoFocus }: { priceType: Pri
                       {[r.p.sku, r.brand, r.p.packs.slice(1).map((x) => x.name).join(', ')].filter(Boolean).join(' · ')}
                     </span>
                   </span>
-                  {pr.promo ? <Chip tone="green">Акция</Chip> : null}
+                  {pr.promo ? <PromoChip promo={pr.promo} today={today} /> : null}
                   <span className={cx('t-12 num', avail > 0 ? 'muted' : 'c-bad w-600')} style={{ minWidth: 64, textAlign: 'right' }}>
                     {avail > 0 ? fmt.qty(avail) : 'нет'}
                   </span>
@@ -258,7 +258,7 @@ export function HistoryPicker({ clientId, priceType, onClose, onAdd }: { clientI
                     <td className="num">{fmt.count(it.times, 'раз', 'раза', 'раз')}</td>
                     <td className="nowrap">
                       {it.pack === 'pcs' ? fmt.qty(it.qty) : `${it.packQty} × ${linePackLabel(it.pack, it.packSize)}`}
-                      <span className="muted"> · {fmt.relDate(it.lastAt, today)}</span>
+                      <span className="muted"> · {fmt.date(it.lastAt)}</span>
                     </td>
                     <td className={cx('num', avail < it.qty ? 'c-bad w-600' : 'muted')}>{fmt.qty(avail)}</td>
                     <td className="num">

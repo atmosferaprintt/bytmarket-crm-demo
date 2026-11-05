@@ -12,6 +12,9 @@ import { MoneyModalHost, useMoneyMenu, type MoneyModal } from './actions';
 import { PERIOD_OPTIONS, clean, periodBounds, useMoneyPerms, type PeriodKey } from './lib';
 import { useMoneyCounts } from './counts';
 
+/** Месяц в предложном падеже: «в октябре». */
+const MONTH_IN = ['январе', 'феврале', 'марте', 'апреле', 'мае', 'июне', 'июле', 'августе', 'сентябре', 'октябре', 'ноябре', 'декабре'];
+
 interface CatRow {
   cat: string;
   byMonth: Record<string, number>;
@@ -61,11 +64,13 @@ export default function Expenses() {
   const prevMonth = plusMonths(thisMonth + '-01', -1).slice(0, 7);
   const kpi = useMemo(() => {
     const sumOf = (m: string) => cats.reduce((s, c) => s + (c.byMonth[m] ?? 0), 0);
-    const full = months.filter((m) => m !== thisMonth && m + '-01' >= db.meta.startDate);
-    const avg = full.length ? Math.round(full.reduce((s, m) => s + sumOf(m), 0) / full.length) : 0;
+    // среднее — по тем же прошедшим месяцам, что стоят колонками в таблице (текущий месяц ещё не закончился)
+    const past = months.filter((m) => m !== thisMonth);
+    const avg = past.length ? Math.round(past.reduce((s, m) => s + sumOf(m), 0) / past.length) : 0;
     const top = [...cats].sort((a, b) => (b.byMonth[prevMonth] ?? 0) - (a.byMonth[prevMonth] ?? 0))[0];
-    return { cur: sumOf(thisMonth), prev: sumOf(prevMonth), avg, top };
-  }, [cats, months, thisMonth, prevMonth, db]);
+    const span = past.length > 1 ? `${fmt.monthName(past[0], false).toLowerCase()} — ${fmt.monthName(past[past.length - 1], false).toLowerCase()}` : past.length ? fmt.monthName(past[0], false).toLowerCase() : '';
+    return { cur: sumOf(thisMonth), prev: sumOf(prevMonth), avg, top, span };
+  }, [cats, months, thisMonth, prevMonth]);
 
   const pivotCols: Column<CatRow>[] = [
     { key: 'cat', header: 'Категория', sort: (r) => r.cat, csv: (r) => r.cat, render: (r) => <span className={cx('w-600', cat === r.cat && 'c-ok')}>{r.cat}</span> },
@@ -141,8 +146,8 @@ export default function Expenses() {
       <div className="grid-4">
         <Kpi label={`Расходы, ${fmt.monthName(thisMonth, false).toLowerCase()} по ${fmt.date(today)}`} value={fmt.money(kpi.cur)} />
         <Kpi label={`Расходы, ${fmt.monthName(prevMonth, false).toLowerCase()}`} value={fmt.money(kpi.prev)} />
-        <Kpi label="В среднем за месяц" value={fmt.money(kpi.avg)} />
-        <Kpi label={`Крупнейшая статья: ${(kpi.top?.cat ?? '—').toLowerCase()}`} value={fmt.money(kpi.top?.byMonth[prevMonth] ?? 0)} />
+        <Kpi label={kpi.span ? `В среднем за ${kpi.span}` : 'В среднем за месяц'} value={fmt.money(kpi.avg)} />
+        <Kpi label={`Больше всего в ${MONTH_IN[+prevMonth.slice(5, 7) - 1]}: ${(kpi.top?.cat ?? '—').toLowerCase()}`} value={fmt.money(kpi.top?.byMonth[prevMonth] ?? 0)} />
       </div>
       <DataTable
         id="money-exp-pivot"

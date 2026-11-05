@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Archive, Calculator, CalendarX2, Check, HandCoins, Landmark, PackageMinus, Percent, Timer, Undo2, UserRound } from 'lucide-react';
+import { Archive, Banknote, Calculator, CalendarX2, Check, ChevronDown, HandCoins, Landmark, PackageMinus, Percent, Timer, Undo2, UserRound } from 'lucide-react';
 import { Button, IconTile, cx } from '../../ui';
 import { useDB } from '../../data/store';
 import { useSession } from '../../roles/session';
@@ -20,6 +20,7 @@ export const SIGNAL_ICON: Record<SignalKind, ReactNode> = {
   missed_order: <CalendarX2 />,
   margin_drop: <Percent />,
   dead_stock: <Archive />,
+  supplier: <Banknote />,
 };
 
 const TONE: Record<Signal['severity'], 'bad' | 'warn' | 'info'> = { high: 'bad', medium: 'warn', low: 'info' };
@@ -101,6 +102,8 @@ export function SignalCard({
   resolved,
   onToggleResolved,
   compact,
+  open,
+  children,
 }: {
   s: Signal;
   onAction: () => void;
@@ -108,37 +111,51 @@ export function SignalCard({
   resolved: boolean;
   onToggleResolved: () => void;
   compact?: boolean;
+  /** для группы: раскрыта ли и что внутри */
+  open?: boolean;
+  children?: ReactNode;
 }) {
   const resolveBtn = (
     <Button size="sm" variant="ghost" icon={resolved ? <Undo2 /> : <Check />} onClick={onToggleResolved} title={resolved ? 'Вернуть в список' : 'Убрать из списка: уже разобрались'}>
       {resolved ? 'Вернуть' : 'Разобрано'}
     </Button>
   );
-  if (compact)
+  if (compact) {
+    const group = !!s.members;
     return (
-      <div className={cx('att-line', resolved && 'is-resolved')}>
-        <span className="att-line-icon">{SIGNAL_ICON[s.kind]}</span>
-        <span className="att-line-title" title={s.reason}>
-          {s.title}
-        </span>
-        <span className="att-line-fact">{(s.facts.find((f) => f.tone) ?? s.facts[0])?.value ?? null}</span>
-        <span className="att-line-who">
-          <Responsible id={s.responsibleId} />
-        </span>
-        <span className="att-line-act">
-          <Button size="sm" onClick={onAction}>
-            {actionLabel}
-          </Button>
-          {resolveBtn}
-        </span>
-      </div>
+      <>
+        <div className={cx('att-line', resolved && 'is-resolved', group && 'is-group')}>
+          <span className="att-line-icon">{SIGNAL_ICON[s.kind]}</span>
+          <span className="att-line-title" title={s.reason || s.title}>
+            {s.title}
+          </span>
+          <span className="att-line-fact">{(s.facts.find((f) => f.tone) ?? s.facts.find((f) => f.value.includes('₽')) ?? s.facts[0])?.value ?? null}</span>
+          <span className="att-line-who">
+            <Responsible id={s.responsibleId} />
+          </span>
+          <span className="att-line-act">
+            {group ? (
+              <Button size="sm" variant="secondary" icon={<ChevronDown className={cx('att-chev', open && 'is-open')} />} onClick={onAction} aria-expanded={open}>
+                {open ? 'Свернуть' : 'Показать'}
+              </Button>
+            ) : (
+              <Button size="sm" onClick={onAction}>
+                {actionLabel}
+              </Button>
+            )}
+            {resolveBtn}
+          </span>
+        </div>
+        {group && open ? <div className="att-members">{children}</div> : null}
+      </>
     );
+  }
   return (
     <div className={cx('att-card', resolved && 'is-resolved')}>
       <IconTile tone={TONE[s.severity]}>{SIGNAL_ICON[s.kind]}</IconTile>
       <div className="grow att-main">
         <div className="att-title">{s.title}</div>
-        <div className="att-reason">{s.reason}</div>
+        {s.reason ? <div className="att-reason">{s.reason}</div> : null}
         <div className="att-facts">
           {s.facts.map((f) => (
             <span key={f.label} className="att-fact">

@@ -19,6 +19,8 @@ export interface Column<T> {
   sort?: (row: T) => number | string | null;
   /** значение для выгрузки в CSV */
   csv?: (row: T) => string | number | null;
+  /** заголовок колонки в CSV, если header — не строка */
+  csvHeader?: string;
   align?: 'left' | 'right';
   width?: number | string;
   /** итог по отфильтрованным строкам */
@@ -75,6 +77,15 @@ export interface DataTableProps<T> {
 }
 
 const norm = (s: string) => s.toLowerCase().replace(/ё/g, 'е');
+
+/** Текст из заголовка-узла (для CSV): собирает строки из вложенных элементов. */
+function textOf(node: ReactNode): string {
+  if (node === null || node === undefined || typeof node === 'boolean') return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(textOf).join(' ').trim();
+  if (typeof node === 'object' && 'props' in node) return textOf((node as { props: { children?: ReactNode } }).props.children);
+  return '';
+}
 
 function loadViews(id?: string): SavedView[] {
   if (!id) return [];
@@ -209,7 +220,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
   };
 
   const exportCsv = () => {
-    const head = visibleCols.map((c) => (typeof c.header === 'string' ? c.header : c.key));
+    const head = visibleCols.map((c) => c.csvHeader ?? (typeof c.header === 'string' ? c.header : textOf(c.header) || c.key));
     const lines = sorted.map((r) =>
       visibleCols.map((c) => {
         const v = c.csv ? c.csv(r) : c.sort ? c.sort(r) : '';
@@ -285,7 +296,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
         />
       ))}
       {props.toolbar}
-      <span className="spacer" />
+      <span className="table-toolbar-right">
       {props.toolbarRight}
       {id || props.presetViews?.length ? (
         <MoreMenu
@@ -301,6 +312,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
         />
       ) : null}
       {menu.length ? <MoreMenu items={menu} /> : null}
+      </span>
     </div>
   );
 

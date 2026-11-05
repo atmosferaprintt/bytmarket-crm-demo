@@ -15,6 +15,12 @@
 .stock-pills .seg { flex-wrap: wrap; }
 .stock-name-cell { min-width: 190px; max-width: 380px; }
 .stock-name-cell .cell-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* остатки: название — самая широкая колонка, не больше двух строк; артикул — своей колонкой */
+.table .stock-col-name { min-width: 220px; }
+.stock-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3; }
+.table .stock-col-sku { width: 1%; white-space: nowrap; }
+.table .stock-col-status { width: 1%; white-space: nowrap; }
+.stock-main .table th.num.stock-th-wrap { white-space: normal; line-height: 1.15; }
 /* плотная таблица: меньше воздуха между колонками, чтобы все колонки помещались на 1280–1440 */
 .stock-tight .table th, .stock-tight .table td { padding-left: 8px; padding-right: 8px; }
 .stock-tight .table th:first-child, .stock-tight .table td:first-child { padding-left: 20px; }
@@ -70,15 +76,19 @@
 
 /* сборка */
 .stock-pick { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: var(--sp-4); align-items: start; }
-.stock-pick-side { position: sticky; top: calc(var(--topbar-h) + 8px); display: flex; flex-direction: column; max-height: calc(100vh - 148px); }
-.stock-pick-side > .card-body { padding-top: 4px; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-.stock-pick-lines { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 120px; overflow-y: auto; margin: 0 -20px; }
-.stock-pick-line { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: var(--sp-3); padding: 10px 20px; border-bottom: 1px solid var(--line); align-items: start; cursor: pointer; }
+.stock-pick-side > .card-body { padding-top: 4px; display: flex; flex-direction: column; }
+/* лист сборки показывает все позиции заказа целиком, без внутренней прокрутки */
+.stock-pick-lines { display: flex; flex-direction: column; margin: 0 -20px; border-top: 1px solid var(--line); }
+.stock-pick-line { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: var(--sp-3); padding: 8px 20px; border-bottom: 1px solid var(--line); align-items: start; cursor: pointer; }
+.stock-pick-line.is-locked { cursor: default; }
+.stock-pick-line.is-locked:hover { background: transparent; }
+.stock-pick-sum { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: var(--fs-13); color: var(--ink-2); }
 .stock-pick-line:last-child { border-bottom: 0; }
 .stock-pick-line:hover { background: var(--row-hover); }
 .stock-pick-line input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--green-600); }
-.stock-pick-line.is-done .stock-pick-name { color: var(--faint); text-decoration: line-through; }
-.stock-pick-name { font-weight: 600; }
+.stock-pick-line.is-done .stock-pick-name { color: var(--muted); text-decoration: line-through; }
+.stock-pick-name { font-weight: 600; display: block; }
+.stock-pick-sku { font-size: var(--fs-12); color: var(--muted); display: block; }
 .stock-pick-qty { text-align: right; white-space: nowrap; }
 .stock-pick-qty b { display: block; font-size: var(--fs-14); }
 .stock-pick-qty span { font-size: var(--fs-12); color: var(--muted); }
@@ -112,7 +122,11 @@ button.stock-feed-row:hover { background: var(--row-hover); }
 .stock-task-row:last-child { border-bottom: 0; }
 .stock-task-row input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--green-600); }
 .stock-move-table td, .stock-move-table th { white-space: nowrap; }
+.stock-move-table td:first-child { white-space: normal; min-width: 200px; }
 .stock-card-scroll { max-height: 420px; overflow-y: auto; }
+.stock-home-col { display: flex; flex-direction: column; gap: var(--sp-4); min-width: 0; }
+.stock-home-more { display: block; width: 100%; padding: 10px 20px; border: 0; border-top: 1px solid var(--line); background: transparent; text-align: left; font-size: var(--fs-13); font-weight: 600; color: var(--primary); }
+.stock-home-more:hover { background: var(--row-hover); }
 
 /* печать: лист сборки и документ */
 .stock-print { display: none; }
@@ -135,6 +149,7 @@ button.stock-feed-row:hover { background: var(--row-hover); }
   .stock-pick { grid-template-columns: minmax(0, 1fr) 360px; }
   .stock-order-cell .cell-sub { max-width: 170px; }
   .stock-name-cell { min-width: 150px; max-width: 220px; }
+  .table .stock-col-name { min-width: 200px; }
   .stock-basis { max-width: 140px; }
   .stock-move-table .stock-doc-name { max-width: 220px; }
   .stock-doc-name { max-width: 280px; }
@@ -145,3 +160,9 @@ button.stock-feed-row:hover { background: var(--row-hover); }
   .stock-pick-side { position: static; }
   .stock-doc-head, .stock-doc-head.is-transfer, .stock-doc-head.is-count { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* остатки: стрелка сортировки только у выбранной колонки, как в каталоге; таблетки чуть плотнее */
+.stock-main .table th.is-sortable:not(.is-sorted) .th-inner svg { display: none; }
+.stock-pills .seg-item { padding: 0 10px; }
+/* числа — по ширине содержимого, всё остальное место отдаём названию */
+.stock-main .table th.num, .stock-main .table td.num { width: 1%; white-space: nowrap; }

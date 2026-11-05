@@ -95,7 +95,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
         </StatList>
         <StatList>
           <StatRow label="Срок поставки" value={fmt.count(s.leadDays, 'день', 'дня', 'дней')} />
-          <StatRow label="Отсрочка оплаты" value={s.deferDays ? fmt.count(s.deferDays, 'день', 'дня', 'дней') : 'предоплата'} />
+          <StatRow label="Наша отсрочка" value={s.deferDays ? fmt.count(s.deferDays, 'день', 'дня', 'дней') : 'предоплата'} />
           {seeCost ? <StatRow label="Минимальный заказ" value={s.minOrder ? fmt.money(s.minOrder) : 'нет'} /> : null}
           <StatRow label="В пути" value={inWay.length ? fmt.count(inWay.length, 'закупка', 'закупки', 'закупок') : 'нет'} />
         </StatList>

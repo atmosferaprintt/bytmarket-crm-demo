@@ -84,7 +84,7 @@ export function ClientSummary({ clientId, onChange }: { clientId: ID; onChange?:
         </div>
         <div className="t-12 muted">
           {CLIENT_SEGMENT_NAMES[c.segment]}
-          {c.deferDays > 0 ? ` · отсрочка ${c.deferDays} дн.` : ' · оплата сразу'}
+          {c.deferDays > 0 ? ` · отсрочка ${c.deferDays} дн.` : ' · без отсрочки'}
           {owner ? ` · ${owner}` : ''}
         </div>
       </div>
@@ -199,7 +199,8 @@ export function AllocationTable({
             <tbody>
               {rows.map((r) => {
                 const v = values[r.order.id] ?? 0;
-                const overdue = r.order.dueDate && r.order.dueDate < today && r.debtFree > 0 ? fmt.daysBetween(r.order.dueDate, today) : 0;
+                // просрочка — из расчёта заказа: у заказа с неудачной доставкой её нет
+                const overdue = r.debtFree > 0 ? r.op.overdueDays : 0;
                 return (
                   <tr key={r.order.id} className={cx(v > 0 && 'money-alloc-on')}>
                     <td>
@@ -313,13 +314,35 @@ export function KpiLink({ onClick, children, label }: { onClick: () => void; chi
 
 /** Узкий экран (1280 и уже): прячем второстепенные колонки. */
 export function useNarrow(): boolean {
-  const q = '(max-width: 1360px)';
+  return useNarrowQuery('(max-width: 1360px)');
+}
+
+/** Телефон (до 760 px): таблицы заменяем карточками. */
+export function usePhone(): boolean {
+  return useNarrowQuery('(max-width: 760px)');
+}
+
+function useNarrowQuery(q: string): boolean {
   const [n, setN] = useState(() => typeof window !== 'undefined' && window.matchMedia(q).matches);
   useEffect(() => {
     const m = window.matchMedia(q);
     const h = () => setN(m.matches);
     m.addEventListener('change', h);
     return () => m.removeEventListener('change', h);
-  }, []);
+  }, [q]);
   return n;
+}
+
+/** Сводка на телефоне: две колонки «подпись — число» в одной карточке вместо четырёх больших. */
+export function PhoneStats({ items }: { items: { label: ReactNode; value: ReactNode }[] }) {
+  return (
+    <div className="card money-phone-stats">
+      {items.map((x, i) => (
+        <div key={i} className="money-phone-stat">
+          <span className="money-phone-stat-label">{x.label}</span>
+          <span className="money-phone-stat-value num">{x.value}</span>
+        </div>
+      ))}
+    </div>
+  );
 }

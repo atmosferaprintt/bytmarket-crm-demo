@@ -98,7 +98,7 @@ export function ReturnLookup({ onClose }: { onClose: () => void }) {
               </span>
               <span className="grow">
                 <span className="w-600" style={{ display: 'block' }}>
-                  Чек № {r.number} · {fmt.relDate(r.at, db.meta.today)}, {fmt.time(r.at)}
+                  Чек № {r.number} · {fmt.dateTime(r.at)}
                 </span>
                 <span className="t-12 muted ellipsis" style={{ display: 'block' }}>
                   {receiptContents(db, r)}

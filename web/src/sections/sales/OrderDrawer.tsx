@@ -36,7 +36,6 @@ import {
   PAYMENT_STATUS,
   PAY_STATE,
   PICK_STATE,
-  SHIP_STATE,
   StatList,
   StatRow,
   StatusChip,
@@ -53,8 +52,8 @@ import { ReturnModal } from './ReturnModal';
 import { SendInvoiceModal } from './SendInvoiceModal';
 import { PrintDoc, type PrintKind } from './PrintDocs';
 import { TopMenu } from './TopMenu';
-import { ConditionsStrip, Dash, OrderChips, PriceCell } from './parts';
-import { capitalize, lineQtyLabel, orderProblems, orderSteps, productName, useIsPhone } from './lib';
+import { ConditionsStrip, Dash, OrderChips, PriceCell, PromoStateChip, deliveryFailed, shipStatus, shownOverdue } from './parts';
+import { capitalize, fixNo, lineQtyLabel, orderProblems, orderSteps, productName, useIsPhone } from './lib';
 import './sales.css';
 
 const SOURCE_NAMES: Record<OrderSource, string> = {
@@ -121,7 +120,13 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
     const delivery = o.deliveryId ? deliveries.find((x) => x.id === o.deliveryId) : deliveries[deliveries.length - 1];
     const shippedQty = o.lines.reduce((s, l) => s + l.shipped, 0);
     const returnedQty = ret ? [...ret.byProduct.values()].reduce((s, v) => s + v, 0) : 0;
-    const lines = o.lines.map((l) => ({ l, p: idx.products.get(l.productId), available: si.get(l.productId)?.[o.location].available ?? 0 }));
+    const promoById = new Map(db.promos.map((x) => [x.id, x]));
+    const lines = o.lines.map((l) => ({
+      l,
+      p: idx.products.get(l.productId),
+      available: si.get(l.productId)?.[o.location].available ?? 0,
+      promo: l.promoId ? promoById.get(l.promoId) : undefined,
+    }));
     const gross = o.lines.reduce((s, l) => s + l.qty * l.basePrice, 0);
     const known = o.lines.filter((l) => l.cost !== null);
     const profit = known.reduce((s, l) => s + (l.price - (l.cost ?? 0)) * l.qty, 0);
@@ -130,6 +135,9 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
   }, [db, version, o.id]);
 
   const { pay, balance } = d;
+  const failed = deliveryFailed(o, d.delivery);
+  const overdue = shownOverdue(o, pay, d.delivery);
+  const lastFail = failed ? d.delivery?.attempts.filter((a) => a.result === 'failed').pop() : undefined;
   const isRequest = o.state === 'request' || o.state === 'draft';
   const live = o.state === 'confirmed' || o.state === 'closed';
   const repOnly = role === 'rep';
@@ -142,10 +150,10 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
     setError(null);
     const r = act();
     if (!r.ok) {
-      setError(r.error);
+      setError(fixNo(r.error));
       return false;
     }
-    toast(r.info ? `${ok}. ${r.info}` : ok);
+    toast(r.info ? `${ok}. ${fixNo(r.info)}` : ok);
     return true;
   };
 
@@ -256,6 +264,12 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
   const menu: MenuItem[] = [
     { label: 'Повторить заказ', icon: <Repeat />, onClick: () => setDialog('repeat'), hidden: !canCreate || o.state === 'draft' || !o.lines.length },
     { label: 'Оформить возврат', icon: <Undo2 />, onClick: () => setDialog('return'), hidden: !canReturn },
+    {
+      label: 'Доставить вместо самовывоза',
+      icon: <Truck />,
+      onClick: () => setDialog('delivery'),
+      hidden: !((can('assignDelivery') || can('confirmOrder')) && live && o.state === 'confirmed' && o.fulfillment === 'pickup' && o.ship === 'none'),
+    },
     { label: 'Отправить счёт клиенту', icon: <MessageCircle />, onClick: () => setDialog('send'), hidden: !canCreate || !hasChat || !live || pay.due <= 0 },
     { label: 'Счёт на оплату', icon: <Printer />, onClick: () => setPrinting('invoice'), hidden: o.state === 'cancelled' || o.state === 'draft' },
     { label: 'Накладная', icon: <FileText />, onClick: () => setPrinting('waybill'), hidden: !live },
@@ -271,7 +285,7 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
   const title = (
     <span className="row-3" style={{ flexWrap: 'wrap' }}>
       Заказ № {o.number}
-      <OrderChips o={o} pay={pay} />
+      <OrderChips o={o} pay={pay} delivery={d.delivery} />
     </span>
   );
   const head = (
@@ -329,7 +343,7 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
     >
       <div className="sales-order-body">
       {o.state === 'cancelled' ? (
-        <Notice title="Заказ отменён">{lastEvent ? `${capitalize(lastEvent.text)}, ${fmt.dateTime(lastEvent.at)}` : null}</Notice>
+        <Notice title="Заказ отменён">{lastEvent ? `${capitalize(fixNo(lastEvent.text))}, ${fmt.dateTime(lastEvent.at)}` : null}</Notice>
       ) : null}
       {isRequest ? (
         <Notice tone="info" title={o.state === 'draft' ? 'Черновик — товар не зарезервирован' : 'Заявка ждёт подтверждения — товар не зарезервирован'}>
@@ -360,8 +374,13 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
           {shortLines.map((x) => `${productName(x.p)}: доступно ${fmt.qty(x.available)}, в заявке ${fmt.qty(x.l.qty)}`).join('; ')}. Измените заявку перед подтверждением.
         </Notice>
       ) : null}
-      {pay.overdueDays > 0 ? (
-        <Notice tone="bad" title={`Просрочка оплаты ${fmt.count(pay.overdueDays, 'день', 'дня', 'дней')}`}>
+      {failed ? (
+        <Notice tone="bad" title="Не доставлен">
+          {lastFail ? `${fmt.dateTime(lastFail.at)}: ${lastFail.reason}. ` : ''}Диспетчер назначит повторную доставку или вернёт товар на склад.
+        </Notice>
+      ) : null}
+      {overdue > 0 ? (
+        <Notice tone="bad" title={`Просрочка оплаты ${fmt.count(overdue, 'день', 'дня', 'дней')}`}>
           Долг по заказу {fmt.money(pay.debt)}, срок оплаты был {fmt.date(o.dueDate)}.
         </Notice>
       ) : null}
@@ -382,7 +401,7 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
         </div>
         {phone ? (
           <div className="sales-mini-list is-flat">
-            {d.lines.map(({ l, p, available }, i) => (
+            {d.lines.map(({ l, p, available, promo }, i) => (
               <div key={l.productId + i} className="sales-mini-row sales-phone-line">
                 <span className="grow">
                   <span className="w-600" style={{ display: 'block' }}>
@@ -392,6 +411,12 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
                     {l.pack === 'pcs' ? fmt.qty(l.qty) : `${lineQtyLabel(l)} = ${fmt.qty(l.qty)}`}
                     {isRequest ? <span className={cx(available < l.qty && 'c-bad w-600')}> · доступно {fmt.qty(available)}</span> : l.shipped ? ` · отгружено ${fmt.qty(l.shipped)}` : ''}
                   </span>
+                  {promo ? (
+                    <span className="sales-line-promo t-12 muted">
+                      <span className="ellipsis">Акция «{promo.name}»</span>
+                      <PromoStateChip promo={promo} today={today} />
+                    </span>
+                  ) : null}
                 </span>
                 <PriceCell price={l.price} base={l.basePrice} />
                 <span className="num w-700">{fmt.money(l.qty * l.price)}</span>
@@ -413,7 +438,7 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
               </tr>
             </thead>
             <tbody>
-              {d.lines.map(({ l, p, available }, i) => {
+              {d.lines.map(({ l, p, available, promo }, i) => {
                 const back = d.ret?.byProduct.get(l.productId) ?? 0;
                 return (
                   <tr key={l.productId + i}>
@@ -425,6 +450,12 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
                         {p?.sku}
                         {l.discountReason ? ` · скидка ${fmt.pct(l.discountPct)}: ${l.discountReason}` : ''}
                       </div>
+                      {promo ? (
+                        <div className="cell-sub sales-line-promo">
+                          <span className="ellipsis">Акция «{promo.name}»</span>
+                          <PromoStateChip promo={promo} today={today} />
+                        </div>
+                      ) : null}
                     </td>
                     <td className="nowrap ink-2">{lineQtyLabel(l)}</td>
                     <td className="num w-600">{fmt.qty(l.qty)}</td>
@@ -467,7 +498,7 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
             <StatRow label="К оплате" value={fmt.money(pay.amount)} />
             <StatRow label="Оплачено" value={<span className={cx(pay.paid > 0 && 'c-ok')}>{fmt.money(pay.paid)}</span>} />
             {pay.pending > 0 ? <StatRow label="Ждёт подтверждения банка" value={fmt.money(pay.pending)} /> : null}
-            <StatRow label={pay.advance > 0 && pay.due === 0 ? 'Переплата' : 'Осталось'} value={<span className={cx(pay.overdueDays > 0 && 'c-bad')}>{fmt.money(pay.advance > 0 && pay.due === 0 ? pay.advance : pay.due)}</span>} />
+            <StatRow label={pay.advance > 0 && pay.due === 0 ? 'Переплата' : 'Осталось'} value={<span className={cx(overdue > 0 && 'c-bad')}>{fmt.money(pay.advance > 0 && pay.due === 0 ? pay.advance : pay.due)}</span>} />
           </StatList>
           {d.payments.length ? (
             <div className="sales-mini-list">
@@ -498,7 +529,7 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
             <StatList>
               <StatRow label="Откуда" value="Склад" />
               <StatRow label="Сборка" value={<StatusChip s={PICK_STATE[o.pick]} />} />
-              <StatRow label="Выдача" value={<StatusChip s={SHIP_STATE[o.ship]} />} />
+              <StatRow label="Выдача" value={<StatusChip s={shipStatus(o, d.delivery)} />} />
             </StatList>
           ) : d.delivery ? (
             <>
@@ -511,7 +542,7 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
                     </EntityLink>
                   }
                 />
-                <StatRow label="Когда" value={`${capitalize(fmt.relDate(d.delivery.date, today))}, ${d.delivery.interval}`} />
+                <StatRow label="Когда" value={`${fmt.date(d.delivery.date)}, ${d.delivery.interval}`} />
                 <StatRow label="Адрес" value={<span className="sales-wrap-value">{d.delivery.address}</span>} />
                 <StatRow label="Курьер" value={d.delivery.courierId ? idx.employees.get(d.delivery.courierId)?.name ?? '—' : 'Не назначен'} />
                 <StatRow label="Мест" value={fmt.num(d.delivery.places)} />
@@ -562,7 +593,7 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
           {[...o.history].reverse().map((e, i) => (
             <div key={i} className="sales-history-row">
               <span className="sales-history-dot">{i === 0 ? <CircleCheck /> : null}</span>
-              <span className="grow">{capitalize(e.text)}</span>
+              <span className="grow">{capitalize(fixNo(e.text))}</span>
               <span className="muted t-12 nowrap">
                 {idx.employees.get(e.actorId)?.short ?? '—'} · {fmt.dateTime(e.at)}
               </span>

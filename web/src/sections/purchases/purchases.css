@@ -16,39 +16,44 @@
 .pur-kpis .kpi { box-shadow: none; background: var(--sub); }
 
 /* предложение на закупку */
-.pur-suggest { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: var(--sp-4); align-items: start; }
+.pur-suggest { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: var(--sp-4); align-items: start; }
 .pur-suggest-side { position: sticky; top: calc(var(--topbar-h) + 8px); }
 .pur-sup-row {
-  width: 100%; display: flex; align-items: center; gap: var(--sp-2); padding: 12px 20px; border: 0; border-bottom: 1px solid var(--line);
+  width: 100%; display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 12px 20px; border: 0; border-bottom: 1px solid var(--line);
   background: transparent; text-align: left; color: inherit;
 }
+.pur-sup-meta { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); font-size: var(--fs-12); color: var(--muted); }
 .pur-sup-row:last-child { border-bottom: 0; }
 .pur-sup-row:hover { background: var(--row-hover); }
 .pur-sup-row.is-active { background: var(--row-selected); }
-.pur-sup-row > span:first-child { flex: 1 1 auto; min-width: 0; overflow: hidden; }
-.pur-sup-row > span:first-child .cell-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pur-sup-row .chip { flex: 0 0 auto; }
-.pur-sup-name { display: block; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pur-sup-name { display: block; font-weight: 700; white-space: normal; line-height: 1.3; }
 .pur-suggest-table td { vertical-align: top; padding-top: 10px; padding-bottom: 10px; }
 .pur-why { max-width: 300px; }
-.pur-sup-cell { display: block; min-width: 150px; max-width: 220px; }
+.pur-sup-cell { display: block; white-space: nowrap; }
 .pur-state-chips { min-width: 210px; }
 .pur-contact { max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pur-suggest-table .pur-line-name { max-width: 300px; }
+.pur-suggest-table .pur-line-name { max-width: none; white-space: normal; text-align: left; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.pur-suggest-table td { vertical-align: middle; }
+.pur-suggest-table th:nth-child(2), .pur-suggest-table td:nth-child(2) { min-width: 260px; }
 .pur-off td { opacity: 0.45; }
 .pur-off td:first-child { opacity: 1; }
 
 @media (max-width: 1360px) {
   .pur-suggest { grid-template-columns: 236px minmax(0, 1fr); }
+  .pur-suggest-table th:nth-child(2), .pur-suggest-table td:nth-child(2) { min-width: 190px; }
   .pur-line-name { max-width: 240px; }
   .pur-why { max-width: 210px; }
-  .pur-suggest-table .pur-line-name { max-width: 210px; }
+  .pur-suggest-table .pur-line-name { max-width: none; }
   .pur-state-chips { min-width: 210px; }
 .pur-contact { max-width: 220px; }
-  .pur-sup-cell { max-width: 170px; }
   .pur-state-chips { min-width: 160px; }
 }
 @media (max-width: 760px) {
   .pur-suggest, .pur-new-head { grid-template-columns: minmax(0, 1fr); }
   .pur-suggest-side { position: static; }
 }
+
+/* списки закупок и поставщиков: стрелка сортировки только у выбранной колонки, телефон целиком */
+.pur-tight .table th.is-sortable:not(.is-sorted) .th-inner svg { display: none; }
+.pur-contact-cell { min-width: 0; }

@@ -23,18 +23,17 @@
 .prd-catalog .table th:first-child, .prd-catalog .table td:first-child { padding-left: 20px; }
 .prd-catalog .table th:last-child, .prd-catalog .table td:last-child { padding-right: 20px; }
 .prd-catalog .prd-name { max-width: 300px; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.3; }
-.prd-clip { display: block; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.prd-catalog-full .prd-chips { flex-wrap: wrap; max-width: 170px; }
-.prd-catalog-full .prd-name { max-width: 220px; }
-.prd-catalog-full .prd-clip { max-width: 90px; }
+/* каталог: название — самая широкая колонка, не больше двух строк; бренд, категория и артикул — целиком в одну строку */
+.prd-catalog-full .prd-name, .prd-catalog-seller .prd-name, .prd-catalog-sales .prd-name { max-width: none; }
+.table .prd-col-name { min-width: 250px; }
+.table .prd-col-sku, .table .prd-col-nowrap { white-space: nowrap; }
+.table .prd-col-sku { width: 1%; }
+.prd-catalog .table th.num.prd-th-wrap { white-space: normal; line-height: 1.15; }
 
 @media (max-width: 1360px) {
   .prd-name { max-width: 250px; }
-  .table td.prd-col-name { min-width: 180px; }
+  .table .prd-col-name { min-width: 220px; }
   .prd-catalog .table-toolbar .input-wrap { width: 260px; }
-  .prd-catalog-full .table .prd-col-brand, .prd-catalog-full .table tfoot td:nth-child(3) { display: none; }
-  .prd-catalog-full .prd-name { max-width: 176px; }
-  .prd-catalog-full .table td.prd-col-name { min-width: 160px; }
 }
 
 /* ---------- блоки в панели ---------- */
@@ -175,10 +174,10 @@
 .prd-m-card:active { background: var(--row-hover); }
 .prd-m-name { font-size: var(--fs-14); font-weight: 700; line-height: var(--lh-tight); color: var(--ink); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .prd-m-meta { display: flex; gap: var(--sp-3); font-size: var(--fs-12); color: var(--muted); flex-wrap: wrap; }
-.prd-m-bottom { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--sp-3); padding-top: 4px; }
+.prd-m-bottom { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr); align-items: end; gap: var(--sp-3); padding-top: 4px; }
 .prd-m-col { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .prd-m-col.is-right { align-items: flex-end; text-align: right; }
-.prd-m-label { font-size: var(--fs-12); color: var(--muted); }
+.prd-m-label { font-size: var(--fs-12); color: var(--muted); line-height: 1.25; }
 .prd-m-price { font-size: var(--fs-20); font-weight: 700; display: inline-flex; align-items: baseline; gap: 8px; white-space: nowrap; }
 .prd-m-price .prd-old { font-size: var(--fs-13); }
 .prd-m-avail { font-size: var(--fs-16); font-weight: 700; white-space: nowrap; }
@@ -187,6 +186,7 @@
 @media (max-width: 760px) {
   .prd-specs { grid-template-columns: minmax(0, 1fr); }
   .prd-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .prd-tiles > .prd-tile:last-child:nth-child(odd) { grid-column: span 2; }
   .prd-form-grid-3, .prd-form-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .prd-pack-row { grid-template-columns: 110px 90px minmax(0, 1fr) 32px; gap: var(--sp-2); }
   .prd-suppliers { grid-template-columns: minmax(0, 1fr); }
@@ -212,3 +212,6 @@
   .prd-prices .prd-name, .prd-log .prd-name { max-width: 240px; }
   .prd-promos .prd-cell-clip { max-width: 160px; }
 }
+
+/* числа и короткие колонки — по ширине содержимого, всё остальное место отдаём названию */
+.prd-catalog .table th.num, .prd-catalog .table td.num, .prd-catalog .table .prd-col-nowrap { width: 1%; white-space: nowrap; }

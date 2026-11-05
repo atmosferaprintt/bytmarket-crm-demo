@@ -85,12 +85,16 @@ export function ClientsPage() {
       ),
       sort: (r) => r.c.name,
       csv: (r) => `${r.c.name} (${kindName(r.c)}, ${segmentName(r.c)})`,
+      // имя забирает всю свободную ширину, остальные колонки — по содержимому
+      width: '100%',
     },
     {
       key: 'price',
       header: 'Цены',
       render: (r) => <Chip tone={r.c.priceType === 'wholesale' ? 'info' : 'neutral'}>{priceTypeName(r.c.priceType)}</Chip>,
       sort: (r) => r.c.priceType,
+      width: 64,
+      className: 'cl-col-price',
       csv: (r) => priceTypeName(r.c.priceType),
     },
     {
@@ -143,13 +147,13 @@ export function ClientsPage() {
     {
       key: 'last',
       header: 'Последняя покупка',
-      width: 110,
+      width: 132,
       render: (r) => (
         <span className="cl-cell-stack">
-          <span className="nowrap">{r.b.lastOrderAt ? fmt.relDate(r.b.lastOrderAt, today) : <span className="faint">не покупал</span>}</span>
+          <span className="nowrap">{r.b.lastOrderAt ? fmt.relDate(r.b.lastOrderAt, today) : <span className="faint">ещё не покупал</span>}</span>
           {r.missed ? (
-            <span title={`Обычно заказывает раз в ${r.c.orderEveryDays} дн., прошло ${r.daysSince}`}>
-              <Chip tone="warn">Пропустил привычный заказ</Chip>
+            <span title={`Пропустил привычный заказ: обычно заказывает раз в ${fmt.count(r.c.orderEveryDays ?? 0, 'день', 'дня', 'дней')}, с последней покупки прошло ${fmt.count(r.daysSince ?? 0, 'день', 'дня', 'дней')}`}>
+              <Chip tone="warn">Пропустил заказ</Chip>
             </span>
           ) : null}
         </span>
@@ -160,7 +164,7 @@ export function ClientsPage() {
     {
       key: 'sales90',
       header: 'Продажи за 90 дней',
-      width: 134,
+      width: 118,
       csv: (r) => r.sales90,
       align: 'right',
       render: (r) => (r.sales90 ? fmt.money(r.sales90) : <span className="faint">—</span>),
@@ -278,7 +282,7 @@ function ClientCards({ rows, onOpen }: { rows: ClientRow[]; onOpen: (id: string)
                 {r.missed ? <Chip tone="warn">Пропустил привычный заказ</Chip> : null}
               </span>
               <span className="row t-12 muted">
-                <span>Последняя покупка: {r.b.lastOrderAt ? fmt.relDate(r.b.lastOrderAt, today) : 'не было'}</span>
+                <span>{r.b.lastOrderAt ? `Последняя покупка: ${fmt.relDate(r.b.lastOrderAt, today)}` : 'Ещё не покупал'}</span>
                 <span className="spacer" />
                 <span>{fmt.count(r.c.points.length, 'точка', 'точки', 'точек')}</span>
               </span>

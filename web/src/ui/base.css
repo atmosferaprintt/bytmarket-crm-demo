@@ -56,8 +56,8 @@ svg { flex-shrink: 0; }
 .grow { flex: 1 1 auto; min-width: 0; }
 .spacer { flex: 1 1 auto; }
 .grid { display: grid; gap: var(--sp-4); }
-.grid-2 { display: grid; gap: var(--sp-4); grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.grid-3 { display: grid; gap: var(--sp-4); grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid-2 { display: grid; gap: var(--sp-4); grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+.grid-3 { display: grid; gap: var(--sp-4); grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
 .grid-4 { display: grid; gap: var(--sp-4); grid-template-columns: repeat(4, minmax(0, 1fr)); }
 
 /* ---------- каркас ---------- */
@@ -312,6 +312,7 @@ button.kpi:hover { background: var(--row-hover); }
 .table-card { overflow: hidden; }
 .table-toolbar { display: flex; align-items: center; gap: var(--sp-2); padding: 14px 16px; flex-wrap: wrap; }
 .table-toolbar .input-wrap { width: 300px; }
+.table-toolbar-right { margin-left: auto; display: inline-flex; align-items: center; gap: var(--sp-2); }
 .table-scroll { overflow-x: auto; }
 .table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: var(--fs-13); }
 .table th {

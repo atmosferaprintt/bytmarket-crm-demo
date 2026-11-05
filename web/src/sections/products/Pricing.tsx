@@ -8,12 +8,15 @@ import { plusDays } from '../../data/dates';
 import { useSession } from '../../roles/session';
 import { PageHeader } from '../../shell/PageHeader';
 import { EntityLink, useOpenEntity } from '../../shell/entities';
-import { Button, Card, Chip, DataTable, fmt, type Column, type FilterDef } from '../../ui';
+import { Button, Card, Chip, DataTable, StatusChip, fmt, type Column, type FilterDef } from '../../ui';
 import { ROLES } from '../../roles/roles';
 import {
   AUDIENCE,
   PROMO_STATE,
+  catalogCount,
+  catalogMode,
   catalogRows,
+  pct1,
   markupPct,
   minAllowedPrice,
   promoProducts,
@@ -53,9 +56,10 @@ interface PriceRow extends CatalogRow {
 export default function Pricing() {
   const db = useDB();
   const version = useDBVersion();
-  const { can } = useSession();
+  const { can, role } = useSession();
   const open = useOpenEntity();
   const seeCost = can('seeCost');
+  const catalogTotal = useMemo(() => catalogCount(db, catalogMode(role)), [db, version, role]);
   const canPrice = can('editPrices');
   const today = db.meta.today;
   const [creating, setCreating] = useState(false);
@@ -86,7 +90,7 @@ export default function Pricing() {
         options: [
           { value: 'all', label: 'Все' },
           { value: 'active', label: 'Действуют', test: (r) => r.state === 'active' },
-          { value: 'future', label: 'Будущие', test: (r) => r.state === 'future' },
+          { value: 'future', label: 'Скоро', test: (r) => r.state === 'future' },
           { value: 'ended', label: 'Закончились', test: (r) => r.state === 'ended' },
           { value: 'off', label: 'Выключены', test: (r) => r.state === 'off' },
         ],
@@ -114,7 +118,7 @@ export default function Pricing() {
       {
         key: 'state',
         header: 'Статус',
-        render: (r) => <Chip tone={PROMO_STATE[r.state].tone}>{PROMO_STATE[r.state].label}</Chip>,
+        render: (r) => <StatusChip s={PROMO_STATE[r.state]} />,
         sort: (r) => STATE_ORDER[r.state],
         csv: (r) => PROMO_STATE[r.state].label,
       },
@@ -180,21 +184,21 @@ export default function Pricing() {
       },
       { key: 'cost', header: 'Себестоимость', align: 'right', hidden: !seeCost, render: (r) => (r.p.cost === null ? <span className="muted">нет</span> : fmt.price(r.p.cost)), sort: (r) => r.p.cost, csv: (r) => r.p.cost },
       { key: 'retail', header: 'Розница', align: 'right', render: (r) => <PriceCell info={r.retail} />, sort: (r) => r.p.retailPrice, csv: (r) => r.p.retailPrice },
-      { key: 'rm', header: 'Наценка', align: 'right', hidden: !seeCost, render: (r) => fmt.pct(r.retailMarkup), sort: (r) => r.retailMarkup, csv: (r) => (r.retailMarkup === null ? '' : Math.round(r.retailMarkup * 10) / 10) },
+      { key: 'rm', header: 'Наценка', align: 'right', hidden: !seeCost, render: (r) => <span className="nowrap">{pct1(r.retailMarkup)}</span>, sort: (r) => r.retailMarkup, csv: (r) => (r.retailMarkup === null ? '' : Math.round(r.retailMarkup * 10) / 10) },
       { key: 'wholesale', header: 'Опт', align: 'right', render: (r) => <PriceCell info={r.wholesale} />, sort: (r) => r.p.wholesalePrice, csv: (r) => r.p.wholesalePrice },
       {
         key: 'wm',
         header: 'Наценка опт',
         align: 'right',
         hidden: !seeCost,
-        render: (r) => (r.low ? <Chip tone="warn">{fmt.pct(r.wholesaleMarkup)}</Chip> : fmt.pct(r.wholesaleMarkup)),
+        render: (r) => (r.low ? <Chip tone="warn" title={`Ниже минимальной наценки ${db.settings.minMarginPct} %`}>{pct1(r.wholesaleMarkup)}</Chip> : <span className="nowrap">{pct1(r.wholesaleMarkup)}</span>),
         sort: (r) => r.wholesaleMarkup,
         csv: (r) => (r.wholesaleMarkup === null ? '' : Math.round(r.wholesaleMarkup * 10) / 10),
       },
       { key: 'promo', header: 'Акция', render: (r) => (r.promo ? <PromoChip promo={r.promo} short /> : null), sort: (r) => (r.promo ? 0 : 1), csv: (r) => r.promo?.name ?? '' },
       { key: 'changed', header: 'Цена менялась', render: (r) => (r.changedAt ? <span className="nowrap">{fmt.relDate(r.changedAt, today)}</span> : <span className="muted">—</span>), sort: (r) => r.changedAt, csv: (r) => r.changedAt ?? '' },
     ],
-    [seeCost, today],
+    [seeCost, today, db],
   );
 
   /* ---------- журнал ---------- */
@@ -251,7 +255,7 @@ export default function Pricing() {
     <>
       <PageHeader
         section="products"
-        counts={{ catalog: db.products.length, pricing: promoCount }}
+        counts={{ catalog: catalogTotal, pricing: promoCount }}
         actions={
           can('promos') ? (
             <Button variant="primary" icon={<Plus />} onClick={() => setCreating(true)}>

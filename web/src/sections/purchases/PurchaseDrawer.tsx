@@ -125,9 +125,9 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
   };
 
   const steps = [
-    { label: 'Создана', state: 'done' as const },
-    { label: 'Подтверждена', state: pu.state === 'draft' ? ('current' as const) : ('done' as const) },
-    { label: 'Принята', state: pu.state === 'received' ? ('done' as const) : open ? ('current' as const) : ('todo' as const) },
+    { label: PURCHASE_STATE.draft.label, state: 'done' as const },
+    { label: PURCHASE_STATE.ordered.label, state: pu.state === 'draft' ? ('current' as const) : ('done' as const) },
+    { label: PURCHASE_STATE.received.label, state: pu.state === 'received' ? ('done' as const) : open ? ('current' as const) : ('todo' as const) },
     ...(seeCost ? [{ label: 'Оплачена', state: pu.state === 'received' && row.debt === 0 && row.accepted > 0 ? ('done' as const) : pu.state === 'received' ? ('current' as const) : ('todo' as const) }] : []),
   ];
 

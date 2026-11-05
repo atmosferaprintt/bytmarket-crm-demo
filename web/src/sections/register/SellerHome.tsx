@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRightLeft, ScanBarcode } from 'lucide-react';
-import type { ID, Product } from '../../data/types';
+import type { ID, Product, Promo } from '../../data/types';
 import { dispatch, useDB, useDBVersion } from '../../data/store';
 import { activePromos, dailySeries, priceFor, promoApplies, shiftSummary, stockOf } from '../../data/selectors';
 import { useSession } from '../../roles/session';
@@ -9,7 +9,8 @@ import { useScoped } from '../../roles/scope';
 import { PageHeader } from '../../shell/PageHeader';
 import { EntityLink } from '../../shell/entities';
 import { Button, Card, Chip, EmptyState, Kpi, Notice, cx, fmt, toast } from '../../ui';
-import { buildCatalog, cartName, categoryIcon, nbUnits, openShift, promoPct } from './lib';
+import { buildCatalog, cartName, categoryIcon, fixNo, nbUnits, openShift, promoPct } from './lib';
+import { PromoChip } from '../sales/parts';
 import './register.css';
 
 const MOVE_PREFIX = 'Перенести в магазин';
@@ -36,13 +37,13 @@ export default function Home() {
   /* акции сегодня */
   const promos = useMemo(() => {
     const act = activePromos(db, today).filter((p) => p.audience !== 'wholesale');
-    const list: { p: Product; base: number; price: number; shop: number; pop: number; category: string }[] = [];
+    const list: { p: Product; promo: Promo; base: number; price: number; shop: number; pop: number; category: string }[] = [];
     if (!act.length) return { list, total: 0 };
     for (const it of catalog.items) {
       if (!act.some((pr) => promoApplies(db, pr, it.p, 'retail'))) continue;
       const pr = priceFor(db, it.p.id, { priceType: 'retail', date: today });
       if (!pr.promo) continue;
-      list.push({ p: it.p, base: pr.base, price: pr.price, shop: stockOf(db, it.p.id).shop.available, pop: catalog.popularity.get(it.p.id) ?? 0, category: it.category });
+      list.push({ p: it.p, promo: pr.promo, base: pr.base, price: pr.price, shop: stockOf(db, it.p.id).shop.available, pop: catalog.popularity.get(it.p.id) ?? 0, category: it.category });
     }
     list.sort((a, b) => Number(b.shop > 0) - Number(a.shop > 0) || b.pop - a.pop);
     return { list: list.slice(0, 6), total: list.length };
@@ -151,7 +152,7 @@ export default function Home() {
             </div>
           </Card>
 
-          <Card className="reg-home-list" title="Акции сегодня" actions={promos.total ? <Chip tone="green">{fmt.count(promos.total, 'товар', 'товара', 'товаров')}</Chip> : null} flush>
+          <Card className="reg-home-list" title="Акции сегодня" actions={promos.total ? <Chip>{fmt.count(promos.total, 'товар', 'товара', 'товаров')}</Chip> : null} flush>
             {promos.list.length ? (
               <div className="list">
                 {promos.list.map((x) => {
@@ -167,7 +168,7 @@ export default function Home() {
                         </EntityLink>
                         <div className="cell-sub t-12 muted">{x.shop > 0 ? `В магазине ${fmt.qty(x.shop)}` : 'В магазине нет'}</div>
                       </div>
-                      <Chip tone="green">−{promoPct(x.base, x.price)} %</Chip>
+                      <PromoChip promo={x.promo} pct={promoPct(x.base, x.price)} today={today} short />
                       <s className="reg-old num">{fmt.price(x.base)}</s>
                       <b className="num t-14">{fmt.price(x.price)}</b>
                     </div>
@@ -217,7 +218,7 @@ export default function Home() {
                     <input type="checkbox" className="task-check" checked={false} onChange={() => toggle(t.id)} aria-label="Сделано" />
                     <span className="grow">
                       <span className="w-600" style={{ display: 'block' }}>
-                        {t.title}
+                        {fixNo(t.title)}
                       </span>
                       <span className="row t-12 muted" style={{ marginTop: 2 }}>
                         {t.due < today ? <Chip tone="bad">Просрочена с {fmt.date(t.due)}</Chip> : <span>{t.dueTime ? `до ${t.dueTime}` : 'сегодня'}</span>}

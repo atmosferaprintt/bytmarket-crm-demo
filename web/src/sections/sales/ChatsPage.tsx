@@ -11,7 +11,9 @@ import { EntityLink, useOpenEntity } from '../../shell/entities';
 import { PageHeader } from '../../shell/PageHeader';
 import { Avatar, Button, Card, Chip, EmptyState, Notice, ORDER_STATE, PAY_STATE, SearchInput, Segmented, StatList, StatRow, Textarea, cx, fmt, overdueStatus, StatusChip, toast } from '../../ui';
 import { NewOrderDrawer } from './NewOrderDrawer';
-import { capitalize, norm, useIsPhone } from './lib';
+import { useSalesOrders } from './salesScope';
+import { capitalize, fixNo, norm, useIsPhone } from './lib';
+import { shownOverdue } from './parts';
 import { useTabCounts } from './tabCounts';
 
 const QUICK = ['Добрый день! Сейчас проверю остатки и отвечу.', 'Счёт отправлю сегодня до конца дня.', 'Привезём завтра с 10:00 до 14:00.', 'Спасибо, заказ принят!'];
@@ -19,13 +21,14 @@ const QUICK = ['Добрый день! Сейчас проверю остатк�
 export default function ChatsPage() {
   const db = useDB();
   const version = useDBVersion();
-  const { me, can } = useSession();
-  const { chats } = useScoped();
+  const { me, can, role } = useSession();
+  const { chats, isMine } = useScoped();
+  const isManager = role === 'manager';
   const counts = useTabCounts();
   const phone = useIsPhone();
   const openEntity = useOpenEntity();
   const [q, setQ] = useState('');
-  const [f, setF] = useState<'all' | 'unread'>('all');
+  const [f, setF] = useState<'all' | 'unread' | 'mine'>('all');
   const [creating, setCreating] = useState(false);
   const today = db.meta.today;
   const idx = indexes(db);
@@ -41,12 +44,19 @@ export default function ChatsPage() {
     const t = norm(q.trim()).split(/\s+/).filter(Boolean);
     return sorted.filter((c) => {
       if (f === 'unread' && !c.unread) return false;
+      if (f === 'mine' && !isMine(c.clientId)) return false;
       if (!t.length) return true;
       const cl = idx.clients.get(c.clientId);
       const s = norm(`${cl?.name ?? ''} ${cl?.phone ?? ''} ${c.messages[c.messages.length - 1]?.text ?? ''}`);
       return t.every((x) => s.includes(x));
     });
-  }, [sorted, q, f, idx]);
+  }, [sorted, q, f, idx, isMine]);
+
+  // сменили фильтр, а открытого диалога в списке нет — на компьютере открываем первый из списка
+  useEffect(() => {
+    if (phone || !list.length || list.some((c) => c.id === selId)) return;
+    setSelId(list[0].id);
+  }, [f]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // открыли диалог — непрочитанные прочитаны
   useEffect(() => {
@@ -54,6 +64,7 @@ export default function ChatsPage() {
   }, [sel?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const unreadCount = sorted.filter((c) => c.unread > 0).length;
+  const mineCount = isManager ? sorted.filter((c) => isMine(c.clientId)).length : 0;
   const showList = !phone || !sel;
   const showConv = !!sel;
 
@@ -62,7 +73,9 @@ export default function ChatsPage() {
       <PageHeader section="sales" counts={counts} />
       {!sorted.length ? (
         <Card>
-          <EmptyState icon={<MessageCircle />} title="Переписки пока нет">Когда клиент напишет в WhatsApp, диалог появится здесь</EmptyState>
+          <EmptyState icon={<MessageCircle />} title="Переписки пока нет">
+            {role === 'rep' ? 'Здесь появятся переписки с вашими клиентами из WhatsApp магазина' : 'Когда клиент напишет в WhatsApp магазина, диалог появится здесь'}
+          </EmptyState>
         </Card>
       ) : (
         <div className={cx('sales-chats', phone && 'is-phone')}>
@@ -75,7 +88,8 @@ export default function ChatsPage() {
                   onChange={setF}
                   options={[
                     { value: 'all', label: 'Все', count: sorted.length },
-                    { value: 'unread', label: 'Непрочитанные', count: unreadCount },
+                    { value: 'unread', label: 'Новые', count: unreadCount },
+                    ...(isManager ? [{ value: 'mine' as const, label: 'Мои', count: mineCount }] : []),
                   ]}
                 />
               </div>
@@ -94,8 +108,8 @@ export default function ChatsPage() {
                           </span>
                           <span className="row" style={{ gap: 6 }}>
                             <span className={cx('grow ellipsis t-12', c.unread ? 'ink-2' : 'muted')}>
-                              {last?.from === 'staff' ? 'Вы: ' : ''}
-                              {last?.text}
+                              {last?.from === 'staff' ? (last.authorId && last.authorId !== me.id ? `${idx.employees.get(last.authorId)?.short ?? 'Магазин'}: ` : 'Вы: ') : ''}
+                              {last ? fixNo(last.text) : ''}
                             </span>
                             {c.unread ? <span className="sales-unread">{c.unread}</span> : null}
                           </span>
@@ -104,7 +118,9 @@ export default function ChatsPage() {
                     );
                   })
                 ) : (
-                  <EmptyState title={f === 'unread' ? 'Всё прочитано' : 'Не нашли'}>{f === 'unread' ? 'Новых сообщений нет' : 'Измените поиск'}</EmptyState>
+                  <EmptyState title={q.trim() ? 'Не нашли' : f === 'unread' ? 'Всё прочитано' : f === 'mine' ? 'Ваши клиенты пока не писали' : 'Не нашли'}>
+                    {q.trim() ? 'Измените поиск' : f === 'unread' ? 'Новых сообщений нет' : f === 'mine' ? 'Переписки с другими клиентами — во вкладке «Все»' : 'Измените поиск'}
+                  </EmptyState>
                 )}
               </div>
             </section>
@@ -176,8 +192,8 @@ function Conversation({ chat, onBack }: { chat: Chat; onBack?: () => void }) {
     if (!t) return;
     const r = dispatch('chat.send', { chatId: chat.id, text: t }, me.id);
     if (!r.ok) {
-      setError(r.error);
-      toast(r.error, 'error');
+      setError(fixNo(r.error));
+      toast(fixNo(r.error), 'error');
       return;
     }
     setText('');
@@ -216,7 +232,7 @@ function Conversation({ chat, onBack }: { chat: Chat; onBack?: () => void }) {
             <div key={i} className="col" style={{ gap: 0 }}>
               {sep ? <div className="sales-day-sep">{capitalize(fmt.relDate(day, today))}</div> : null}
               <div className={cx('sales-msg', m.from === 'staff' ? 'is-staff' : 'is-client')}>
-                <div className="sales-msg-text">{m.text}</div>
+                <div className="sales-msg-text">{fixNo(m.text)}</div>
                 {o ? (
                   <EntityLink type="order" id={o.id} className="sales-msg-order">
                     Заказ № {o.number} · {fmt.money(o.total)}
@@ -270,17 +286,26 @@ function ClientSide({ chat, canOrder, orderLabel, onOrder, onClient }: { chat: C
   const version = useDBVersion();
   const idx = indexes(db);
   const client = idx.clients.get(chat.clientId);
+  const { me, role } = useSession();
+  const visible = useSalesOrders();
   const data = useMemo(() => {
     const b = clientBalance(db, chat.clientId);
-    const orders = db.orders
+    // менеджер видит переписки всех клиентов, а заказы — только те, что может открыть
+    const pool = role === 'manager' || role === 'rep' ? visible : db.orders;
+    const orders = pool
       .filter((o) => o.clientId === chat.clientId && o.state !== 'draft')
       .sort((a, b2) => b2.createdAt.localeCompare(a.createdAt))
       .slice(0, 4)
-      .map((o) => ({ o, pay: orderPayment(db, o) }));
+      .map((o) => {
+        const pay = orderPayment(db, o);
+        const dl = o.deliveryId ? db.deliveries.find((x) => x.id === o.deliveryId) : undefined;
+        return { o, pay, overdue: shownOverdue(o, pay, dl) };
+      });
     return { b, orders };
-  }, [db, version, chat.clientId]);
+  }, [db, version, chat.clientId, visible, role]);
   if (!client) return null;
   const owner = client.ownerId ? idx.employees.get(client.ownerId) : undefined;
+  const foreign = (role === 'manager' || role === 'rep') && client.ownerId !== me.id;
   return (
     <section className="card sales-chat-side">
       <div className="sales-chat-side-body">
@@ -304,7 +329,7 @@ function ClientSide({ chat, canOrder, orderLabel, onOrder, onClient }: { chat: C
       <div className="col" style={{ gap: 6 }}>
         <div className="t-13 w-700">Последние заказы</div>
         {data.orders.length ? (
-          data.orders.map(({ o, pay }) => (
+          data.orders.map(({ o, pay, overdue }) => (
             <EntityLink key={o.id} type="order" id={o.id} className="sales-side-order">
               <span className="row">
                 <span className="w-600">№ {o.number}</span>
@@ -313,12 +338,12 @@ function ClientSide({ chat, canOrder, orderLabel, onOrder, onClient }: { chat: C
               </span>
               <span className="chips sales-chips-compact">
                 <StatusChip s={ORDER_STATE[o.state]} />
-                {pay.overdueDays > 0 ? <StatusChip s={overdueStatus(pay.overdueDays)} /> : (o.state === 'confirmed' || o.state === 'closed') && pay.amount > 0 ? <StatusChip s={PAY_STATE[pay.state]} /> : null}
+                {overdue > 0 ? <StatusChip s={overdueStatus(overdue)} /> : (o.state === 'confirmed' || o.state === 'closed') && pay.amount > 0 ? <StatusChip s={PAY_STATE[pay.state]} /> : null}
               </span>
             </EntityLink>
           ))
         ) : (
-          <span className="muted t-13">Заказов ещё не было</span>
+          <span className="muted t-13">{foreign ? `Клиента ведёт ${owner?.short ?? 'другой сотрудник'} — его заказы видят он и владелец` : 'Заказов ещё не было'}</span>
         )}
       </div>
       </div>

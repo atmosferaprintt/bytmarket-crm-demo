@@ -244,6 +244,7 @@
 }
 .sales-count.is-on { background: var(--info-soft); color: var(--info); }
 .sales-count.is-warn { background: var(--warn-soft); color: var(--warn); }
+.sales-count.is-bad { background: var(--bad-soft); color: var(--bad); }
 .sales-plan-bar { position: relative; }
 .sales-plan-bar .bar { height: 10px; }
 .sales-plan-mark { position: absolute; top: -3px; width: 2px; height: 16px; border-radius: 1px; background: var(--navy); transform: translateX(-1px); }
@@ -284,3 +285,7 @@
 .sales-doc-lines .num { text-align: right; white-space: nowrap; }
 .sales-doc-lines tfoot td { font-weight: 700; text-align: right; border: 0; }
 .sales-doc-sign { display: flex; justify-content: space-between; margin-top: 36px; gap: 24px; }
+
+/* акция в строке заказа: название и состояние */
+.sales-line-promo { display: flex; align-items: center; gap: 6px; margin-top: 4px; min-width: 0; }
+.sales-line-promo > .ellipsis { min-width: 0; }

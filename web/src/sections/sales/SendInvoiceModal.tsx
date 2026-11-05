@@ -6,6 +6,7 @@ import { dispatch, useDB } from '../../data/store';
 import { indexes, orderPayment } from './data';
 import { useSession } from '../../roles/session';
 import { Button, Chip, Field, Modal, Notice, StatList, StatRow, Textarea, fmt, toast } from '../../ui';
+import { fixNo } from './lib';
 
 export function SendInvoiceModal({ order, onClose }: { order: Order; onClose: () => void }) {
   const db = useDB();
@@ -34,7 +35,7 @@ export function SendInvoiceModal({ order, onClose }: { order: Order; onClose: ()
     if (!chat) return;
     const r = dispatch('chat.send', { chatId: chat.id, text, orderId: order.id }, me.id);
     if (!r.ok) {
-      setError(r.error);
+      setError(fixNo(r.error));
       return;
     }
     toast('Счёт отправлен в чат клиента');

@@ -83,14 +83,18 @@ export function SegmentBar({ parts, format, ariaLabel }: { parts: SegmentPart[];
   );
 }
 
-/** Выполнение плана: полоса и процент. Сверх плана — полная полоса. */
-export function PlanMeter({ value, plan, title }: { value: number; plan: number; title?: string }) {
+/** Выполнение плана: полоса и процент. Сверх плана — полная полоса.
+    expectedPct — сколько должно быть по графику на сегодня: риска на полосе, цвет — идёт ли по графику. */
+export function PlanMeter({ value, plan, title, expectedPct }: { value: number; plan: number; title?: string; expectedPct?: number }) {
   const p = plan > 0 ? value / plan : 0;
   const w = Math.max(0, Math.min(1, p)) * 100;
+  const ok = expectedPct !== undefined ? p * 100 >= expectedPct * 0.95 : p >= 0.9;
+  const mark = expectedPct !== undefined && expectedPct > 0 && expectedPct < 100 ? expectedPct : null;
   return (
     <span className="vz-plan" title={title}>
       <span className="vz-plan-track">
-        <span className="vz-plan-fill" style={{ width: `${w}%`, background: p >= 0.9 ? 'var(--chart-1)' : 'var(--chart-4)' }} />
+        <span className="vz-plan-fill" style={{ width: `${w}%`, background: ok ? 'var(--chart-1)' : 'var(--chart-4)' }} />
+        {mark !== null ? <span className="vz-plan-mark" style={{ left: `${mark}%` }} /> : null}
       </span>
       <span className="vz-plan-pct">{plan > 0 ? `${Math.round(p * 100)} %` : '—'}</span>
     </span>

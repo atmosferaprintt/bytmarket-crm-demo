@@ -12,7 +12,7 @@ export const ORDER_STATE: Record<OrderState, StatusDef> = {
   draft: { label: 'Черновик', tone: 'neutral' },
   request: { label: 'Заявка', tone: 'violet' },
   confirmed: { label: 'Подтверждён', tone: 'info' },
-  closed: { label: 'Завершён', tone: 'ok' },
+  closed: { label: 'Подтверждён', tone: 'info' }, // товар отгружен; «завершён» не пишем — оплата и доставка видны отдельно (§16)
   cancelled: { label: 'Отменён', tone: 'outline' },
 };
 
@@ -81,6 +81,14 @@ export const PAYMENT_STATUS: Record<'posted' | 'pending' | 'unidentified', Statu
   posted: { label: 'Проведён', tone: 'ok' },
   pending: { label: 'Ждёт подтверждения', tone: 'warn' },
   unidentified: { label: 'Не опознан', tone: 'bad' },
+};
+
+/** Акции: одно слово на состояние во всех разделах. */
+export const PROMO_STATE: Record<'active' | 'future' | 'ended' | 'off', StatusDef> = {
+  active: { label: 'Действует', tone: 'ok' },
+  future: { label: 'Скоро', tone: 'info' },
+  ended: { label: 'Закончилась', tone: 'outline' },
+  off: { label: 'Выключена', tone: 'outline' },
 };
 
 export const STOCK_LEVEL = {

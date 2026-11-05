@@ -6,6 +6,7 @@ import { dispatch, useDB } from '../../data/store';
 import { indexes, shiftSummary } from '../../data/selectors';
 import { useSession } from '../../roles/session';
 import { Button, Card, Chip, Field, MoneyInput, Notice, fmt, toast } from '../../ui';
+import { fixNo } from './lib';
 
 export function ShiftBadge({ shift }: { shift: Shift | undefined }) {
   const db = useDB();
@@ -32,7 +33,7 @@ export function OpenShiftCard({ onOpened, className, hideLast }: { onOpened?: ()
   const open = () => {
     const r = dispatch('shift.open', { openingCash: cash === '' ? 0 : cash }, me.id);
     if (!r.ok) {
-      setError(r.error);
+      setError(fixNo(r.error));
       return;
     }
     setError(null);
@@ -54,7 +55,7 @@ export function OpenShiftCard({ onOpened, className, hideLast }: { onOpened?: ()
         <div className="t-14 ink-2">Чтобы продавать, откройте смену. Пересчитайте деньги в кассе и укажите размен.</div>
         {last && !hideLast ? (
           <div className="t-13 muted">
-            Прошлая смена № {last.number} закрыта {fmt.relDate(last.closedAt, db.meta.today)} в {fmt.time(last.closedAt)}, пересчитано {fmt.money(last.countedCash ?? 0)}
+            Прошлая смена № {last.number} закрыта {fmt.dateTime(last.closedAt)}, пересчитано {fmt.money(last.countedCash ?? 0)}
           </div>
         ) : null}
         <Field label="Размен на начало">

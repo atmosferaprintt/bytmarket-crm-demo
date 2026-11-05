@@ -39,8 +39,8 @@ export function AcceptPaymentModal({ clientId: initialClient, orderId, onClose, 
   const rows = useMemo(() => (clientId ? openOrdersOf(db, clientId) : []), [db, v, clientId]);
   const freeDebt = rows.reduce((s, r) => s + r.debtFree, 0);
   const overdueFree = useMemo(
-    () => rows.filter((r) => r.order.dueDate && r.order.dueDate < today).reduce((s, r) => s + r.debtFree, 0),
-    [rows, today],
+    () => rows.filter((r) => r.op.overdueDays > 0).reduce((s, r) => s + r.debtFree, 0),
+    [rows],
   );
   const preferred = orderId ? rows.find((r) => r.order.id === orderId) : undefined;
 

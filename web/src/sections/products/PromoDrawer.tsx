@@ -4,8 +4,8 @@ import { dispatch, useDB, useDBVersion } from '../../data/store';
 import { indexes } from '../../data/selectors';
 import { useSession } from '../../roles/session';
 import { EntityLink } from '../../shell/entities';
-import { Button, Chip, ConfirmButton, Drawer, EmptyState, fmt, toast } from '../../ui';
-import { AUDIENCE, PROMO_STATE, markupPct, minAllowedPrice, promoPrice, promoProducts, promoSales, promoState, promoTargetText, promoValueText } from './lib';
+import { Button, Chip, ConfirmButton, Drawer, EmptyState, StatusChip, fmt, toast } from '../../ui';
+import { AUDIENCE, PROMO_STATE, markupPct, pct1, minAllowedPrice, promoPrice, promoProducts, promoSales, promoState, promoTargetText, promoValueText } from './lib';
 import { Block, Tiles } from './bits';
 
 export default function PromoDrawer({ id, onClose }: { id: string; onClose: () => void }) {
@@ -40,7 +40,7 @@ export default function PromoDrawer({ id, onClose }: { id: string; onClose: () =
       onClose={onClose}
       head={
         <div className="prd-chips">
-          <Chip tone={PROMO_STATE[st].tone}>{PROMO_STATE[st].label}</Chip>
+          <StatusChip s={PROMO_STATE[st]} />
           <Chip tone="green">{promoValueText(pr)}</Chip>
         </div>
       }
@@ -102,10 +102,10 @@ export default function PromoDrawer({ id, onClose }: { id: string; onClose: () =
                         <td className="num nowrap">
                           {low ? (
                             <Chip tone="warn" title={`Нужно не меньше ${fmt.price(min)}`}>
-                              {fmt.pct(m)}
+                              {pct1(m)}
                             </Chip>
                           ) : (
-                            fmt.pct(m)
+                            pct1(m)
                           )}
                         </td>
                       ) : null}

@@ -20,19 +20,48 @@ export function ppDelta(cur: number, prev: number | null | undefined): Delta {
   return { text: `${v > 0 ? '+' : '−'}${fmt.num(Math.abs(v), 1)} п. п.`, dir: v > 0 ? 'up' : 'down' };
 }
 
-/** Показатель: подпись, сумма, изменение под суммой, строка подробностей. Клик — к подробностям. */
-export function KpiTile({ label, value, d, good = 'up', onClick, extra, title }: { label: ReactNode; value: string; d?: Delta; good?: 'up' | 'down'; onClick?: () => void; extra?: ReactNode; title?: string }) {
+/** Показатель: подпись, сумма, изменение под суммой, строка подробностей. Клик — к подробностям.
+    asOf — для остатков «на сегодня» (долги): «на 5 ноября» в строке изменения; dTitle — с чем сравнили. */
+export function KpiTile({
+  label,
+  value,
+  d,
+  good = 'up',
+  onClick,
+  extra,
+  title,
+  asOf,
+  dTitle = 'К тому же отрезку прошлого периода',
+}: {
+  label: ReactNode;
+  value: string;
+  d?: Delta;
+  good?: 'up' | 'down';
+  onClick?: () => void;
+  extra?: ReactNode;
+  title?: string;
+  asOf?: string;
+  dTitle?: string;
+}) {
   const tone = !d || d.dir === 'flat' ? 'flat' : d.dir === good ? 'up' : 'down';
+  const deltaEl = d ? (
+    <span className={cx('kpi-delta', `is-${tone}`)} title={dTitle}>
+      {d.dir === 'up' ? <ArrowUpRight size={14} /> : d.dir === 'down' ? <ArrowDownRight size={14} /> : null}
+      {d.text}
+    </span>
+  ) : null;
   const body = (
     <>
       <span className="kpi-label">{label}</span>
       <span className="kpi-value">{value}</span>
-      {d ? (
-        <span className={cx('kpi-delta', `is-${tone}`)} title="К тому же отрезку прошлого периода">
-          {d.dir === 'up' ? <ArrowUpRight size={14} /> : d.dir === 'down' ? <ArrowDownRight size={14} /> : null}
-          {d.text}
+      {asOf ? (
+        <span className="ov-kpi-asof">
+          <span>{asOf}</span>
+          {deltaEl}
         </span>
-      ) : null}
+      ) : (
+        deltaEl
+      )}
       {extra}
     </>
   );

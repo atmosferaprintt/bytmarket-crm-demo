@@ -3,7 +3,9 @@ import { useCallback, useEffect, useState } from 'react';
 import type { Client, ClientPoint, DB, Employee, ID, ISODate, Order, Visit } from '../../data/types';
 import { CLIENT_KIND_NAMES, CLIENT_SEGMENT_NAMES } from '../../data/types';
 import { clientBalances, indexes, orderReturns, type ClientBalance } from '../../data/selectors';
-import { diffDays, firstOfMonth, lastOfMonth, plusDays } from '../../data/dates';
+import { diffDays, firstOfMonth, plusDays } from '../../data/dates';
+import { planProgress } from '../../data/kpis';
+import { MISSED_ORDER_FACTOR } from '../../data/thresholds';
 
 /* ---------- запоминание по версии базы ---------- */
 
@@ -59,7 +61,7 @@ export interface ClientRow {
   owner: Employee | null;
   sales90: number;
   daysSince: number | null;
-  /** прошло больше привычной частоты заказа */
+  /** пропустил привычный заказ — см. missedHabitualOrder */
   missed: boolean;
   /** давно не заказывали: пропустил привычный заказ или больше 45 дней без покупок */
   stale: boolean;
@@ -86,17 +88,35 @@ export function sales90(db: DB): Map<ID, number> {
   });
 }
 
+/** «Пропустил привычный заказ» — одно правило для всех экранов (как в сигналах обзора):
+    клиент заказывает регулярно, сейчас открытых заказов нет, а с последней покупки прошло больше,
+    чем привычная частота × MISSED_ORDER_FACTOR. */
+export function missedHabitualOrder(c: Client, daysSince: number | null, hasOpenOrder: boolean): boolean {
+  if (!c.active || !c.orderEveryDays || c.segment === 'retail' || hasOpenOrder || daysSince === null) return false;
+  return daysSince > c.orderEveryDays * MISSED_ORDER_FACTOR;
+}
+
+/** Клиенты, у которых есть заказ в работе: черновик, заявка или подтверждённый. */
+export function clientsWithOpenOrders(db: DB): Set<ID> {
+  return memoDB(db, 'openOrderClients', () => {
+    const s = new Set<ID>();
+    for (const o of db.orders) if (o.state === 'request' || o.state === 'confirmed' || o.state === 'draft') s.add(o.clientId);
+    return s;
+  });
+}
+
 export function clientRows(db: DB): Map<ID, ClientRow> {
   return memoDB(db, 'clientRows', () => {
     const bal = clientBalances(db);
     const s90 = sales90(db);
     const emp = indexes(db).employees;
+    const open = clientsWithOpenOrders(db);
     const today = db.meta.today;
     const out = new Map<ID, ClientRow>();
     for (const c of db.clients) {
       const b = bal.get(c.id)!;
       const daysSince = b.lastOrderAt ? diffDays(b.lastOrderAt.slice(0, 10), today) : null;
-      const missed = !!c.orderEveryDays && daysSince !== null && daysSince > c.orderEveryDays;
+      const missed = missedHabitualOrder(c, daysSince, open.has(c.id));
       const stale = missed || (c.orderEveryDays === null && c.segment !== 'retail' && (daysSince === null || daysSince > 45));
       out.set(c.id, {
         c,
@@ -177,24 +197,37 @@ export function pointOf(c: Client | undefined, pointId: ID | null): ClientPoint 
 
 export interface RepStats {
   rep: Employee;
-  plan: number;
-  /** заказы и заявки клиентов представителя за месяц (без черновиков и отмен) */
+  /** месячный план; null — не задан */
+  plan: number | null;
+  /** продажи за месяц по единой формуле planProgress: опт по отгрузке, розница по чеку, минус возвраты */
   fact: number;
   planPct: number | null;
-  /** где должны быть к сегодняшнему дню, % плана */
+  /** где должны быть к сегодняшнему дню по графику, % плана */
   expectedPct: number;
-  /** темп: факт к плану на сегодня; 1 — идём по графику */
+  /** темп: выполнение к графику; 1 — идём по графику */
   pace: number | null;
+  onTrack: boolean | null;
+  /** месяц плана в родительном падеже: «ноября» */
+  monthGen: string;
   todayTotal: number;
+  /** выполнено сегодня — как «Сделано» в отчётах; пропущенные сюда не входят */
   todayDone: number;
+  /** визиты с 1-го числа по сегодня: выполнены (с любым результатом), из них с заказом, пропущены */
   monthDone: number;
   monthWithOrder: number;
+  monthMissed: number;
+  /** доля выполненных визитов, после которых оформили заказ, % */
   orderShare: number | null;
   clients: number;
   points: number;
-  requestsToday: number;
-  requestsTodaySum: number;
+  /** заказы, которые представитель оформил сегодня (без черновиков и отмен) — отдельно от плана */
+  ordersToday: number;
+  ordersTodaySum: number;
+  ordersTodayWaiting: number;
 }
+
+const MONTHS_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+export const monthGen = (iso: string): string => MONTHS_GEN[Number(iso.slice(5, 7)) - 1] ?? '';
 
 export function repList(db: DB): Employee[] {
   return db.employees.filter((e) => e.active && e.roles.includes('rep'));
@@ -203,31 +236,14 @@ export function repList(db: DB): Employee[] {
 export function repStats(db: DB, rep: Employee): RepStats {
   return memoDB(db, 'repStats|' + rep.id, () => {
     const today = db.meta.today;
-    const month = today.slice(0, 7);
-    const from = firstOfMonth(today);
-    const plan = db.plans.find((p) => p.month === month && p.employeeId === rep.id)?.amount ?? 0;
-    let fact = 0;
-    for (const o of db.orders) {
-      if (o.ownerId !== rep.id || o.state === 'cancelled' || o.state === 'draft') continue;
-      const d = o.createdAt.slice(0, 10);
-      if (d >= from && d <= today) fact += o.total;
-    }
-    const daysInMonth = diffDays(from, lastOfMonth(today)) + 1;
-    const share = (diffDays(from, today) + 1) / daysInMonth;
+    const pp = planProgress(db, rep.id, today);
+    const month = visitSummary(db, firstOfMonth(today), today, rep.id);
     let todayTotal = 0;
     let todayDone = 0;
-    let monthDone = 0;
-    let monthWithOrder = 0;
     for (const v of db.visits) {
-      if (v.repId !== rep.id) continue;
-      if (v.date === today) {
-        todayTotal++;
-        if (v.state === 'done') todayDone++;
-      }
-      if (v.date >= from && v.date <= today && v.state === 'done') {
-        monthDone++;
-        if (v.result === 'order') monthWithOrder++;
-      }
+      if (v.repId !== rep.id || v.date !== today) continue;
+      todayTotal++;
+      if (v.state === 'done') todayDone++;
     }
     let clients = 0;
     let points = 0;
@@ -236,30 +252,36 @@ export function repStats(db: DB, rep: Employee): RepStats {
       clients++;
       points += c.points.length;
     }
-    let requestsToday = 0;
-    let requestsTodaySum = 0;
+    let ordersToday = 0;
+    let ordersTodaySum = 0;
+    let ordersTodayWaiting = 0;
     for (const o of db.orders) {
       if (o.authorId !== rep.id || o.state === 'cancelled' || o.state === 'draft') continue;
       if (o.createdAt.slice(0, 10) !== today) continue;
-      requestsToday++;
-      requestsTodaySum += o.total;
+      ordersToday++;
+      ordersTodaySum += o.total;
+      if (o.state === 'request') ordersTodayWaiting++;
     }
     return {
       rep,
-      plan,
-      fact,
-      planPct: plan > 0 ? (fact / plan) * 100 : null,
-      expectedPct: share * 100,
-      pace: plan > 0 ? fact / (plan * share) : null,
+      plan: pp.plan,
+      fact: pp.fact,
+      planPct: pp.pct,
+      expectedPct: pp.expectedPct,
+      pace: pp.pct !== null && pp.expectedPct > 0 ? pp.pct / pp.expectedPct : null,
+      onTrack: pp.onTrack,
+      monthGen: monthGen(pp.from),
       todayTotal,
       todayDone,
-      monthDone,
-      monthWithOrder,
-      orderShare: monthDone > 0 ? (monthWithOrder / monthDone) * 100 : null,
+      monthDone: month.done,
+      monthWithOrder: month.results.order,
+      monthMissed: month.results.missed,
+      orderShare: month.orderShare,
       clients,
       points,
-      requestsToday,
-      requestsTodaySum,
+      ordersToday,
+      ordersTodaySum,
+      ordersTodayWaiting,
     };
   });
 }
@@ -280,7 +302,15 @@ export function visitSummary(db: DB, from: ISODate, to: ISODate, repId: ID | nul
         reasons.set(r, (reasons.get(r) ?? 0) + 1);
       }
     }
-    return { results, reasons: [...reasons.entries()].sort((a, b) => b[1] - a[1]) };
+    const done = results.order + results.callback + results.refusal;
+    return {
+      results,
+      /** выполненные визиты — с любым результатом; пропущенные считаются отдельно */
+      done,
+      /** доля выполненных визитов с заказом, % — одна цифра для карточек представителей и итогов */
+      orderShare: done > 0 ? (results.order / done) * 100 : null,
+      reasons: [...reasons.entries()].sort((a, b) => b[1] - a[1]),
+    };
   });
 }
 

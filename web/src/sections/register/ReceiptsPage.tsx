@@ -77,7 +77,7 @@ export default function ReceiptsPage() {
       header: 'Дата и время',
       render: (x) => (
         <span className="nowrap">
-          {fmt.relDate(x.r.at, today)}, {fmt.time(x.r.at)}
+          {fmt.dateShort(x.r.at)}, {fmt.time(x.r.at)}
         </span>
       ),
       sort: (x) => x.r.at,
@@ -87,8 +87,9 @@ export default function ReceiptsPage() {
     {
       key: 'contents',
       header: 'Состав',
+      className: 'reg-col-contents',
       render: (x) => (
-        <span className="reg-td-contents ellipsis" style={{ display: 'block' }} title={x.contents}>
+        <span className="reg-clip" title={x.contents}>
           {x.contents}
         </span>
       ),
@@ -130,7 +131,7 @@ export default function ReceiptsPage() {
     {
       key: 'menu',
       header: '',
-      width: 44,
+      className: 'reg-col-menu',
       render: (x) => (
         <span onClick={(e) => e.stopPropagation()}>
           <MoreMenu

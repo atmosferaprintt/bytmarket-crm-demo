@@ -68,6 +68,18 @@ export const SECTIONS: SectionDef[] = [
     ],
   },
   {
+    key: 'delivery',
+    label: 'Доставка',
+    icon: Truck,
+    group: 'Работа',
+    path: '/delivery',
+    tabs: [
+      { key: 'queue', label: 'Доставки', path: '/delivery' },
+      { key: 'routes', label: 'Маршруты курьеров', path: '/delivery/routes', roles: ['owner', 'dispatcher'] },
+      { key: 'cash', label: 'Деньги курьеров', path: '/delivery/cash', roles: ['owner', 'dispatcher', 'courier'] },
+    ],
+  },
+  {
     key: 'products',
     label: 'Товары',
     icon: Package,
@@ -107,7 +119,7 @@ export const SECTIONS: SectionDef[] = [
     key: 'money',
     label: 'Деньги',
     icon: Wallet,
-    group: 'Деньги',
+    group: 'Контроль',
     path: '/money',
     tabs: [
       { key: 'journal', label: 'Журнал', path: '/money', roles: ['owner', 'accountant'] },
@@ -115,18 +127,6 @@ export const SECTIONS: SectionDef[] = [
       { key: 'suppliers', label: 'Долги поставщикам', path: '/money/suppliers', roles: ['owner', 'accountant'] },
       { key: 'expenses', label: 'Расходы', path: '/money/expenses', roles: ['owner', 'accountant'] },
       { key: 'accounts', label: 'Кассы и счета', path: '/money/accounts', roles: ['owner', 'accountant'] },
-    ],
-  },
-  {
-    key: 'delivery',
-    label: 'Доставка',
-    icon: Truck,
-    group: 'Деньги',
-    path: '/delivery',
-    tabs: [
-      { key: 'queue', label: 'Доставки', path: '/delivery' },
-      { key: 'routes', label: 'Маршруты курьеров', path: '/delivery/routes', roles: ['owner', 'dispatcher'] },
-      { key: 'cash', label: 'Деньги курьеров', path: '/delivery/cash', roles: ['owner', 'dispatcher', 'courier'] },
     ],
   },
   {
@@ -163,19 +163,21 @@ export function sectionByKey(key: SectionKey): SectionDef {
 }
 
 export function tabsFor(section: SectionKey, role: RoleKey): TabDef[] {
-  return sectionByKey(section).tabs.filter((t) => !t.roles || t.roles.includes(role));
+  return sectionByKey(section)
+    .tabs.filter((t) => !t.roles || t.roles.includes(role))
+    .map((t) => (role === 'courier' && t.key === 'cash' ? { ...t, label: 'Мои деньги' } : t));
 }
 
 /** Подписи разделов для отдельных ролей: у представителя «Обзор» — это «Мой день». */
 export function sectionLabel(section: SectionKey, role: RoleKey): string {
   if (section === 'overview') {
     if (role === 'rep') return 'Мой день';
-    if (role === 'courier') return 'Мои доставки';
+    if (role === 'courier') return 'Сегодня';
     if (role === 'owner') return 'Обзор';
     return 'Рабочий стол';
   }
-  if (role === 'courier' && section === 'delivery') return 'Заявки';
-  if (role === 'rep' && section === 'sales') return 'Заявки';
+  if (role === 'courier' && section === 'delivery') return 'Доставки';
+  if (role === 'rep' && section === 'sales') return 'Заказы';
   if (role === 'rep' && section === 'products') return 'Каталог';
   return sectionByKey(section).label;
 }

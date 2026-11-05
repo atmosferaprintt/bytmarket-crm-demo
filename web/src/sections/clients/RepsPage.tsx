@@ -10,8 +10,8 @@ import { useSession } from '../../roles/session';
 import { useScoped } from '../../roles/scope';
 import { Avatar, Button, Card, DataTable, EmptyState, Input, Segmented, Select, StatusChip, VISIT_RESULT, VISIT_STATE, cx, fmt, type Column, type Tone } from '../../ui';
 import { PlanVisitModal } from './PlanVisitModal';
-import { paceTone, repList, repStats, useIsPhone, visitSummary, type RepStats } from './lib';
-import { PlanBar } from './parts';
+import { repList, repStats, useIsPhone, visitSummary, type RepStats } from './lib';
+import { PlanBar, PlanChip, planLabel, planTitle, visitTimes } from './parts';
 
 interface VisitRow {
   v: Visit;
@@ -67,7 +67,15 @@ export function RepsPage() {
   }, [db, version, scoped.visits, date, repFilter]);
 
   const columns: Column<VisitRow>[] = [
-    { key: 'time', header: 'Время', render: (r) => <span className="w-600">{r.v.time}</span>, sort: (r) => r.v.time },
+    { key: 'time', header: 'По плану', render: (r) => <span className="w-600">{r.v.time}</span>, sort: (r) => r.v.time, className: 'cl-col-time' },
+    {
+      key: 'doneAt',
+      header: <span title="Когда представитель записал результат визита">Отметил</span>,
+      render: (r) => (r.v.state !== 'planned' && r.v.doneAt ? fmt.time(r.v.doneAt) : <span className="faint">—</span>),
+      sort: (r) => (r.v.state !== 'planned' && r.v.doneAt ? r.v.doneAt : null),
+      csv: (r) => (r.v.state !== 'planned' && r.v.doneAt ? fmt.time(r.v.doneAt) : ''),
+      className: 'cl-col-time',
+    },
     { key: 'rep', header: 'Представитель', render: (r) => r.rep, sort: (r) => r.rep, hidden: role === 'rep' },
     {
       key: 'client',
@@ -90,16 +98,20 @@ export function RepsPage() {
     },
     {
       key: 'order',
-      header: 'Заявка',
+      header: 'Заказ',
       align: 'right',
       render: (r) =>
         r.v.orderId && r.orderNumber ? (
-          <EntityLink type="order" id={r.v.orderId}>
-            № {r.orderNumber} · {fmt.money(r.orderTotal)}
-          </EntityLink>
+          <span className="cl-cell-stack is-right">
+            <span className="w-600 nowrap">{fmt.money(r.orderTotal)}</span>
+            <EntityLink type="order" id={r.v.orderId} className="entity-link t-12">
+              № {r.orderNumber}
+            </EntityLink>
+          </span>
         ) : (
           <span className="faint">—</span>
         ),
+      csv: (r) => (r.orderNumber ? `№ ${r.orderNumber} · ${r.orderTotal}` : ''),
       sort: (r) => r.orderTotal,
       total: (rs) => fmt.money(rs.reduce((s, r) => s + r.orderTotal, 0)),
     },
@@ -153,8 +165,12 @@ export function RepsPage() {
     </>
   );
 
-  const total = summary.results.order + summary.results.callback + summary.results.refusal + summary.results.missed;
+  const done = summary.done;
   const maxReason = summary.reasons[0]?.[1] ?? 0;
+  const monthNom = fmt.monthName(today.slice(0, 7), false).toLowerCase();
+  const visitsHead = done || summary.results.missed
+    ? `выполнено ${fmt.num(done)}${summary.results.missed ? ` · пропущено ${fmt.num(summary.results.missed)}` : ''}`
+    : 'визитов не было';
 
   return (
     <>
@@ -181,33 +197,32 @@ export function RepsPage() {
       </div>
 
       <div className="grid-2">
-        <Card title={`Результаты визитов за ${fmt.monthName(today.slice(0, 7), false).toLowerCase()}`} actions={<span className="muted t-13">{fmt.count(total, 'визит', 'визита', 'визитов')}</span>}>
+        <Card title={`Результаты визитов за ${monthNom}`} actions={<span className="muted t-13">{visitsHead}</span>}>
           <div className="cl-bars">
             {(
               [
-                ['order', 'Заказ', 'is-ok'],
+                ['order', 'С заказом', 'is-ok'],
                 ['callback', 'Перезвонить', 'is-info'],
                 ['refusal', 'Отказ', 'is-bad'],
-                ['missed', 'Пропущен', 'is-muted'],
               ] as const
             ).map(([k, label, tone]) => {
               const n = summary.results[k];
               return (
-                <div key={k} className="cl-bar-row">
+                <div key={k} className="cl-bar-row" title={k === 'order' ? 'Доля выполненных визитов, после которых оформили заказ. Пропущенные визиты не считаются.' : undefined}>
                   <span className="cl-bar-label">{label}</span>
                   <span className="cl-bar-track">
-                    <span className={cx('cl-bar-fill', tone)} style={{ width: `${total ? (n / total) * 100 : 0}%` }} />
+                    <span className={cx('cl-bar-fill', tone)} style={{ width: `${done ? (n / done) * 100 : 0}%` }} />
                   </span>
                   <span className="cl-bar-value num">
                     {n}
-                    <span className="muted"> · {total ? fmt.pct((n / total) * 100, 0) : '—'}</span>
+                    <span className="muted"> · {fmt.pct(done ? (n / done) * 100 : null, 0)}</span>
                   </span>
                 </div>
               );
             })}
           </div>
         </Card>
-        <Card title={`Причины отказов за ${fmt.monthName(today.slice(0, 7), false).toLowerCase()}`} actions={<span className="muted t-13">{fmt.count(summary.results.refusal, 'отказ', 'отказа', 'отказов')}</span>}>
+        <Card title={`Причины отказов за ${monthNom}`} actions={<span className="muted t-13">{fmt.count(summary.results.refusal, 'отказ', 'отказа', 'отказов')}</span>}>
           {summary.reasons.length ? (
             <div className="cl-bars">
               {summary.reasons.map(([reason, n]) => (
@@ -221,7 +236,7 @@ export function RepsPage() {
               ))}
             </div>
           ) : (
-            <EmptyState title="Отказов нет">В этом месяце все визиты без отказов</EmptyState>
+            <EmptyState title="Отказов нет">С начала месяца ни одного отказа</EmptyState>
           )}
         </Card>
       </div>
@@ -250,12 +265,10 @@ export function RepsPage() {
             <div className="cl-list is-flush">
               {phoneRows.map((r) => (
                 <button key={r.v.id} type="button" className="cl-list-row is-top" onClick={() => open('client', r.v.clientId)}>
-                  <span className="cl-visit-date is-time">
-                    <span className="w-600">{r.v.time}</span>
-                  </span>
                   <span className="cl-list-main">
                     <span className="w-600">{r.client}</span>
-                    <span className="muted t-12">{[r.point, r.v.refusalReason, r.v.comment].filter(Boolean).join(' · ')}</span>
+                    <span className="t-12 ink-2 w-600">{visitTimes(r.v)}</span>
+                    {[r.point, r.v.refusalReason, r.v.comment].some(Boolean) ? <span className="muted t-12">{[r.point, r.v.refusalReason, r.v.comment].filter(Boolean).join(' · ')}</span> : null}
                   </span>
                   <span className="chips cl-list-chips">
                     <StatusChip s={r.status} />
@@ -295,8 +308,6 @@ export function RepsPage() {
 }
 
 function RepCard({ s, active, onClick }: { s: RepStats; active: boolean; onClick?: () => void }) {
-  const pct = s.planPct;
-  const tone = paceTone(s.pace);
   const body = (
     <>
       <div className="row-3">
@@ -307,31 +318,35 @@ function RepCard({ s, active, onClick }: { s: RepStats; active: boolean; onClick
             {fmt.count(s.clients, 'клиент', 'клиента', 'клиентов')} · {fmt.count(s.points, 'точка', 'точки', 'точек')}
           </div>
         </div>
-        {pct !== null ? <span className={cx('cl-rep-pct t-20 w-700', tone === 'bad' && 'c-bad', tone === 'ok' && 'c-ok')}>{fmt.pct(pct, 0)}</span> : null}
       </div>
-      <div className="col" style={{ gap: 6 }}>
-        <div className="row t-13">
-          <span className="muted grow">План месяца</span>
-          <span className="w-600 num">
-            {fmt.money(s.fact)} <span className="muted">из {s.plan ? fmt.money(s.plan) : '—'}</span>
-          </span>
+      <div className="col" style={{ gap: 8 }} title={planTitle(s)}>
+        <div className="t-13 w-600">{planLabel(s)}</div>
+        <div className="row t-13" style={{ gap: 8 }}>
+          {s.plan ? (
+            <span className="num w-600 nowrap grow">
+              {fmt.money(s.fact)} <span className="muted w-500">из {fmt.money(s.plan)}</span>
+            </span>
+          ) : (
+            <span className="grow" />
+          )}
+          <PlanChip s={s} />
         </div>
         <PlanBar s={s} />
       </div>
       <div className="cl-rep-facts">
-        <div>
+        <div title="Выполнено визитов сегодня из назначенных">
           <div className="cl-fact-label">Визиты сегодня</div>
           <div className="cl-fact-value">
             {s.todayDone} <span className="muted">из {s.todayTotal}</span>
           </div>
         </div>
-        <div>
-          <div className="cl-fact-label">С заказом за месяц</div>
-          <div className="cl-fact-value">{s.orderShare === null ? '—' : fmt.pct(s.orderShare, 0)}</div>
+        <div title={s.monthDone ? `С заказом — ${s.monthWithOrder} из ${fmt.count(s.monthDone, 'выполненного визита', 'выполненных визитов', 'выполненных визитов')} с 1 ${s.monthGen}. Пропущенные визиты не входят.` : 'Выполненных визитов в этом месяце ещё нет'}>
+          <div className="cl-fact-label">С заказом</div>
+          <div className="cl-fact-value">{fmt.pct(s.orderShare, 0)}</div>
         </div>
-        <div>
-          <div className="cl-fact-label">Заявки сегодня</div>
-          <div className="cl-fact-value">{s.requestsTodaySum ? fmt.money(s.requestsTodaySum) : '—'}</div>
+        <div title={s.ordersToday ? `Оформлено сегодня: ${fmt.count(s.ordersToday, 'заказ', 'заказа', 'заказов')}${s.ordersTodayWaiting ? `, ждут подтверждения — ${s.ordersTodayWaiting}` : ''}. В план входят после отгрузки.` : 'Сегодня заказов ещё нет'}>
+          <div className="cl-fact-label">Заказы сегодня</div>
+          <div className="cl-fact-value">{s.ordersTodaySum ? fmt.money(s.ordersTodaySum) : '—'}</div>
         </div>
       </div>
     </>

@@ -53,8 +53,6 @@
 
 /* последние чеки */
 .reg-recent .card-head + .card-body { padding-top: 12px; }
-.reg-td-contents { max-width: 260px; }
-.reg-receipts .reg-td-contents { max-width: 240px; }
 .reg-td-client { max-width: 180px; }
 
 /* ---------- чек ---------- */
@@ -170,7 +168,6 @@
   .reg-disc > svg { display: none; }
   .reg-line-calc { display: none; }
   .reg-receipts .table-toolbar .input-wrap, .reg-shifts .table-toolbar .input-wrap { width: 200px; }
-  .reg-receipts .reg-td-contents { max-width: 200px; }
   .reg-receipts.is-wide .reg-col-client { display: none; }
   .reg-shift-grid { grid-template-columns: minmax(0, 1fr) 340px; }
   .reg-quick { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -202,3 +199,61 @@
 /* списки на рабочем столе: длинные имена обрезаются, а не наезжают на цену и кнопку */
 .reg-home-list .list-row > .grow .entity-link { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reg-receipts .table-toolbar .input-wrap, .reg-shifts .table-toolbar .input-wrap { width: 240px; }
+
+/* смена: подпись «Наличные в ящике…» в две строки, суммы плиток на одной линии */
+.reg-shift-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.4fr); }
+.reg-shift-kpis .kpi { justify-content: space-between; }
+@media (max-width: 760px) { .reg-shift-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* таблицы чеков: «Состав» забирает оставшееся место и обрезается многоточием,
+   «⋯» — узкая колонка постоянной ширины у правого края карточки */
+.table th.reg-col-contents, .table td.reg-col-contents { width: 100%; max-width: 0; }
+.reg-clip { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.table th.reg-col-menu, .table td.reg-col-menu { width: 52px; min-width: 52px; padding-left: 4px; padding-right: 12px; text-align: right; }
+.table tfoot td.reg-col-menu { padding-right: 12px; }
+
+/* ---------- телефон: подсказки в три строки, чек — панель снизу ---------- */
+@container (max-width: 480px) {
+  .reg-sugg {
+    grid-template-columns: 40px minmax(0, 1fr) 36px;
+    grid-template-areas: "icon name act" "icon price act" "icon stock act";
+    row-gap: 4px; align-items: start;
+  }
+  .reg-sugg > .icon-tile, .reg-sugg-act { align-self: center; }
+  .reg-sugg-price { justify-content: flex-start; flex-wrap: wrap; gap: 6px; }
+  .reg-sugg-price b { order: -1; font-size: var(--fs-14); }
+  .reg-sugg-code { display: none; }
+  .reg-sugg-title { -webkit-line-clamp: 3; }
+  .reg-sugg-out { flex-direction: row; align-items: center; gap: 6px; }
+}
+
+.reg-sheet-bar {
+  display: flex; align-items: center; gap: var(--sp-3); width: 100%; min-width: 0; flex: 0 0 auto;
+  padding: 12px 16px; border: 0; background: transparent; color: inherit; text-align: left; border-radius: var(--r-card) var(--r-card) 0 0;
+}
+.reg-sheet-bar > svg { width: 20px; height: 20px; color: var(--muted); flex: 0 0 auto; }
+.reg-sheet-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
+.reg-sheet-total { font-size: var(--fs-20); font-weight: 700; white-space: nowrap; }
+
+@media (max-width: 760px) {
+  .reg-pos.has-sheet { padding-bottom: 136px; }
+  .reg-receipt.is-sheet {
+    position: fixed; left: 8px; right: 8px; top: auto; bottom: calc(64px + env(safe-area-inset-bottom) + 8px);
+    z-index: calc(var(--z-nav) - 1); max-height: calc(100vh - 64px - 72px);
+    box-shadow: var(--sh-pop);
+  }
+  .reg-receipt.is-sheet:not(.is-open) > :not(.reg-sheet-bar):not(.reg-pay) { display: none; }
+  .reg-receipt.is-sheet.is-open .reg-sheet-bar { border-bottom: 1px solid var(--line); }
+  .reg-receipt.is-sheet .card-head { padding-top: 10px; }
+  .reg-receipt.is-sheet .card-head > .card-title { display: none; }
+  .reg-receipt.is-sheet .reg-lines { min-height: 0; padding: 0 16px; }
+  .reg-receipt.is-sheet .reg-disc-wrap { margin: 10px 16px 0; }
+  .reg-receipt.is-sheet .reg-totals { padding: 0 16px; }
+  .reg-receipt.is-sheet .reg-total { padding: 6px 0 10px; }
+  .reg-receipt.is-sheet .reg-total-value { font-size: var(--fs-24); }
+  .reg-receipt.is-sheet .reg-pay { padding: 0 12px 12px; }
+  .reg-receipt.is-sheet .reg-pay-btn { height: 48px; }
+  .reg-pay-btn .btn-kbd { display: none; }
+  .reg-hint-item:has(.kbd) { display: none; }
+  .reg-recent .reg-col-contents { display: none; }
+}

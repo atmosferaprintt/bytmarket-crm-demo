@@ -12,8 +12,8 @@ import { useScoped } from '../../roles/scope';
 import { Button, Card, Chip, EmptyState, MoreMenu, Notice, ProgressBar, StatusChip, VISIT_RESULT, VISIT_STATE, cx, fmt, overdueStatus, toast, type MenuItem } from '../../ui';
 import { PlanVisitModal } from './PlanVisitModal';
 import { VisitResultSheet } from './VisitResultSheet';
-import { callPhone, lastPurchases, mapUrl, paceTone, pointOf, repStats, telUrl, useStored } from './lib';
-import { PlanBar } from './parts';
+import { callPhone, lastPurchases, mapUrl, pointOf, repStats, telUrl, useStored } from './lib';
+import { PlanBar, planLabel, planTitle, visitTimes } from './parts';
 import './clients.css';
 
 interface OfflineState {
@@ -95,7 +95,7 @@ export default function Home() {
   ];
 
   const s = day.stats;
-  const planTone = paceTone(s.pace);
+  const missedToday = day.done.filter((v) => v.state === 'missed').length;
   const wd = fmt.weekday(today);
 
   return (
@@ -115,23 +115,32 @@ export default function Home() {
       />
 
       <div className="cl-day-stats">
-        <div className="card cl-day-stat">
-          <div className="cl-day-label">Визиты</div>
+        <div className="card cl-day-stat" title={missedToday ? `Выполнено ${s.todayDone}, пропущено ${missedToday}, всего на сегодня ${s.todayTotal}` : undefined}>
+          <div className="cl-day-label">Визиты сегодня</div>
           <div className="cl-day-value">
             {s.todayDone} <span className="muted">из {s.todayTotal}</span>
           </div>
           <ProgressBar value={s.todayDone} max={s.todayTotal || 1} thin tone="info" />
         </div>
-        <div className="card cl-day-stat">
-          <div className="cl-day-label">План месяца</div>
-          <div className={cx('cl-day-value', planTone === 'bad' && 'c-bad')}>{s.planPct === null ? '—' : fmt.pct(s.planPct, 0)}</div>
-          <PlanBar s={s} thin />
+        <div
+          className="card cl-day-stat"
+          title={s.ordersToday ? `Оформлено сегодня: ${fmt.count(s.ordersToday, 'заказ', 'заказа', 'заказов')}${s.ordersTodayWaiting ? `, ждут подтверждения — ${s.ordersTodayWaiting}` : ''}. В план входят после отгрузки.` : 'Сегодня заказов ещё нет'}
+        >
+          <div className="cl-day-label">Заказы сегодня</div>
+          <div className="cl-day-value">{s.ordersTodaySum ? (s.ordersTodaySum >= 100_000 ? fmt.moneyShort(s.ordersTodaySum) : fmt.money(s.ordersTodaySum)) : '—'}</div>
         </div>
-        <div className="card cl-day-stat">
-          <div className="cl-day-label">Заявки сегодня</div>
-          <div className="cl-day-value" title={fmt.count(s.requestsToday, 'заявка', 'заявки', 'заявок')}>
-            {s.requestsTodaySum >= 100_000 ? fmt.moneyShort(s.requestsTodaySum) : fmt.money(s.requestsTodaySum)}
+        <div className="card cl-day-stat is-plan" title={planTitle(s)}>
+          <div className="cl-day-label">{planLabel(s)}</div>
+          <div className="cl-day-value">
+            {s.plan ? (
+              <>
+                {fmt.money(s.fact)} <span className="muted cl-day-of">из {fmt.money(s.plan)}</span>
+              </>
+            ) : (
+              '—'
+            )}
           </div>
+          <PlanBar s={s} thin />
         </div>
       </div>
 
@@ -192,7 +201,15 @@ export default function Home() {
           )}
 
           {day.done.length ? (
-            <Card title="Сделано сегодня" actions={<span className="muted t-13">{fmt.count(day.done.length, 'визит', 'визита', 'визитов')}</span>} flush>
+            <Card
+              title="Сделано сегодня"
+              actions={
+                <span className="muted t-13">
+                  {missedToday ? `выполнено ${day.done.length - missedToday} · пропущено ${missedToday}` : fmt.count(day.done.length, 'визит', 'визита', 'визитов')}
+                </span>
+              }
+              flush
+            >
               <div className="cl-list is-flush">
                 {day.done.map((v) => {
                   const c = day.idx.clients.get(v.clientId);
@@ -200,13 +217,11 @@ export default function Home() {
                   const st = v.state === 'done' && v.result ? VISIT_RESULT[v.result] : VISIT_STATE[v.state];
                   return (
                     <div key={v.id} className="cl-list-row is-top">
-                      <span className="cl-visit-date is-time">
-                        <span className="w-600">{v.doneAt ? fmt.time(v.doneAt) : v.time}</span>
-                      </span>
                       <span className="cl-list-main">
                         <EntityLink type="client" id={v.clientId}>
                           {c?.name ?? 'Клиент'}
                         </EntityLink>
+                        <span className="t-12 ink-2 w-600">{visitTimes(v)}</span>
                         <span className="muted t-12">{[v.refusalReason, v.comment].filter(Boolean).join(' · ') || pointOf(c, v.pointId)?.address}</span>
                       </span>
                       <span className="chips cl-list-chips">
@@ -325,7 +340,9 @@ function RouteCard({
     <article className={cx('card cl-route-card', primary && 'is-next')}>
       <div className="cl-route-top">
         <span className="cl-route-num">{n}</span>
-        <span className="cl-route-time">{v.time}</span>
+        <span className="cl-route-time" title="Время по плану">
+          {v.time}
+        </span>
         {startedAt ? (
           <Chip tone="info" icon={<PlayCircle />}>
             Идёт с {startedAt}
@@ -371,7 +388,7 @@ function RouteCard({
 
       <div className="cl-route-last">
         <span className="muted">Последняя покупка</span>
-        <span className="w-600">{last ? `${fmt.relDate(last.at, today)} · ${fmt.money(last.total)}` : 'не было'}</span>
+        <span className="w-600">{last ? `${fmt.relDate(last.at, today)} · ${fmt.money(last.total)}` : 'Ещё не покупал'}</span>
       </div>
       {v.comment ? <div className="cl-route-note">{v.comment}</div> : null}
 

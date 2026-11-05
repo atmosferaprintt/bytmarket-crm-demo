@@ -9,7 +9,7 @@ import { useSession } from '../../roles/session';
 import { PageHeader } from '../../shell/PageHeader';
 import { EntityLink, useOpenEntity } from '../../shell/entities';
 import { Avatar, Button, Card, Chip, DataTable, EmptyState, Kpi, Select, fmt, type Column } from '../../ui';
-import { DayPicker, useDayParam } from './parts';
+import { DayPicker, useDayParam, useNarrow } from './parts';
 import { clockOf, couriersOf, dayLabel, deliveredAt, moneyOfDay, type CourierDay } from './lib';
 import { useDeliveryFlow } from './flow';
 
@@ -30,6 +30,7 @@ export function CashPage() {
   const ix = indexes(db);
   const [courierF, setCourierF] = useState('');
   const canTake = can('handInCash');
+  const phone = useNarrow('(max-width: 760px)');
 
   const rows: CourierRow[] = useMemo(
     () =>
@@ -165,13 +166,8 @@ export function CashPage() {
     {
       key: 'check',
       header: 'Сверка',
-      render: (d) => {
-        if (d.state !== 'delivered') return <Chip tone="neutral">Ещё в пути</Chip>;
-        if (d.collected < d.collect) return <Chip tone="bad">{`Меньше на ${fmt.money(d.collect - d.collected)}`}</Chip>;
-        if (d.collectedMethod !== 'cash' || d.collected === 0) return <Chip tone="info">На счёт</Chip>;
-        return d.handedIn ? <Chip tone="ok">Сдано</Chip> : <Chip tone="warn">На руках</Chip>;
-      },
-      sort: (d) => (d.state !== 'delivered' ? 0 : d.collected < d.collect ? 1 : d.handedIn ? 3 : 2),
+      render: (d) => <CheckChip d={d} />,
+      sort: (d) => (d.state === 'failed' ? 0 : d.state === 'assigned' ? 1 : d.state !== 'delivered' ? 2 : d.collected < d.collect ? 3 : d.handedIn ? 5 : 4),
       width: 150,
     },
   ];
@@ -182,51 +178,145 @@ export function CashPage() {
       <div className="dl-toolbar">
         <DayPicker day={day} onChange={setDay} c={c} />
       </div>
-      <div className="grid-4">
-        <Kpi label={`Наличными · ${dayLabel(day, c).toLowerCase()}`} value={fmt.money(totals.cash)} />
-        <Kpi label="Картой и переводом" value={fmt.money(totals.card)} />
-        <Kpi label="Сдано в кассу" value={fmt.money(totals.handed)} />
-        <Kpi label="На руках у курьеров" value={<span className={totals.onHand > 0 ? 'c-warn' : undefined}>{fmt.money(totals.onHand)}</span>} />
-      </div>
+      {phone ? (
+        <>
+          <div className="card dl-pstats">
+            <div className="dl-pstat">
+              <span className="dl-sum-label">Наличными · {dayLabel(day, c).toLowerCase()}</span>
+              <span className="dl-pstat-value">{fmt.money(totals.cash)}</span>
+            </div>
+            <div className="dl-pstat">
+              <span className="dl-sum-label">Картой и переводом</span>
+              <span className="dl-pstat-value">{fmt.money(totals.card)}</span>
+            </div>
+            <div className="dl-pstat">
+              <span className="dl-sum-label">Сдано в кассу</span>
+              <span className="dl-pstat-value">{fmt.money(totals.handed)}</span>
+            </div>
+            <div className="dl-pstat">
+              <span className="dl-sum-label">На руках у курьеров</span>
+              <span className={totals.onHand > 0 ? 'dl-pstat-value c-warn' : 'dl-pstat-value'}>{fmt.money(totals.onHand)}</span>
+            </div>
+          </div>
 
-      <div className="dl-cash-grid dl-tight">
-        <DataTable
-          title="По курьерам"
-          rows={rows}
-          columns={courierCols}
-          rowKey={(r) => r.e.id}
-          onRowClick={(r) => setCourierF((v) => (v === r.e.id ? '' : r.e.id))}
-          selectedKey={courierF || null}
-          totalLabel={() => 'Итого'}
-          exportName={`Деньги курьеров ${fmt.dateShort(day, true)}`}
-          empty={<EmptyState title="Курьеров нет" />}
-        />
-        <HandIns list={handIns} />
-      </div>
+          <section className="col-3">
+            <h2 className="dl-board-title">По курьерам</h2>
+            <div className="card dl-hist">
+              {rows.map((r) => (
+                <div key={r.e.id} className="dl-hist-row">
+                  <Avatar name={r.e.name} size="sm" />
+                  <span className="grow col" style={{ gap: 2, minWidth: 0 }}>
+                    <span className="w-700 ellipsis">{r.e.name}</span>
+                    <span className="t-12 muted ellipsis">
+                      {fmt.count(r.count, 'доставка', 'доставки', 'доставок')} · наличными {fmt.money(r.day.cash)}
+                    </span>
+                  </span>
+                  {r.day.onHand > 0 ? (
+                    <span className="col" style={{ gap: 4, alignItems: 'flex-end' }}>
+                      <span className="num w-700 c-warn nowrap">{fmt.money(r.day.onHand)}</span>
+                      {canTake ? (
+                        <Button size="sm" icon={<HandCoins />} onClick={() => flow.handIn(r.e.id)}>
+                          Принять
+                        </Button>
+                      ) : (
+                        <Chip tone="warn">На руках</Chip>
+                      )}
+                    </span>
+                  ) : (
+                    <Chip tone="ok">Всё сдано</Chip>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
 
-      <div className="dl-tight">
-      <DataTable
-        id="delivery-cash"
-        title="Деньги по доставкам"
-        rows={money}
-        columns={moneyCols}
-        rowKey={(d) => d.id}
-        onRowClick={(d) => open('delivery', d.id)}
-        toolbar={
-          <Select
-            size="sm"
-            className="dl-filter"
-            aria-label="Курьер"
-            value={courierF}
-            onChange={(e) => setCourierF(e.target.value)}
-            options={[{ value: '', label: 'Все курьеры' }, ...rows.map((r) => ({ value: r.e.id, label: r.e.name }))]}
+          <HandIns list={handIns} />
+
+          <section className="col-3">
+            <h2 className="dl-board-title">Деньги по доставкам · {money.length}</h2>
+            {money.length ? (
+              money.map((d) => {
+                const at = deliveredAt(d);
+                return (
+                    <button key={d.id} type="button" className="card dl-cc-row dl-day-row" onClick={() => open('delivery', d.id)}>
+                      <span className="grow col" style={{ gap: 4, minWidth: 0 }}>
+                        <span className="row" style={{ gap: 8 }}>
+                          <span className="w-700 nowrap">№ {d.number}</span>
+                          <span className="t-12 muted nowrap">
+                            {ix.employees.get(d.courierId ?? '')?.short ?? '—'}
+                            {at ? ` · ${fmt.time(at)}` : ''}
+                          </span>
+                        </span>
+                        <span className="t-13 w-600 ellipsis">{ix.clients.get(d.clientId)?.name ?? d.contactName}</span>
+                        <span className="chips">
+                          <CheckChip d={d} />
+                        </span>
+                      </span>
+                      <span className="col" style={{ gap: 2, alignItems: 'flex-end' }}>
+                        <span className="num w-700 nowrap">{fmt.money(d.state === 'delivered' ? d.collected : d.collect)}</span>
+                        <span className="t-12 muted nowrap">
+                          {d.state === 'delivered' ? (d.collected > 0 && d.collectedMethod ? PAY_METHOD_NAMES[d.collectedMethod] : 'получено') : 'к получению'}
+                        </span>
+                      </span>
+                    </button>
+                );
+              })
+            ) : (
+              <div className="card">
+                <EmptyState title={`${dayLabel(day, c)} денег по доставкам не было`} />
+              </div>
+            )}
+          </section>
+        </>
+      ) : (
+        <>
+          <div className="grid-4">
+            <Kpi label={`Наличными · ${dayLabel(day, c).toLowerCase()}`} value={fmt.money(totals.cash)} />
+            <Kpi label="Картой и переводом" value={fmt.money(totals.card)} />
+            <Kpi label="Сдано в кассу" value={fmt.money(totals.handed)} />
+            <Kpi label="На руках у курьеров" value={<span className={totals.onHand > 0 ? 'c-warn' : undefined}>{fmt.money(totals.onHand)}</span>} />
+          </div>
+
+          <div className="dl-cash-grid dl-tight">
+            <DataTable
+              title="По курьерам"
+              rows={rows}
+              columns={courierCols}
+              rowKey={(r) => r.e.id}
+              onRowClick={(r) => setCourierF((v) => (v === r.e.id ? '' : r.e.id))}
+              selectedKey={courierF || null}
+              totalLabel={() => 'Итого'}
+              exportName={`Деньги курьеров ${fmt.dateShort(day, true)}`}
+              empty={<EmptyState title="Курьеров нет" />}
+            />
+            <HandIns list={handIns} />
+          </div>
+
+          <div className="dl-tight">
+          <DataTable
+            id="delivery-cash"
+            title="Деньги по доставкам"
+            rows={money}
+            columns={moneyCols}
+            rowKey={(d) => d.id}
+            onRowClick={(d) => open('delivery', d.id)}
+            toolbar={
+              <Select
+                size="sm"
+                className="dl-filter"
+                aria-label="Курьер"
+                value={courierF}
+                onChange={(e) => setCourierF(e.target.value)}
+                options={[{ value: '', label: 'Все курьеры' }, ...rows.map((r) => ({ value: r.e.id, label: r.e.name }))]}
+              />
+            }
+            totalLabel={() => 'Итого'}
+            exportName={`Сверка курьеров ${fmt.dateShort(day, true)}`}
+            empty={<EmptyState title={`${dayLabel(day, c)} денег по доставкам не было`} />}
           />
-        }
-        totalLabel={() => 'Итого'}
-        exportName={`Сверка курьеров ${fmt.dateShort(day, true)}`}
-        empty={<EmptyState title={`${dayLabel(day, c)} денег по доставкам не было`} />}
-      />
-      </div>
+          </div>
+        </>
+      )}
       {flow.node}
     </>
   );
@@ -258,8 +348,18 @@ function HandIns({ list }: { list: Payment[] }) {
           })}
         </div>
       ) : (
-        <EmptyState title="Сдач в этот день не было" />
+        <EmptyState title="Сдано в кассу: пока ничего" />
       )}
     </Card>
   );
+}
+
+/** Сверка по доставке: что с деньгами сейчас. */
+function CheckChip({ d }: { d: Delivery }) {
+  if (d.state === 'failed') return <Chip tone="bad">Не вручено</Chip>;
+  if (d.state === 'assigned') return <Chip tone="neutral">Ещё не выехал</Chip>;
+  if (d.state !== 'delivered') return <Chip tone="violet">В пути</Chip>;
+  if (d.collected < d.collect) return <Chip tone="bad">{`Меньше на ${fmt.money(d.collect - d.collected)}`}</Chip>;
+  if (d.collectedMethod !== 'cash' || d.collected === 0) return <Chip tone="info">На счёт</Chip>;
+  return d.handedIn ? <Chip tone="ok">Сдано</Chip> : <Chip tone="warn">На руках</Chip>;
 }

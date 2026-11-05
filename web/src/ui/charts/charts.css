@@ -65,7 +65,8 @@
 
 /* план */
 .vz-plan { display: inline-flex; align-items: center; gap: var(--sp-2); min-width: 96px; width: 100%; }
-.vz-plan-track { flex: 1 1 auto; height: 6px; border-radius: var(--r-full); background: var(--chart-track); overflow: hidden; }
+.vz-plan-track { position: relative; flex: 1 1 auto; height: 6px; border-radius: var(--r-full); background: var(--chart-track); overflow: hidden; }
+.vz-plan-mark { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--ink-2); }
 .vz-plan-fill { display: block; height: 100%; border-radius: var(--r-full); }
 .vz-plan-pct { font-size: var(--fs-12); font-weight: 700; color: var(--ink); min-width: 38px; text-align: right; font-variant-numeric: tabular-nums; }
 

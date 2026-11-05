@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react';
 import type { DB, ID, ISODate, Movement, MovementKind, Pack, PriceType, Product, Promo, RoleKey } from '../../data/types';
 import { indexes, priceFor, stockIndex, activePromos, promoApplies, type PriceInfo, type StockInfo } from '../../data/selectors';
 import { get } from '../../data/idx';
-import { diffDays, plusDays } from '../../data/dates';
-import { fmt } from '../../ui';
+import { fmt, PROMO_STATE as PROMO_STATE_UI, type StatusDef } from '../../ui';
+import { EXPIRY_SOON_DAYS, NO_MOVEMENT_DAYS } from '../../data/thresholds';
+import { stockLineOf, type StockLine } from '../stock/calc';
 
 /* ---------- запоминание по версии базы ---------- */
 
@@ -23,12 +24,12 @@ export function memoDB<T>(db: DB, key: string, fn: () => T): T {
   return value;
 }
 
-/* ---------- пороги ---------- */
+/* ---------- пороги: общие для всех разделов ---------- */
 
-/** «Скоро срок»: ближайшая партия истекает в эти дни или уже истекла. */
-export const SOON_DAYS = 60;
-/** «Без движения»: товар лежит, а продаж нет столько дней. */
-export const IDLE_DAYS = 45;
+/** «Истекает срок»: ближайшая партия истекает в эти дни или уже истекла. */
+export const SOON_DAYS = EXPIRY_SOON_DAYS;
+/** «Без движения»: товар лежит, а продаж и отгрузок нет столько дней. */
+export const IDLE_DAYS = NO_MOVEMENT_DAYS;
 
 /* ---------- кто как смотрит каталог ---------- */
 
@@ -49,6 +50,18 @@ export const PACK_NAME: Record<Pack['key'], string> = { pcs: 'Штука', pack:
 /** «шт · упак. 6 · кор. 24» */
 export function packsText(p: Product): string {
   return p.packs.map(PACK_SHORT).join(' · ');
+}
+
+/** Без штуки, она есть всегда: «упак. 6 · кор. 24»; только штучно — «штучно». */
+export function packsShort(p: Product): string {
+  const big = p.packs.filter((x) => x.key !== 'pcs');
+  return big.length ? big.map(PACK_SHORT).join(' · ') : 'штучно';
+}
+
+/** Наценка с одним знаком после запятой во всех строках: «30,0 %», «44,8 %». */
+export function pct1(v: number | null | undefined): string {
+  if (v === null || v === undefined || !Number.isFinite(v)) return '—';
+  return `${fmt.num(v, 1)}\u00a0%`;
 }
 
 /* ---------- наценка ---------- */
@@ -77,8 +90,6 @@ export function promoValueText(promo: Pick<Promo, 'kind' | 'value'>): string {
 
 /* ---------- строки каталога ---------- */
 
-export type StockLevel = 'out' | 'low' | 'ok' | 'inactive';
-
 export interface CatalogRow {
   p: Product;
   brand: string;
@@ -87,23 +98,22 @@ export interface CatalogRow {
   topCategoryId: ID;
   packs: string;
   stock: StockInfo;
+  /** та же строка, что в «Складе»: доступно, флаги, чип статуса */
+  line: StockLine;
+  /** доступно всего: магазин + склад − резерв */
+  available: number;
+  /** на складе для опта: склад − резерв */
+  whAvailable: number;
   retail: PriceInfo;
   wholesale: PriceInfo;
   promo: Promo | null; // акция для любой цены (розница или опт)
-  level: StockLevel; // по магазину и складу вместе, к минимальному остатку
-  shopLevel: StockLevel; // для продавца — по магазину
-  whLevel: StockLevel; // для опта — по складу
+  status: StatusDef | null; // только исключения
+  belowMin: boolean;
+  out: boolean;
   expirySoon: boolean;
   lastSale: ISODate | null;
   idle: boolean;
   search: string;
-}
-
-function levelOf(p: Product, available: number, min: number): StockLevel {
-  if (!p.active) return 'inactive';
-  if (available <= 0) return 'out';
-  if (min > 0 && available < min) return 'low';
-  return 'ok';
 }
 
 export function catalogRows(db: DB): CatalogRow[] {
@@ -111,41 +121,46 @@ export function catalogRows(db: DB): CatalogRow[] {
     const ix = indexes(db);
     const si = stockIndex(db);
     const today = db.meta.today;
-    const soonLimit = plusDays(today, SOON_DAYS);
-    const last = lastSaleIndex(db);
     const rows: CatalogRow[] = [];
     for (const p of db.products) {
       const cat = ix.categories.get(p.categoryId);
       const top = cat?.parentId ? ix.categories.get(cat.parentId) : cat;
       const brand = ix.brands.get(p.brandId)?.name ?? '';
       const stock = si.get(p.id)!;
+      const line = stockLineOf(db, p.id)!;
       const retail = priceFor(db, p.id, { priceType: 'retail', date: today });
       const wholesale = priceFor(db, p.id, { priceType: 'wholesale', date: today });
-      const lastSale = last.get(p.id) ?? null;
-      const hasStock = stock.total.onHand > 0;
-      const idleSince = lastSale ?? p.createdAt;
       rows.push({
         p,
         brand,
         category: top?.name ?? '',
         subcategory: cat?.name ?? '',
         topCategoryId: top?.id ?? p.categoryId,
-        packs: packsText(p),
+        packs: packsShort(p),
         stock,
+        line,
+        available: line.available,
+        whAvailable: line.whAvailable,
         retail,
         wholesale,
         promo: retail.promo ?? wholesale.promo,
-        level: levelOf(p, stock.total.available, p.minStock),
-        shopLevel: levelOf(p, stock.shop.available, 0),
-        whLevel: levelOf(p, stock.warehouse.available, 0),
-        expirySoon: p.expiryTracked && stock.nearestExpiry !== null && stock.nearestExpiry <= soonLimit && hasStock,
-        lastSale,
-        idle: p.active && hasStock && diffDays(idleSince, today) >= IDLE_DAYS,
+        status: line.status,
+        belowMin: line.flags.has('low'),
+        out: line.flags.has('out'),
+        expirySoon: line.flags.has('expiring'),
+        lastSale: line.flow?.lastSale ?? null,
+        idle: line.flags.has('stale'),
         search: [p.name, p.sku, p.variant ?? '', brand, ...p.packs.map((x) => x.barcode)].join(' '),
       });
     }
     return rows;
   });
+}
+
+/** Сколько товаров видит роль в каталоге: владелец и склад — все, включая снятые с продажи; остальные — только в продаже.
+    Одно число на вкладке «Каталог» и на соседних вкладках. */
+export function catalogCount(db: DB, mode: CatalogMode): number {
+  return memoDB(db, `catalogCount-${mode}`, () => (mode === 'full' ? db.products.length : db.products.filter((p) => p.active).length));
 }
 
 /** Строка каталога по id товара. */
@@ -287,12 +302,8 @@ export function promoState(pr: Promo, today: ISODate): PromoState {
   return 'active';
 }
 
-export const PROMO_STATE: Record<PromoState, { label: string; tone: 'ok' | 'info' | 'outline' | 'neutral' }> = {
-  active: { label: 'Действует', tone: 'ok' },
-  future: { label: 'Скоро', tone: 'info' },
-  ended: { label: 'Закончилась', tone: 'outline' },
-  off: { label: 'Выключена', tone: 'neutral' },
-};
+/** Слова состояний акции — из общего словаря ui/statuses. */
+export const PROMO_STATE: Record<PromoState, StatusDef> = PROMO_STATE_UI;
 
 export const AUDIENCE: Record<Promo['audience'], string> = { all: 'Все покупатели', retail: 'Розница', wholesale: 'Опт' };
 

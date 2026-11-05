@@ -41,7 +41,7 @@ export function scopeFor(db: DB, s: Pick<Session, 'me' | 'role' | 'can'>): Scope
 
   let deliveries = db.deliveries;
   if (s.role === 'courier') deliveries = db.deliveries.filter((d) => d.courierId === meId);
-  else if (own) {
+  else if (s.role === 'rep') {
     const ids = new Set(orders.map((o) => o.id));
     deliveries = db.deliveries.filter((d) => ids.has(d.orderId));
   }
@@ -50,7 +50,8 @@ export function scopeFor(db: DB, s: Pick<Session, 'me' | 'role' | 'can'>): Scope
   if (s.role === 'rep') visits = db.visits.filter((v) => v.repId === meId);
 
   let chats = db.chats;
-  if (own) chats = db.chats.filter((c) => ownClientIds.has(c.clientId) || c.ownerId === meId);
+  if (s.role === 'rep') chats = db.chats.filter((c) => ownClientIds.has(c.clientId) || c.ownerId === meId);
+  // менеджеры отвечают в общий WhatsApp магазина — видят все переписки
 
   let receipts = db.receipts;
   if (s.role === 'seller') receipts = db.receipts.filter((r) => r.sellerId === meId);

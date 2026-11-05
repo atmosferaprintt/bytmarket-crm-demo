@@ -1,7 +1,7 @@
 /* Доставки: очередь на день — счётчики состояний, таблица, назначение. */
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { UserPlus } from 'lucide-react';
+import { ChevronDown, Clock as ClockIcon, UserPlus } from 'lucide-react';
 import type { Delivery, DeliveryState } from '../../data/types';
 import { useDB, useDBVersion } from '../../data/store';
 import { indexes } from '../../data/selectors';
@@ -9,9 +9,9 @@ import { useSession } from '../../roles/session';
 import { useScoped } from '../../roles/scope';
 import { PageHeader } from '../../shell/PageHeader';
 import { EntityLink, useOpenEntity } from '../../shell/entities';
-import { Avatar, Button, Card, DataTable, EmptyState, MoreMenu, PICK_STATE, Select, StatusChip, fmt, type Column } from '../../ui';
+import { Avatar, Button, Card, DataTable, EmptyState, MoreMenu, PICK_STATE, SearchInput, Select, StatusChip, cx, fmt, type Column } from '../../ui';
 import { DayPicker, LateChip, StateChip, StatePills, useDayParam, useNarrow, type StateFilter } from './parts';
-import { byRoute, clockOf, couriersOf, dayLabel, forDay, intervalStart, lateOf, placesText, shortDistrict } from './lib';
+import { byRoute, clockOf, couriersOf, dayLabel, forDay, intervalStart, lateOf, placesText, shortDistrict, type Clock } from './lib';
 import { actsFor, useDeliveryFlow } from './flow';
 
 const STATE_RANK: Record<DeliveryState, number> = { failed: 0, waiting: 1, on_way: 2, assigned: 3, delivered: 4, returned: 5 };
@@ -80,6 +80,7 @@ export function QueuePage() {
   const canAssign = can('assignDelivery');
   const isWarehouse = role === 'warehouse';
   const narrow = useNarrow();
+  const phone = useNarrow('(max-width: 760px)');
   const compact = narrow || isWarehouse;
 
   const columns: Column<Delivery>[] = [
@@ -253,13 +254,16 @@ export function QueuePage() {
         }
       />
 
-      <div className="dl-toolbar">
+      <div className={cx('dl-toolbar', phone && 'is-phone')}>
         <DayPicker day={day} onChange={setDay} c={c} counts={dayCounts} />
         <StatePills value={stateF} onChange={(v) => setParam('state', v, 'all')} counts={counts.res} late={counts.late} returned={counts.returned} />
       </div>
 
       {isWarehouse ? <HandoffCard list={dayList} /> : null}
 
+      {phone ? (
+        <PhoneQueue rows={rows} c={c} canAssign={canAssign} flow={flow} emptyTitle={emptyTitle} onOpen={(d) => open('delivery', d.id)} />
+      ) : (
       <div className="dl-tight">
       <DataTable
         id={`delivery-queue-${role}`}
@@ -303,8 +307,108 @@ export function QueuePage() {
         }
       />
       </div>
+      )}
       {flow.node}
     </>
+  );
+}
+
+/** Телефон: карточки вместо таблицы — номер, клиент, статус, сумма и главное действие. */
+function PhoneQueue({
+  rows,
+  c,
+  canAssign,
+  flow,
+  emptyTitle,
+  onOpen,
+}: {
+  rows: Delivery[];
+  c: Clock;
+  canAssign: boolean;
+  flow: ReturnType<typeof useDeliveryFlow>;
+  emptyTitle: string;
+  onOpen: (d: Delivery) => void;
+}) {
+  const db = useDB();
+  const { can } = useSession();
+  const ix = indexes(db);
+  const [q, setQ] = useState('');
+  const [limit, setLimit] = useState(30);
+  const norm = (x: string) => x.toLowerCase().replace(/ё/g, 'е');
+  const tokens = norm(q.trim()).split(/\s+/).filter(Boolean);
+  const list = tokens.length
+    ? rows.filter((d) => {
+        const t = norm(`${d.number} ${ix.orders.get(d.orderId)?.number ?? ''} ${ix.clients.get(d.clientId)?.name ?? ''} ${d.address} ${d.district} ${d.contactName} ${d.courierId ? ix.employees.get(d.courierId)?.name ?? '' : ''}`);
+        return tokens.every((x) => t.includes(x));
+      })
+    : rows;
+  return (
+    <div className="col-3">
+      <SearchInput value={q} onChange={setQ} placeholder="Номер, клиент, адрес" size="lg" />
+      {list.length ? (
+        list.slice(0, limit).map((d) => {
+          const o = ix.orders.get(d.orderId);
+          const courier = d.courierId ? ix.employees.get(d.courierId) : undefined;
+          const acts = canAssign ? actsFor(d, can, { courier: false, order: o }) : null;
+          const main = acts?.main && (acts.main.key === 'assign' || acts.main.key === 'retry' || acts.main.key === 'return') ? acts.main : null;
+          const more = acts ? (main ? acts.more : acts.all) : [];
+          return (
+            <div key={d.id} role="button" tabIndex={0} className="card dl-pcard" onClick={() => onOpen(d)} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onOpen(d))}>
+              <div className="dl-pcard-top">
+                <span className="w-700 t-14 nowrap">№ {d.number}</span>
+                {o ? <span className="t-12 muted nowrap">заказ № {o.number}</span> : null}
+                <span className="spacer" />
+                {d.collect > 0 ? <span className="w-700 t-16 num nowrap">{fmt.money(d.collect)}</span> : <span className="t-13 muted nowrap">Без оплаты</span>}
+              </div>
+              <div className="col" style={{ gap: 2, minWidth: 0 }}>
+                <span className="w-600 t-14 ellipsis">{ix.clients.get(d.clientId)?.name ?? d.contactName}</span>
+                <span className="t-12 muted ellipsis">
+                  {d.address} · {shortDistrict(d.district)}
+                </span>
+              </div>
+              <div className="dl-pcard-meta">
+                <span className="row nowrap" style={{ gap: 4 }}>
+                  <ClockIcon />
+                  {d.date !== c.today ? `${fmt.dateShort(d.date)}, ` : ''}
+                  {d.interval}
+                </span>
+                <span className={cx('nowrap', !courier && 'faint')}>{courier ? courier.short : 'Без курьера'}</span>
+                <span className="nowrap muted">
+                  {placesText(d.places)} · {fmt.num(Math.round(d.weightKg))} кг
+                </span>
+              </div>
+              <div className="dl-pcard-chips">
+                <span className="chips grow">
+                  <StateChip d={d} />
+                  <LateChip d={d} c={c} />
+                </span>
+                {more.length ? (
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <MoreMenu size="sm" items={flow.menu(more, d)} />
+                  </span>
+                ) : null}
+              </div>
+              {main ? (
+                <div onClick={(e) => e.stopPropagation()}>
+                  <Button size="lg" block icon={main.icon} onClick={() => flow.act(main, d)}>
+                    {main.key === 'retry' ? 'Повторить доставку' : main.label}
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          );
+        })
+      ) : (
+        <Card>
+          <EmptyState title={tokens.length ? 'Ничего не нашли' : emptyTitle}>{tokens.length ? 'Измените поиск' : null}</EmptyState>
+        </Card>
+      )}
+      {list.length > limit ? (
+        <Button size="lg" block variant="ghost" icon={<ChevronDown />} onClick={() => setLimit((n) => n + 30)}>
+          Показать ещё · {list.length - limit}
+        </Button>
+      ) : null}
+    </div>
   );
 }
 

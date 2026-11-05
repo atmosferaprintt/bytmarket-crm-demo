@@ -7,8 +7,13 @@ import { ROLES } from '../../roles/roles';
 import { VISIT_RESULT } from '../../ui';
 import { staffRows, type StaffRow } from './calc';
 import { KpiTile } from '../overview/KpiTile';
-import { DocsDrawer, HowCalc, PartialMark, ReportTop, sum, useReportPeriod, type DocRow } from './parts';
-import { groupFacts, planFor, saleFacts, topCategoryId } from '../overview/analytics';
+import { DocsDrawer, HowCalc, PartialMark, ReportTop, WrapHead, sum, useReportPeriod, type DocRow } from './parts';
+import { groupFacts, saleFacts, topCategoryId } from '../overview/analytics';
+import { planProgress } from '../../data/kpis';
+
+const MON_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+const MON_NOM = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+const monthIx = (ym: string) => +ym.slice(5, 7) - 1;
 
 export default function StaffReport() {
   const db = useDB();
@@ -17,7 +22,9 @@ export default function StaffReport() {
   const seeProfit = can('seeProfit');
   const { range, label } = useReportPeriod();
   const rows = useMemo(() => staffRows(db, range.from, range.to), [db, version, range.from, range.to]);
-  const storePlan = useMemo(() => planFor(db, range.from, range.to), [db, version, range.from, range.to]);
+  // план — месяц, в который попадает конец периода; та же формула, что в «Клиенты → Представители» и на обзоре
+  const storePlan = useMemo(() => planProgress(db, null, range.to), [db, version, range.to]);
+  const planMonth = MON_NOM[monthIx(storePlan.month)];
   const [pick, setPick] = useState<StaffRow | null>(null);
   const [repPick, setRepPick] = useState<StaffRow | null>(null);
 
@@ -73,7 +80,7 @@ export default function StaffReport() {
     { key: 'cancel', header: 'Отмены', align: 'right', render: (r) => (r.cancelled ? fmt.num(r.cancelled) : '—'), sort: (r) => r.cancelled },
     {
       key: 'debt',
-      header: 'Долг клиентов',
+      header: <WrapHead width={64}>Долг клиентов</WrapHead>,
       align: 'right',
       render: (r) => (r.clientsDebt ? <span title={r.clientsOverdue ? `Из них просрочено ${fmt.money(r.clientsOverdue)}` : undefined} className={r.clientsOverdue ? 'c-bad' : undefined}>{fmt.money(r.clientsDebt)}</span> : '—'),
       sort: (r) => r.clientsDebt,
@@ -81,11 +88,21 @@ export default function StaffReport() {
     },
     {
       key: 'plan',
-      header: 'План',
-      render: (r) => (r.plan ? <PlanMeter value={r.agg.revenue} plan={r.plan} title={`План на период: ${fmt.money(r.plan)}`} /> : <span className="faint">не задан</span>),
-      sort: (r) => (r.plan ? r.agg.revenue / r.plan : -1),
-      csv: (r) => (r.plan ? Math.round((r.agg.revenue / r.plan) * 100) : ''),
-      width: 120,
+      header: (
+        <span className="rp-plan-head" title={`План на ${planMonth}: продажи с 1 числа к плану всего месяца. По графику — сколько должно быть на ${fmt.date(storePlan.to)}`}>
+          План месяца
+          <span className="rp-plan-sched">по графику {fmt.pct(storePlan.expectedPct, 0)}</span>
+        </span>
+      ),
+      render: (r) =>
+        r.plan.plan ? (
+          <PlanMeter value={r.plan.fact} plan={r.plan.plan} expectedPct={r.plan.expectedPct} title={`План на ${planMonth}: ${fmt.money(r.plan.plan)}, продано ${fmt.money(r.plan.fact)}`} />
+        ) : (
+          <span className="faint">не задан</span>
+        ),
+      sort: (r) => r.plan.pct ?? -1,
+      csv: (r) => r.plan.pct ?? '',
+      width: 150,
     },
   ];
 
@@ -152,9 +169,10 @@ export default function StaffReport() {
       <div className="rp-kpis">
         <KpiTile label="Продажи сотрудников" value={fmt.money(revenue)} />
         <KpiTile
-          label="План магазина"
-          value={storePlan ? fmt.pct((revenue / storePlan) * 100, 0) : 'не задан'}
-          extra={storePlan ? <div className="rp-kpi-line">из <b>{fmt.money(storePlan)}</b></div> : undefined}
+          label={`План магазина на ${planMonth}`}
+          value={storePlan.pct !== null ? fmt.pct(storePlan.pct, 0) : 'не задан'}
+          title={storePlan.plan ? `Продано ${fmt.money(storePlan.fact)} из ${fmt.money(storePlan.plan)}` : undefined}
+          extra={storePlan.plan ? <div className="rp-kpi-line">По графику <b>{fmt.pct(storePlan.expectedPct, 0)}</b></div> : undefined}
         />
         <KpiTile label="Новые клиенты" value={fmt.num(sum(rows, (r) => r.newClients))} />
         <KpiTile label="Ручные скидки" value={fmt.money(sum(rows, (r) => r.agg.manualDiscount))} />
@@ -217,7 +235,7 @@ export default function StaffReport() {
           ['Новые клиенты', 'Клиент заведён в базе после 5 августа, и первая его покупка — в выбранном периоде. Засчитывается тому, кто её оформил. Повторные — покупки клиентов, которые уже покупали раньше.'],
           ['Скидки и отмены', 'Ручные скидки — то, что сотрудник дал сверх акции. Отмены — заказы ответственного, отменённые за период.'],
           ['Долг клиентов', 'Долг на сегодня по клиентам, закреплённым за сотрудником. Красным — если есть просрочка.'],
-          ['План', 'Личный план на месяц × доля дней месяца в периоде. Выполнение = продажи ÷ план.'],
+          ['План месяца', `Продажи сотрудника с 1 ${MON_GEN[monthIx(storePlan.month)]} к его плану на весь месяц — по той же формуле, что в разделе «Клиенты → Представители» и на обзоре. «По графику» — доля прошедших дней месяца: столько должно быть выполнено к сегодняшнему дню. Риска на полосе — там, где надо быть.`],
           ['Прибыль', 'Валовая, по строкам с известной себестоимостью. Чистую прибыль не считаем.'],
         ]}
       />

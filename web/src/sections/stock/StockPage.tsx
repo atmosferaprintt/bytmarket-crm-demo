@@ -7,8 +7,9 @@ import { categoryFamily } from '../../data/selectors';
 import { useSession } from '../../roles/session';
 import { PageHeader } from '../../shell/PageHeader';
 import { useOpenEntity } from '../../shell/entities';
-import { DataTable, EmptyState, Kpi, Segmented, Select, StatusChip, fmt, type Column } from '../../ui';
-import { categoryOptions, stockLines, type StockFlag, type StockLine } from './calc';
+import { DataTable, EmptyState, Kpi, Segmented, Select, fmt, type Column } from '../../ui';
+import { NO_MOVEMENT_DAYS, categoryOptions, stockLines, type StockFlag, type StockLine } from './calc';
+import { StockStatusChip, statusRank } from './StockStatus';
 import { stockTabCounts } from './picking';
 import { StockDocButtons, useStockDocs } from './docActions';
 import { useNarrow } from './useNarrow';
@@ -17,13 +18,16 @@ type FilterKey = 'all' | StockFlag;
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'all', label: 'Все' },
   { key: 'low', label: 'Ниже минимума' },
+  { key: 'out', label: 'Нет в наличии' },
+  { key: 'shopLow', label: 'Мало в магазине' },
   { key: 'expiring', label: 'Истекает срок' },
   { key: 'reserved', label: 'В резерве' },
   { key: 'expected', label: 'Ожидается' },
   { key: 'quarantine', label: 'В карантине' },
-  { key: 'stale', label: 'Без движения 45 дней' },
-  { key: 'shopLow', label: 'Мало в магазине' },
+  { key: 'stale', label: `Без движения ${NO_MOVEMENT_DAYS} дней` },
 ];
+
+const MIN_TITLE = 'Сколько держим в магазине на полке / минимальный остаток по магазину и складу вместе';
 
 const n0 = (v: number): ReactNode => (v ? fmt.num(v) : <span className="faint">0</span>);
 
@@ -35,6 +39,8 @@ export default function StockPage() {
   const open = useOpenEntity();
   const docs = useStockDocs();
   const narrow = useNarrow();
+  // закупочная цена за штуку — только на широком экране: на 1280–1440 место нужнее названию (она есть в карточке товара)
+  const wide = !useNarrow('(max-width: 1560px)');
   const [place, setPlace] = useState<'all' | LocationKey>('all');
   const [cat, setCat] = useState('');
   const [params] = useSearchParams();
@@ -98,24 +104,35 @@ export default function StockPage() {
 
   const columns: Column<StockLine>[] = [
     {
+      key: 'sku',
+      header: 'Артикул',
+      sort: (l) => l.p.sku,
+      csv: (l) => l.p.sku,
+      className: 'stock-col-sku',
+      render: (l) => <span className="muted nowrap">{l.p.sku}</span>,
+      total: () => 'Итого',
+    },
+    {
       key: 'name',
       header: 'Товар',
       sort: (l) => l.p.name,
       csv: (l) => l.p.name,
+      className: 'stock-col-name',
       render: (l) => (
-        <div className="stock-name-cell">
-          <div className="cell-title">{l.p.name}</div>
-          <div className="cell-sub">{l.p.sku}</div>
+        <div className="cell-title stock-name" title={l.p.name}>
+          {l.p.name}
         </div>
       ),
+      total: (rs) => fmt.count(rs.length, 'товар', 'товара', 'товаров'),
     },
     {
       key: 'min',
-      header: 'Минимум',
+      header: 'Мин. магазин\u00a0/\u00a0всего',
       align: 'right',
-      csv: (l) => l.p.minStock,
+      className: 'stock-th-wrap',
+      csv: (l) => `${l.shopMin} / ${l.p.minStock}`,
       render: (l) => (
-        <span className="muted" title={`В магазине держим от ${l.shopMin} шт, всего — от ${l.p.minStock} шт`}>
+        <span className="muted nowrap" title={`${MIN_TITLE}: в магазине от ${fmt.qty(l.shopMin)}, всего от ${fmt.qty(l.p.minStock)}`}>
           {l.shopMin} / {l.p.minStock}
         </span>
       ),
@@ -151,13 +168,13 @@ export default function StockPage() {
     },
     {
       key: 'avail',
-      header: 'Доступно',
+      header: place === 'all' ? 'Доступно' : place === 'shop' ? 'Доступно в магазине' : 'Доступно на складе',
       align: 'right',
       sort: (l) => at(l).available,
       csv: (l) => at(l).available,
       render: (l) => {
         const v = at(l).available;
-        return <span className={v <= 0 ? 'w-700 c-bad' : l.flags.has('low') ? 'w-700 c-warn' : 'w-700'} title={place === 'all' ? 'Магазин + склад − резерв' : 'Факт − резерв'}>{fmt.num(v)}</span>;
+        return <span className={v <= 0 ? 'w-700 c-bad' : l.flags.has('low') ? 'w-700 c-warn' : 'w-700'}>{fmt.num(v)}</span>;
       },
       total: (rs) => fmt.num(sum(rs, (l) => at(l).available)),
     },
@@ -174,6 +191,8 @@ export default function StockPage() {
       key: 'q',
       header: 'Карантин',
       align: 'right',
+      hidden: narrow && flt !== 'quarantine',
+      sort: (l) => l.info.quarantine,
       csv: (l) => l.info.quarantine,
       render: (l) => (l.info.quarantine ? <span className="stock-q">{fmt.num(l.info.quarantine)}</span> : n0(0)),
       total: (rs) => fmt.num(sum(rs, (l) => l.info.quarantine)),
@@ -182,9 +201,9 @@ export default function StockPage() {
       key: 'cost',
       header: 'Закупка',
       align: 'right',
-      hidden: !seeCost || narrow,
+      hidden: !seeCost || !wide,
       csv: (l) => l.cost,
-      render: (l) => <span className="muted">{l.cost === null ? '—' : fmt.price(l.cost)}</span>,
+      render: (l) => <span className="muted nowrap">{l.cost === null ? '—' : fmt.price(l.cost)}</span>,
     },
     {
       key: 'value',
@@ -196,16 +215,17 @@ export default function StockPage() {
       render: (l) => {
         const v = placeValue(l);
         if (v === null) return <span className="faint" title="Закупочная цена неизвестна">—</span>;
-        return <span className="w-600">{fmt.money(v)}</span>;
+        return <span className="w-600 nowrap">{fmt.money(v)}</span>;
       },
       total: (rs) => fmt.money(sum(rs, (l) => placeValue(l) ?? 0)),
     },
     {
       key: 'status',
       header: 'Статус',
-      sort: (l) => l.status.label,
-      csv: (l) => l.status.label,
-      render: (l) => <StatusChip s={l.status} />,
+      className: 'stock-col-status',
+      sort: (l) => statusRank(l),
+      csv: (l) => l.status?.label ?? 'В наличии',
+      render: (l) => <StockStatusChip line={l} />,
     },
   ];
 
@@ -226,7 +246,7 @@ export default function StockPage() {
           <Kpi label="Мало в магазине" value={<>{fmt.num(kpi.shopLow)} {unit(kpi.shopLow, 'позиция', 'позиции', 'позиций')}</>} onClick={() => setFlt('shopLow')} />
         )}
         <Kpi label="Ниже минимума" value={<>{fmt.num(kpi.low)} {unit(kpi.low, 'позиция', 'позиции', 'позиций')}</>} onClick={() => setFlt('low')} />
-        <Kpi label="Скоро истекает срок" value={<>{fmt.num(kpi.expiring)} {unit(kpi.expiring, 'позиция', 'позиции', 'позиций')}</>} onClick={() => setFlt('expiring')} />
+        <Kpi label="Истекает срок" value={<>{fmt.num(kpi.expiring)} {unit(kpi.expiring, 'позиция', 'позиции', 'позиций')}</>} onClick={() => setFlt('expiring')} />
         <Kpi label="В карантине" value={<>{fmt.num(kpi.quarantine)} <small className="stock-kpi-unit">шт</small></>} onClick={() => setFlt('quarantine')} />
         <Kpi
           label="Ожидается поставок"
@@ -240,8 +260,9 @@ export default function StockPage() {
         />
       </div>
 
-      <div className="stock-tight">
+      <section className="card table-card stock-tight stock-main">
       <DataTable
+        card={false}
         id="stock-main"
         rows={rows}
         columns={columns}
@@ -277,7 +298,8 @@ export default function StockPage() {
         }
         empty={<EmptyState title="Таких товаров нет">Снимите отбор или поменяйте категорию</EmptyState>}
       />
-      </div>
+        <div className="table-foot">Доступно = магазин + склад − резерв</div>
+      </section>
       {docs.element}
     </>
   );

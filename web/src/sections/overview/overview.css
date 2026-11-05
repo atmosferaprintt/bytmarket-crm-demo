@@ -23,6 +23,7 @@ button.ov-kpi:hover { background: var(--panel); box-shadow: var(--sh-pop); }
 .ov-kpi .kpi-value { margin-top: 2px; }
 .ov-kpi .kpi-delta { margin-top: -2px; }
 .ov-kpi-label { display: inline-flex; align-items: center; gap: 6px; }
+.ov-kpi-asof { display: inline-flex; align-items: center; gap: 8px; margin-top: -2px; font-size: var(--fs-12); font-weight: 600; color: var(--muted); white-space: nowrap; }
 .ov-info { width: 14px; height: 14px; color: var(--warn); }
 .ov-kpi-line { display: flex; align-items: center; gap: var(--sp-2); margin-top: auto; font-size: var(--fs-12); color: var(--muted); font-weight: 600; white-space: nowrap; min-width: 0; }
 .ov-kpi-line b { color: var(--ink); font-weight: 700; }
@@ -73,6 +74,7 @@ button.ov-kpi:hover { background: var(--panel); box-shadow: var(--sh-pop); }
 .ov-mini-main { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
 .ov-mini-main .entity-link { font-weight: 500; color: var(--ink-2); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
 .ov-mini-val { font-weight: 700; white-space: nowrap; }
+.ov-mini-val.is-muted { color: var(--ink-2); font-weight: 600; }
 .ov-mini-empty { padding: 12px 0; color: var(--muted); }
 
 /* ---------- «Требует внимания» ---------- */
@@ -106,6 +108,12 @@ button.ov-kpi:hover { background: var(--panel); box-shadow: var(--sh-pop); }
 .att-line-who { min-width: 0; overflow: hidden; }
 .att-line-act { display: inline-flex; gap: 6px; justify-content: flex-end; }
 .att-group-head { display: flex; align-items: center; gap: var(--sp-2); }
+.att-line.is-group .att-line-title { font-weight: 700; }
+.att-chev { transition: transform var(--dur) var(--ease); }
+.att-chev.is-open { transform: rotate(180deg); }
+.att-members { background: var(--sub); border-bottom: 1px solid var(--line); }
+.att-members .att-line { padding-left: 52px; }
+.att-members .att-line:last-child { border-bottom: 0; }
 .att-more { padding: 8px 20px 12px; border-top: 1px solid var(--line); }
 
 /* ---------- ширина ---------- */

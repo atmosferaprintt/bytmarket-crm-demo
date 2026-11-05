@@ -319,6 +319,11 @@ export function packLabel(p: Product, pack: PackKey): string {
   return `${PACK_SHORT[pack]} ${pk.qty} шт`;
 }
 
+/** Номер документа в тексте всегда «№ 502»: с пробелом после знака. Тексты операций приходят как «№502». */
+export function fixNo(s: string): string {
+  return s.replace(/№[\s\u00a0]*(?=\d)/g, '№ ');
+}
+
 export function newKey(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 }

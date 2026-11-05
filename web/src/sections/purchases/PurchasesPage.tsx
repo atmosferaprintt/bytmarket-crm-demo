@@ -163,7 +163,7 @@ export default function PurchasesPage() {
         <Kpi label="В пути" value={<>{fmt.num(kpi.inWay)} {seeCost ? <small className="stock-kpi-unit">на {fmt.money(kpi.inWaySum)}</small> : unit(kpi.inWay, 'закупка', 'закупки', 'закупок')}</>} onClick={() => setFlt('ordered')} />
         {seeCost ? (
           <>
-            <Kpi label="Ждут подтверждения" value={<>{fmt.num(kpi.drafts)} {unit(kpi.drafts, 'закупка', 'закупки', 'закупок')}</>} onClick={() => setFlt('draft')} />
+            <Kpi label="Черновики" value={<>{fmt.num(kpi.drafts)} {unit(kpi.drafts, 'закупка', 'закупки', 'закупок')}</>} onClick={() => setFlt('draft')} />
             <Kpi label="Долг поставщикам" value={fmt.money(kpi.debt)} onClick={() => setFlt('debt')} />
             <Kpi label="Просрочено" value={<span className={kpi.overdue ? 'c-bad' : undefined}>{fmt.money(kpi.overdue)}</span>} onClick={() => setFlt('debt')} />
           </>
@@ -171,11 +171,11 @@ export default function PurchasesPage() {
           <>
             <Kpi label="Опаздывают" value={<>{fmt.num(kpi.late)} {unit(kpi.late, 'закупка', 'закупки', 'закупок')}</>} onClick={() => setFlt('late')} />
             <Kpi label="Приняты частично" value={<>{fmt.num(kpi.partial)} {unit(kpi.partial, 'закупка', 'закупки', 'закупок')}</>} onClick={() => setFlt('partial')} />
-            <Kpi label="Ждут подтверждения" value={<>{fmt.num(kpi.drafts)} {unit(kpi.drafts, 'закупка', 'закупки', 'закупок')}</>} onClick={() => setFlt('draft')} />
+            <Kpi label="Черновики" value={<>{fmt.num(kpi.drafts)} {unit(kpi.drafts, 'закупка', 'закупки', 'закупок')}</>} onClick={() => setFlt('draft')} />
           </>
         )}
       </div>
-      <div className="stock-tight">
+      <div className="stock-tight pur-tight">
       <DataTable
         id="purchases-list"
         rows={rows}

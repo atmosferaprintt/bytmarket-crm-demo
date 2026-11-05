@@ -5,7 +5,7 @@ import { dispatch, useDB } from '../../data/store';
 import { useSession } from '../../roles/session';
 import { Button, Field, Modal, MoneyInput, Notice, fmt, toast } from '../../ui';
 import { FromTo } from './bits';
-import { markupPct, minAllowedPrice } from './lib';
+import { markupPct, minAllowedPrice, pct1 } from './lib';
 
 export default function PriceModal({ product, onClose, onSaved }: { product: Product; onClose: () => void; onSaved?: () => void }) {
   const db = useDB();
@@ -41,7 +41,7 @@ export default function PriceModal({ product, onClose, onSaved }: { product: Pro
       <FromTo from={from} to={to} />
       {seeCost && cost !== null ? (
         <span className="prd-price-markup">
-          <FromTo from={Math.round(markupPct(from, cost)! * 10) / 10} to={Math.round(markupPct(to || 0, cost)! * 10) / 10} format={(v) => fmt.pct(v)} />
+          <FromTo from={Math.round(markupPct(from, cost)! * 10) / 10} to={Math.round(markupPct(to || 0, cost)! * 10) / 10} format={(v) => pct1(v)} />
         </span>
       ) : null}
     </div>

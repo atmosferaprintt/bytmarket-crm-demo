@@ -5,10 +5,10 @@ import { LOCATION_NAMES } from '../../data/types';
 import { indexes, stockIndex, type StockInfo } from '../../data/selectors';
 import { diffDays, plusDays } from '../../data/dates';
 import { STOCK_LEVEL, fmt, type StatusDef } from '../../ui';
+import { EXPIRY_SOON_DAYS, NO_MOVEMENT_DAYS, SALES_WINDOW_DAYS, isBelowMin } from '../../data/thresholds';
 
-export const EXPIRY_SOON_DAYS = 30;
-export const STALE_DAYS = 45;
-const SALES_WINDOW = 30;
+export { EXPIRY_SOON_DAYS, NO_MOVEMENT_DAYS };
+const SALES_WINDOW = SALES_WINDOW_DAYS;
 
 /* ---------- запоминание по версии базы ---------- */
 const cache = new WeakMap<DB, { v: number; m: Map<string, unknown> }>();
@@ -87,7 +87,10 @@ export function inBoxes(p: Product, qty: number): string | null {
 }
 
 /* ---------- строка остатков ---------- */
-export type StockFlag = 'low' | 'expiring' | 'reserved' | 'expected' | 'quarantine' | 'stale' | 'shopLow' | 'out';
+/* Одна строка на товар — общая для «Склада» и «Товаров», чтобы «Доступно», «Ниже минимума»,
+   «Без движения» и чип статуса совпадали на всех экранах.
+   Доступно = магазин + склад − резерв. Для опта — склад − резерв. */
+export type StockFlag = 'low' | 'out' | 'expiring' | 'reserved' | 'expected' | 'quarantine' | 'stale' | 'shopLow' | 'inactive';
 
 export interface StockLine {
   id: ID;
@@ -96,18 +99,26 @@ export interface StockLine {
   categoryId: ID;
   info: StockInfo;
   flow: Flow | undefined;
+  /** доступно всего: магазин + склад − резерв */
+  available: number;
+  /** на складе для опта: склад − резерв */
+  whAvailable: number;
   shopMin: number;
   cost: number | null;
   value: number | null; // факт × закупочная цена
   expDays: number | null;
   staleDays: number | null;
   flags: Set<StockFlag>;
-  status: StatusDef;
+  /** чип только для исключений; обычное «в наличии» — null */
+  status: StatusDef | null;
+  /** подсказка к чипу */
+  statusTitle: string | undefined;
   search: string;
   /** сколько предлагаем переместить в магазин, если там мало */
   shopMove: { pack: Pack; packQty: number; qty: number } | null;
 }
 
+/** Сколько держим на полке магазина: два дня продаж с магазина, но не меньше 2 шт и 10 % общего минимума. */
 export function shopMinOf(p: Product, f: Flow | undefined): number {
   return Math.max(2, Math.ceil((f?.shopPerDay ?? 0) * 2), Math.ceil(p.minStock * 0.1));
 }
@@ -127,6 +138,8 @@ function shopMoveOf(p: Product, info: StockInfo, f: Flow | undefined, shopMin: n
   return { pack: p.packs[0], packQty: q, qty: q };
 }
 
+const days = (n: number) => fmt.count(n, 'день', 'дня', 'дней');
+
 export function stockLines(db: DB): StockLine[] {
   return memoDb(db, 'stockLines', () => {
     const si = stockIndex(db);
@@ -140,26 +153,44 @@ export function stockLines(db: DB): StockLine[] {
       const shopMin = shopMinOf(p, f);
       const flags = new Set<StockFlag>();
       const t = info.total;
+      const available = t.available;
+      const whAvailable = info.warehouse.available;
       const expDays = info.nearestExpiry ? diffDays(today, info.nearestExpiry) : null;
-      const staleDays = t.onHand > 0 ? (f?.lastSale ? diffDays(f.lastSale, today) : diffDays(db.meta.startDate, today)) : null;
-      if (p.active && t.available < p.minStock) flags.add('low');
-      if (t.onHand === 0 && p.active) flags.add('out');
+      // без движения: с последней продажи или отгрузки; если их не было — с появления товара в учёте
+      const since = f?.lastSale ?? (p.createdAt > db.meta.startDate ? p.createdAt : db.meta.startDate);
+      const staleDays = p.active && t.onHand > 0 ? diffDays(since, today) : null;
+      if (!p.active) flags.add('inactive');
+      if (p.active && isBelowMin(available, p.minStock)) flags.add('low');
+      if (p.active && available <= 0) flags.add('out');
       if (expDays !== null && expDays <= EXPIRY_SOON_DAYS && t.onHand > 0) flags.add('expiring');
       if (t.reserved > 0) flags.add('reserved');
       if (info.expected > 0) flags.add('expected');
       if (info.quarantine > 0) flags.add('quarantine');
-      if (staleDays !== null && staleDays >= STALE_DAYS) flags.add('stale');
+      if (staleDays !== null && staleDays >= NO_MOVEMENT_DAYS) flags.add('stale');
       const shopLow = p.active && info.shop.available < shopMin && info.warehouse.available > 0;
       if (shopLow) flags.add('shopLow');
-      let status: StatusDef;
+      let status: StatusDef | null = null;
+      let statusTitle: string | undefined;
       if (!p.active) status = STOCK_LEVEL.inactive;
-      else if (t.onHand === 0) status = STOCK_LEVEL.out;
-      else if (t.available <= 0) status = { label: 'Всё в резерве', tone: 'warn' };
-      else if (flags.has('expiring') && expDays !== null) status = expDays < 0 ? { label: 'Срок истёк', tone: 'bad' } : { label: `Срок до ${fmt.dateShort(info.nearestExpiry)}`, tone: 'warn' };
-      else if (flags.has('low')) status = STOCK_LEVEL.low;
-      else if (shopLow) status = { label: 'Мало в магазине', tone: 'warn' };
-      else if (flags.has('stale') && staleDays !== null) status = { label: `Без движения ${staleDays} дн.`, tone: 'neutral' };
-      else status = STOCK_LEVEL.ok;
+      else if (flags.has('out')) {
+        status = STOCK_LEVEL.out;
+        statusTitle = t.onHand > 0 ? `Всё в резерве под заказы: ${fmt.qty(t.reserved)}` : 'Нет ни в магазине, ни на складе';
+      } else if (flags.has('expiring') && expDays !== null && expDays < 0) {
+        status = { label: 'Срок истёк', tone: 'bad' };
+        statusTitle = `Годен до ${fmt.date(info.nearestExpiry)}`;
+      } else if (flags.has('low')) {
+        status = STOCK_LEVEL.low;
+        statusTitle = `Доступно ${fmt.qty(available)} при минимуме ${fmt.qty(p.minStock)}`;
+      } else if (flags.has('expiring') && expDays !== null) {
+        status = { label: `Срок до ${fmt.dateShort(info.nearestExpiry)}`, tone: 'warn' };
+        statusTitle = `Ближайшая партия годна до ${fmt.date(info.nearestExpiry)}`;
+      } else if (shopLow) {
+        status = { label: 'Мало в магазине', tone: 'warn' };
+        statusTitle = `В магазине ${fmt.qty(info.shop.available)}, держим от ${fmt.qty(shopMin)}. На складе есть`;
+      } else if (flags.has('stale') && staleDays !== null) {
+        status = { label: 'Без движения', tone: 'neutral' };
+        statusTitle = `Нет продаж и отгрузок ${days(staleDays)}`;
+      }
       const brand = ix.brands.get(p.brandId)?.name ?? '';
       out.push({
         id: p.id,
@@ -168,6 +199,8 @@ export function stockLines(db: DB): StockLine[] {
         categoryId: p.categoryId,
         info,
         flow: f,
+        available,
+        whAvailable,
         shopMin,
         cost: p.cost,
         value: p.cost === null ? null : t.onHand * p.cost,
@@ -175,12 +208,27 @@ export function stockLines(db: DB): StockLine[] {
         staleDays,
         flags,
         status,
+        statusTitle,
         search: [p.name, p.sku, brand, ...p.packs.map((x) => x.barcode)].join(' '),
         shopMove: shopLow ? shopMoveOf(p, info, f, shopMin) : null,
       });
     }
     return out;
   });
+}
+
+/** Строка остатков по id товара. */
+export function stockLineOf(db: DB, id: ID): StockLine | undefined {
+  return memoDb(db, 'stockLineIndex', () => {
+    const m = new Map<ID, StockLine>();
+    for (const l of stockLines(db)) m.set(l.id, l);
+    return m;
+  }).get(id);
+}
+
+/** Сколько товаров ниже минимума — то же число, что в меню и в «Товарах». */
+export function belowMinCount(db: DB): number {
+  return memoDb(db, 'belowMinCount', () => stockLines(db).filter((l) => l.flags.has('low')).length);
 }
 
 /* ---------- штрихкоды и поиск товара ---------- */

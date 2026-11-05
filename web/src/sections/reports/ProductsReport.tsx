@@ -5,10 +5,10 @@ import { useOpenEntity } from '../../shell/entities';
 import { useDB, useDBVersion } from '../../data/store';
 import { useSession } from '../../roles/session';
 import { LOCATION_NAMES } from '../../data/types';
-import { demandIndex } from '../overview/analytics';
+import { demandIndex, noCostCount } from '../overview/analytics';
 import { DEAD_DAYS, deficitRows, expiryRows, groupRows, isDead, periodDays, productRows, totalsFor, type DeficitRow, type ExpiryRow, type GroupRow, type ProductRow } from './calc';
 import { KpiTile, deltaOf, ppDelta } from '../overview/KpiTile';
-import { DeltaText, DocsDrawer, HowCalc, MarginText, ReportTop, sum, useReportPeriod } from './parts';
+import { DeltaText, DocsDrawer, HowCalc, MarginText, ReportTop, WrapHead, sum, useReportPeriod } from './parts';
 import { change } from '../overview/period';
 import { plusDays } from '../../data/dates';
 
@@ -40,7 +40,15 @@ export default function ProductsReport() {
   const groups = useMemo(() => groupRows(rows, groupBy), [rows, groupBy]);
   const topCats = useMemo(() => db.categories.filter((c) => !c.parentId).sort((a, b) => a.name.localeCompare(b.name, 'ru')), [db, version]);
 
+  // одно число товаров на весь отчёт: с продажами или возвратами за период — столько строк в рейтинге и в сумме по группам
   const sold = rows.filter((r) => r.agg.lines > 0 || r.agg.returnsQty > 0);
+  const onlyReturns = sold.filter((r) => r.agg.soldQty <= 0).length;
+  const sameName = useMemo(() => {
+    const n = new Map<string, number>();
+    for (const r of sold) n.set(r.p.name, (n.get(r.p.name) ?? 0) + 1);
+    return n;
+  }, [rows]);
+  const noCost = useMemo(() => noCostCount(db), [db, version]);
   const ranked = cat ? sold.filter((r) => r.catId === cat) : sold;
   const margin = total.knownRevenue > 0 ? (total.profit / total.knownRevenue) * 100 : 0;
   const prevMargin = prevTotal && prevTotal.knownRevenue > 0 ? (prevTotal.profit / prevTotal.knownRevenue) * 100 : null;
@@ -52,10 +60,13 @@ export default function ProductsReport() {
       key: 'name',
       header: 'Товар',
       render: (r) => (
-        <div className="rp-name">
-          <div className="cell-title">{r.p.name}</div>
+        <div className="rp-name rp-name-wide">
+          <div className="cell-title" title={r.p.name}>
+            {r.p.name}
+          </div>
           <div className="cell-sub">
             {r.brand} · {r.category}
+            {(sameName.get(r.p.name) ?? 0) > 1 && (r.p.variant || r.p.volume) ? <span className="rp-variant">{r.p.variant ?? r.p.volume}</span> : null}
             {r.outDays > 0 ? (
               <Chip tone="warn" title="Товара не было в магазине и на складе — продаж в эти дни не могло быть">
                 не было {fmt.count(r.outDays, 'день', 'дня', 'дней')}
@@ -134,9 +145,14 @@ export default function ProductsReport() {
           />
         ) : null}
         <KpiTile label="Продано, шт" value={fmt.num(total.qty)} d={deltaOf(total.qty, prevTotal?.qty ?? null)} />
-        <KpiTile label="Товаров продавалось" value={fmt.num(sold.filter((r) => r.agg.soldQty > 0).length)} />
+        <KpiTile
+          label="Товаров продавалось"
+          value={fmt.num(sold.length)}
+          title={onlyReturns ? `С продажами или возвратами за период. Из них только с возвратами — ${fmt.count(onlyReturns, 'товар', 'товара', 'товаров')}` : 'С продажами за период'}
+        />
       </div>
 
+      <div className="rp-tight">
       <DataTable
         key={metric + cat}
         id="rp-products-rank"
@@ -173,6 +189,7 @@ export default function ProductsReport() {
         exportName={`Рейтинг товаров ${label}`}
         pageSize={25}
       />
+      </div>
 
       <DataTable
         key={'g' + groupBy}
@@ -213,9 +230,10 @@ export default function ProductsReport() {
           ['Выручка', 'Розница — по чекам кассы в день продажи. Опт — по отгрузке со склада в день отгрузки, а не по дате заказа. Цена — итоговая, после акции и ручной скидки.'],
           ['Возвраты', 'Возврат по чеку и возврат по заказу вычитаются из выручки, штук и прибыли в день возврата. Поэтому у товара продажи могут быть меньше нуля.'],
           ['Валовая прибыль', 'Цена продажи минус себестоимость на момент продажи, по каждой строке. Чистую прибыль здесь не считаем: расходы магазина в отчёт не входят.'],
-          ['Неполные данные', `Если себестоимость товара неизвестна, строка входит в выручку, но не в прибыль и маржу. Сейчас себестоимость известна по ${Math.round(share * 100)} % строк за период. Такие места помечены значком.`],
+          ['Неполные данные', `Если себестоимость товара неизвестна, строка входит в выручку, но не в прибыль и маржу. Без себестоимости — ${fmt.count(noCost.active, 'товар', 'товара', 'товаров')} в продаже${noCost.inactive ? ` и ${fmt.count(noCost.inactive, 'снятый', 'снятых', 'снятых')} с продажи` : ''}; за период себестоимость известна по ${Math.round(share * 100)} % строк. Такие места помечены значком.`],
           ['Маржа', 'Валовая прибыль ÷ выручка строк с известной себестоимостью. Наценка в списке «Низкая маржа» — к себестоимости.'],
-          ['Без движения', `Товар есть на остатке, а продаж не было ${DEAD_DAYS} дней и больше. Если товара не было в наличии, отсутствие продаж не считаем низким спросом — такие дни показаны отдельно.`],
+          ['Без движения', `Товар есть на остатке, а продаж и отгрузок не было ${DEAD_DAYS} дней и больше — тот же порог во всех разделах. Если товара не было в наличии, отсутствие продаж не считаем низким спросом — такие дни показаны отдельно.`],
+          ['Сколько товаров', 'Рейтинг, итог по группам и плитка «Товаров продавалось» считают одно и то же: товары с продажами или возвратами за период. В списках остатков товары в продаже и снятые с продажи — отдельными фильтрами.'],
           ['Оборачиваемость и дефицит', 'Спрос — продажи за последние 30 дней, делённые на дни, когда товар был в наличии (не зависит от выбранного периода). Запас, дней = остаток ÷ продажи в день. Дефицит: (доступно + ожидается по закупкам) ÷ продажи в день меньше срока поставки плюс 2 дня. Ходовой — верхние 20 % товаров по выручке.'],
           ['Источник', 'Чеки, отгрузки и возвраты из базы; остатки и партии со сроком годности — со склада. Цифры совпадают с обзором владельца.'],
         ]}
@@ -264,8 +282,10 @@ function TurnoverList({ rows, dead, label }: { rows: ProductRow[]; dead: boolean
       key: 'name',
       header: 'Товар',
       render: (x) => (
-        <div className="rp-name">
-          <div className="cell-title">{x.r.p.name}</div>
+        <div className="rp-name rp-name-wide">
+          <div className="cell-title" title={x.r.p.name}>
+            {x.r.p.name}
+          </div>
           <div className="cell-sub">
             {x.r.brand} · {x.r.category}
           </div>
@@ -276,12 +296,12 @@ function TurnoverList({ rows, dead, label }: { rows: ProductRow[]; dead: boolean
     },
     { key: 'onHand', header: 'Остаток, шт', align: 'right', render: (x) => fmt.num(x.r.onHand), sort: (x) => x.r.onHand, total: (xs) => fmt.num(sum(xs, (x) => x.r.onHand)) },
     { key: 'value', header: 'По себестоимости', align: 'right', hidden: !seeCost, render: (x) => (x.r.stockValue === null ? <span className="faint" title="Себестоимость неизвестна">нет данных</span> : fmt.money(x.r.stockValue)), sort: (x) => x.r.stockValue, total: (xs) => fmt.money(sum(xs, (x) => x.r.stockValue ?? 0)) },
-    { key: 'sold', header: 'Продано за 30 дней', align: 'right', render: (x) => fmt.num(x.sold30), sort: (x) => x.sold30, total: (xs) => fmt.num(sum(xs, (x) => x.sold30)) },
+    { key: 'sold', header: <WrapHead width={80}>Продано за 30 дней</WrapHead>, align: 'right', render: (x) => fmt.num(x.sold30), sort: (x) => x.sold30, total: (xs) => fmt.num(sum(xs, (x) => x.sold30)) },
     { key: 'cover', header: 'Запас, дней', align: 'right', render: (x) => (x.cover !== null ? fmt.num(Math.round(x.cover)) : <span className="faint">продаж нет</span>), sort: (x) => x.cover ?? 1e9, csv: (x) => (x.cover === null ? '' : Math.round(x.cover)) },
-    { key: 'last', header: 'Последняя продажа', align: 'right', render: (x) => (x.r.lastSale ? <span title={x.r.sinceSale !== null ? `${fmt.count(x.r.sinceSale, 'день', 'дня', 'дней')} назад` : undefined}>{fmt.date(x.r.lastSale)}</span> : <span className="faint">не было</span>), sort: (x) => x.r.lastSale ?? '', csv: (x) => x.r.lastSale ?? '' },
+    { key: 'last', header: <WrapHead width={80}>Последняя продажа</WrapHead>, align: 'right', render: (x) => (x.r.lastSale ? <span title={x.r.sinceSale !== null ? `${fmt.count(x.r.sinceSale, 'день', 'дня', 'дней')} назад` : undefined}>{fmt.date(x.r.lastSale)}</span> : <span className="faint">не было</span>), sort: (x) => x.r.lastSale ?? '', csv: (x) => x.r.lastSale ?? '' },
     {
       key: 'absent',
-      header: 'Не было за 30 дней',
+      header: <WrapHead width={80}>Не было за 30 дней</WrapHead>,
       align: 'right',
       render: (x) => (x.absent30 > 0 ? <Chip tone="warn" title="Столько дней товара не было в наличии — продаж в эти дни быть не могло">{fmt.count(x.absent30, 'день', 'дня', 'дней')}</Chip> : '—'),
       sort: (x) => x.absent30,
@@ -301,6 +321,17 @@ function TurnoverList({ rows, dead, label }: { rows: ProductRow[]; dead: boolean
       pageSize={20}
       empty={<div className="rp-empty">{dead ? 'Товаров без движения нет' : 'Остатков нет'}</div>}
       dense
+      filters={[
+        {
+          key: 'act',
+          showCounts: true,
+          options: [
+            { value: 'active', label: 'В продаже', test: (x) => x.r.p.active },
+            { value: 'inactive', label: 'Сняты с продажи', test: (x) => !x.r.p.active },
+            { value: 'all', label: 'Все' },
+          ],
+        },
+      ]}
       totalLabel={(n) => `Итого · ${fmt.count(n, 'товар', 'товара', 'товаров')}`}
     />
   );

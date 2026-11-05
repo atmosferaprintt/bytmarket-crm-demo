@@ -115,7 +115,7 @@ export function NewPurchaseModal({ supplierId, lines: preset, onClose }: { suppl
         return;
       }
       msg += ' и подтверждена';
-    } else msg += ' — ждёт подтверждения';
+    } else msg += ' черновиком';
     toast(r.info ? `${msg}. ${r.info}` : msg);
     onClose();
     open('purchase', id);
@@ -155,7 +155,7 @@ export function NewPurchaseModal({ supplierId, lines: preset, onClose }: { suppl
       {supplier ? (
         <div className="row">
           <span className="t-13 ink-2">
-            Срок поставки {fmt.count(supplier.leadDays, 'день', 'дня', 'дней')} · отсрочка {fmt.count(supplier.deferDays, 'день', 'дня', 'дней')}
+            Срок поставки {fmt.count(supplier.leadDays, 'день', 'дня', 'дней')} · наша отсрочка {supplier.deferDays ? fmt.count(supplier.deferDays, 'день', 'дня', 'дней') : 'нет, предоплата'}
             {supplier.minOrder ? ` · минимальный заказ ${fmt.money(supplier.minOrder)}` : ''}
           </span>
           <span className="spacer" />

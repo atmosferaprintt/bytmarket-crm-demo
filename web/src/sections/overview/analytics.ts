@@ -1,9 +1,13 @@
 /* Расчёты аналитики владельца: обзор, «Требует внимания», отчёты. Всё — из базы, поверх общих расчётов selectors.ts.
    Правила те же, что в salesForPeriod: розница — по чекам (возврат по чеку — минус), опт — по отгрузке,
    возврат по заказу — минус в день возврата. Прибыль — только по строкам с известной себестоимостью. */
-import type { DB, ID, ISODate, Order, Product } from '../../data/types';
+import type { DB, Delivery, ID, ISODate, Order, Product } from '../../data/types';
 import { clientBalances, indexes, stockIndex, supplierBalances, shiftSummary, purchaseAccepted } from '../../data/selectors';
 import { dayNum, diffDays, firstOfMonth, isoDay, lastOfMonth, plusDays } from '../../data/dates';
+import { NO_MOVEMENT_DAYS, isBelowMin } from '../../data/thresholds';
+import { nowDemo } from '../../data/store';
+import { money as rubText } from '../../ui/format';
+import { supplierWeekDues } from '../money/lib';
 
 /* ---------- запоминание по версии базы ---------- */
 
@@ -418,9 +422,10 @@ export interface StockValue {
   outOfStock: number;
 }
 
-export const DEAD_DAYS = 60;
+/** «Без движения» — общий порог из thresholds. */
+export const DEAD_DAYS = NO_MOVEMENT_DAYS;
 
-/** Стоимость остатков по себестоимости, без движения, ниже минимума. Ниже минимума — как в меню: доступно < минимума. */
+/** Стоимость остатков по себестоимости, без движения, ниже минимума. Ниже минимума — isBelowMin: доступно в магазине и на складе вместе меньше минимума, ноль тоже. */
 export function stockValue(db: DB): StockValue {
   return memoDB(db, 'stockValue', () => {
     const si = stockIndex(db);
@@ -437,7 +442,7 @@ export function stockValue(db: DB): StockValue {
     for (const p of db.products) {
       const s = si.get(p.id);
       if (!s) continue;
-      if (p.active && s.total.available < p.minStock) belowMin++;
+      if (p.active && isBelowMin(s.total.available, p.minStock)) belowMin++;
       if (p.active && s.total.onHand <= 0) outOfStock++;
       if (s.total.onHand <= 0) continue;
       if (p.cost === null) {
@@ -587,45 +592,48 @@ export function supplierDebtAt(db: DB, date: ISODate): number {
   });
 }
 
-/* ---------- план ---------- */
+/* ---------- «сейчас» ---------- */
 
-/** План на отрезок: месячный план × доля дней месяца в отрезке. null — плана нет. */
-export function planFor(db: DB, from: ISODate, to: ISODate, employeeId: ID | null = null): number | null {
-  let sum = 0;
-  let any = false;
-  let d = firstOfMonth(from);
-  while (d <= to) {
-    const month = d.slice(0, 7);
-    const plan = db.plans.find((p) => p.month === month && p.employeeId === employeeId);
-    const mFrom = d < from ? from : d;
-    const last = lastOfMonth(d);
-    const mTo = last > to ? to : last;
-    if (plan) {
-      any = true;
-      const daysInMonth = diffDays(d, last) + 1;
-      sum += (plan.amount * (diffDays(mFrom, mTo) + 1)) / daysInMonth;
-    }
-    d = plusDays(last, 1);
+/** «Сейчас» демо как 'YYYY-MM-DDTHH:mm'. */
+export function nowAt(): string {
+  const n: unknown = nowDemo();
+  if (typeof n === 'string' && n.length >= 16) return n.slice(0, 16);
+  return String(n).slice(0, 10) + 'T14:05';
+}
+
+const minOf = (hhmm: string) => +hhmm.slice(0, 2) * 60 + +hhmm.slice(3, 5);
+
+/** Доставка опаздывает сейчас: не вручена, а её интервал уже прошёл. Правило то же, что на экране доставки. */
+export function deliveryLateNow(d: Delivery, now: string): { days: number; minutes: number } | null {
+  if (d.state !== 'waiting' && d.state !== 'assigned' && d.state !== 'on_way') return null;
+  const today = now.slice(0, 10);
+  if (d.date > today) return null;
+  if (d.date < today) {
+    const days = diffDays(d.date, today);
+    return { days, minutes: days * 24 * 60 };
   }
-  return any ? Math.round(sum) : null;
+  const end = d.interval.split('–')[1] ?? '23:59';
+  const m = minOf(now.slice(11, 16)) - minOf(end);
+  return m > 0 ? { days: 0, minutes: m } : null;
 }
 
 /* ---------- заказы с задержкой ---------- */
 
-export type DelayKind = 'failed' | 'late' | 'waiting_courier' | 'not_shipped' | 'picking' | 'rescheduled';
+export type DelayKind = 'failed' | 'late' | 'waiting_courier' | 'partial' | 'not_shipped' | 'picking' | 'rescheduled';
 
 export interface DelayItem {
   order: Order;
   kind: DelayKind;
   days: number;
+  minutes?: number; // для опоздания сегодня: на сколько минут прошёл интервал
   label: string; // текст чипа
   tone: 'bad' | 'warn' | 'info' | 'violet';
-  reason: string; // простыми словами
+  reason: string; // простыми словами, без повтора заголовка
   responsibleId: ID | null;
   deliveryId: ID | null;
 }
 
-const DELAY_RANK: Record<DelayKind, number> = { failed: 0, late: 1, waiting_courier: 2, not_shipped: 3, picking: 4, rescheduled: 5 };
+const DELAY_RANK: Record<DelayKind, number> = { failed: 0, late: 1, waiting_courier: 2, partial: 3, not_shipped: 4, picking: 5, rescheduled: 6 };
 
 function eventAt(o: Order, prefix: string): { at: string; actorId: ID } | null {
   for (let i = o.history.length - 1; i >= 0; i--) if (o.history[i].text.startsWith(prefix)) return o.history[i];
@@ -633,20 +641,24 @@ function eventAt(o: Order, prefix: string): { at: string; actorId: ID } | null {
 }
 
 const dd = (n: number) => `${n} ${n % 10 === 1 && n % 100 !== 11 ? 'день' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 'дня' : 'дней'}`;
+const hoursText = (m: number) => (m < 60 ? `${m} мин` : `${Math.floor(m / 60)} ч${m % 60 ? ` ${m % 60} мин` : ''}`);
 
-/** Заказы, которые застряли: на сборке, собраны и не отгружены, ждут курьера, опаздывают, не доставлены, перенесены. */
-export function delayedOrders(db: DB): DelayItem[] {
-  return memoDB(db, 'delayed', () => {
+/** Заказы, которые застряли: на сборке, собраны и не отгружены, отгружены частично, ждут курьера, опаздывают, не доставлены, перенесены.
+    Слова — из настоящего состояния заказа и доставки. */
+export function delayedOrders(db: DB, now: string = nowAt()): DelayItem[] {
+  return memoDB(db, 'delayed|' + now, () => {
     const today = db.meta.today;
     const firstWarehouse = db.employees.find((e) => e.active && e.roles.includes('warehouse'))?.id ?? null;
     const dispatcher = db.employees.find((e) => e.active && e.roles.includes('dispatcher'))?.id ?? null;
     const res: DelayItem[] = [];
     const deliveries = new Map(db.deliveries.map((x) => [x.id, x]));
+    const when = (iso: string) => (iso === today ? 'сегодня' : fmtDay(iso));
     for (const o of db.orders) {
       if (o.state !== 'confirmed' && o.state !== 'closed') continue;
       const d = o.deliveryId ? deliveries.get(o.deliveryId) : undefined;
       const items: DelayItem[] = [];
       if (d && d.state !== 'delivered' && d.state !== 'returned') {
+        const late = deliveryLateNow(d, now);
         if (d.state === 'failed') {
           const last = d.attempts[d.attempts.length - 1];
           items.push({
@@ -655,33 +667,63 @@ export function delayedOrders(db: DB): DelayItem[] {
             days: last ? Math.max(0, diffDays(last.at.slice(0, 10), today)) : 0,
             label: 'Не доставлен',
             tone: 'bad',
-            reason: `Доставка не удалась${last?.reason ? ': ' + last.reason.toLowerCase() : ''}. Нужно решить: повторить или вернуть на склад`,
+            reason: `${last?.reason ? `Причина: ${last.reason.toLowerCase()}. ` : ''}Нужно решить: повторить или вернуть на склад`,
             responsibleId: dispatcher,
             deliveryId: d.id,
           });
-        } else if ((d.state === 'assigned' || d.state === 'on_way') && d.date < today) {
-          const n = diffDays(d.date, today);
-          items.push({ order: o, kind: 'late', days: n, label: `Опаздывает ${dd(n)}`, tone: 'bad', reason: `Доставку ждали ${fmtDay(d.date)}, до клиента не доехала`, responsibleId: d.courierId ?? dispatcher, deliveryId: d.id });
+        } else if (late) {
+          items.push({
+            order: o,
+            kind: 'late',
+            days: late.days,
+            minutes: late.minutes,
+            label: late.days ? `Опаздывает ${dd(late.days)}` : 'Опаздывает',
+            tone: 'bad',
+            reason: `Ждали ${when(d.date)}, ${d.interval}${late.days ? '' : ` — прошло ${hoursText(late.minutes)}`}${d.state === 'waiting' ? '. Курьер не назначен' : ''}`,
+            responsibleId: d.courierId ?? dispatcher,
+            deliveryId: d.id,
+          });
         } else if (d.state === 'waiting' && d.date <= today) {
-          const n = diffDays(d.date, today);
           items.push({
             order: o,
             kind: 'waiting_courier',
-            days: n,
+            days: diffDays(d.date, today),
             label: 'Ждёт курьера',
             tone: 'info',
-            reason: n > 0 ? `Доставка на ${fmtDay(d.date)} так и не назначена курьеру` : 'Доставка на сегодня ещё не назначена курьеру',
+            reason: `Доставка ${when(d.date)}, ${d.interval}${d.district ? ', ' + d.district : ''}`,
             responsibleId: dispatcher,
             deliveryId: d.id,
           });
         } else if (eventAt(o, 'Доставка перенесена')) {
           const ev = eventAt(o, 'Доставка перенесена')!;
-          items.push({ order: o, kind: 'rescheduled', days: diffDays(ev.at.slice(0, 10), today), label: 'Перенос', tone: 'warn', reason: `Доставку перенесли на ${fmtDay(d.date)}`, responsibleId: dispatcher, deliveryId: d.id });
+          items.push({ order: o, kind: 'rescheduled', days: diffDays(ev.at.slice(0, 10), today), label: 'Перенос', tone: 'warn', reason: `Новая дата — ${fmtDay(d.date)}, ${d.interval}`, responsibleId: dispatcher, deliveryId: d.id });
         }
       }
       if (o.state === 'confirmed' && o.ship !== 'shipped' && o.ship !== 'delivered') {
-        const confirmed = eventAt(o, 'Подтверждён')?.at ?? o.createdAt;
-        if (o.pick !== 'picked') {
+        const confirmed = eventAt(o, 'Подтверждён')?.at ?? eventAt(o, 'Создан и подтверждён')?.at ?? o.createdAt;
+        if (o.ship === 'partial') {
+          const ev = eventAt(o, 'Отгружено частично');
+          const n = ev ? diffDays(ev.at.slice(0, 10), today) : 0;
+          let rest = 0;
+          let left = 0;
+          for (const l of o.lines) {
+            if (l.shipped < l.qty) {
+              rest += (l.qty - l.shipped) * l.price;
+              left++;
+            }
+          }
+          if (n >= 1)
+            items.push({
+              order: o,
+              kind: 'partial',
+              days: n,
+              label: 'Отгружен частично',
+              tone: 'warn',
+              reason: `${ev ? `Отгрузили ${fmtDay(ev.at)}` : 'Отгрузили не всё'}: не хватает ${left} ${left % 10 === 1 && left % 100 !== 11 ? 'позиции' : 'позиций'} на ${rubText(rest)}`,
+              responsibleId: o.ownerId,
+              deliveryId: d?.id ?? null,
+            });
+        } else if (o.pick !== 'picked') {
           const n = diffDays(confirmed.slice(0, 10), today);
           const started = eventAt(o, 'Сборка начата');
           if (n >= 2)
@@ -689,9 +731,9 @@ export function delayedOrders(db: DB): DelayItem[] {
               order: o,
               kind: 'picking',
               days: n,
-              label: `Сборка ${dd(n)}`,
+              label: o.pick === 'picking' ? 'Собирается' : 'Не собран',
               tone: 'warn',
-              reason: o.pick === 'picking' ? `Сборку начали ${fmtDay(started!.at)}, заказ до сих пор не собран` : `Заказ подтверждён ${fmtDay(confirmed)}, сборку не начинали`,
+              reason: o.pick === 'picking' ? `Сборку начали ${fmtDay(started!.at)}` : `Подтверждён ${fmtDay(confirmed)}, сборку не начинали`,
               responsibleId: started?.actorId ?? firstWarehouse,
               deliveryId: d?.id ?? null,
             });
@@ -706,7 +748,7 @@ export function delayedOrders(db: DB): DelayItem[] {
               days: n,
               label: 'Не отгружен',
               tone: 'bad',
-              reason: o.fulfillment === 'pickup' ? `Собран ${fmtDay(picked)}, клиент не забрал` : `Собран ${fmtDay(picked)}, не отгружен${d ? '' : ': доставка не оформлена'}`,
+              reason: o.fulfillment === 'pickup' ? 'Самовывоз: клиент не забрал' : d ? `Доставка ${when(d.date)}, ${d.interval}` : 'Доставка не оформлена',
               responsibleId: o.fulfillment === 'pickup' ? o.ownerId : d ? dispatcher : o.ownerId,
               deliveryId: d?.id ?? null,
             });
@@ -806,4 +848,94 @@ export function daysOf(from: ISODate, to: ISODate): ISODate[] {
   const out: ISODate[] = [];
   for (let n = a; n <= b; n++) out.push(isoDay(n));
   return out;
+}
+
+/* ---------- новые клиенты ---------- */
+
+/** Первая покупка клиента за всю историю базы и кто её оформил. */
+export function firstPurchaseIndex(db: DB): Map<ID, { date: ISODate; employeeId: ID | null }> {
+  return memoDB(db, 'firstPurchase', () => {
+    const m = new Map<ID, { date: ISODate; employeeId: ID | null }>();
+    for (const f of allFacts(db)) {
+      if (!f.clientId || f.isReturn || m.has(f.clientId)) continue;
+      m.set(f.clientId, { date: f.date, employeeId: f.employeeId });
+    }
+    return m;
+  });
+}
+
+/** Новый клиент — заведён при нас (не перенесён из старой базы) и впервые купил в [from, to].
+    Одно правило для отчётов «Клиенты» и «Сотрудники». */
+export function newClientIds(db: DB, from: ISODate, to: ISODate): Set<ID> {
+  return memoDB(db, `newClients|${from}|${to}`, () => {
+    const first = firstPurchaseIndex(db);
+    const out = new Set<ID>();
+    for (const c of db.clients) {
+      if (c.createdAt < db.meta.startDate) continue;
+      const x = first.get(c.id);
+      if (x && x.date >= from && x.date <= to) out.add(c.id);
+    }
+    return out;
+  });
+}
+
+/* ---------- товары: счётчики ---------- */
+
+/** Товары без себестоимости: в продаже и снятые — отдельно. */
+export function noCostCount(db: DB): { active: number; inactive: number } {
+  return memoDB(db, 'noCost', () => {
+    let active = 0;
+    let inactive = 0;
+    for (const p of db.products) if (p.cost === null) (p.active ? active++ : inactive++);
+    return { active, inactive };
+  });
+}
+
+/* ---------- платежи поставщикам на неделю ---------- */
+
+export interface SupplierDue {
+  supplierId: ID;
+  purchaseId: ID;
+  amount: number;
+  dueDate: ISODate;
+}
+
+export interface SupplierWeek {
+  weekEnd: ISODate; // воскресенье текущей недели
+  overdue: SupplierDue[];
+  overdueSum: number;
+  thisWeek: SupplierDue[]; // к оплате с сегодня до воскресенья
+  thisWeekSum: number;
+  total: number; // «Эта неделя» = просрочено + до воскресенья — как в «Деньги → Долги поставщикам»
+  nextWeekSum: number;
+  nextWeekCount: number;
+}
+
+export function supplierWeek(db: DB): SupplierWeek {
+  return memoDB(db, 'supplierWeek', () => {
+    // «Эта неделя» — общее определение раздела «Деньги»: просроченные плюс к оплате до воскресенья включительно
+    const w = supplierWeekDues(db);
+    const ne = plusDays(w.sunday, 7);
+    const pick = (x: { supplierId: ID; purchaseId: ID; amount: number; dueDate: ISODate }): SupplierDue => ({ supplierId: x.supplierId, purchaseId: x.purchaseId, amount: x.amount, dueDate: x.dueDate });
+    const overdue = w.items.filter((x) => x.overdue).map(pick);
+    const thisWeek = w.items.filter((x) => !x.overdue).map(pick);
+    let nextWeekSum = 0;
+    let nextWeekCount = 0;
+    for (const b of supplierBalances(db).values())
+      for (const u of b.upcoming)
+        if (u.dueDate > w.sunday && u.dueDate <= ne) {
+          nextWeekSum += u.amount;
+          nextWeekCount++;
+        }
+    return {
+      weekEnd: w.sunday,
+      overdue,
+      overdueSum: w.overdue,
+      thisWeek,
+      thisWeekSum: w.total - w.overdue,
+      total: w.total,
+      nextWeekSum,
+      nextWeekCount,
+    };
+  });
 }

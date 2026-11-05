@@ -6,7 +6,7 @@ import { dispatch, useDB, useDBVersion } from '../../data/store';
 import { isEan13 } from '../../data/codes';
 import { useSession } from '../../roles/session';
 import { Button, Checkbox, Field, Input, Modal, MoneyInput, Notice, Select, cx, fmt, toast } from '../../ui';
-import { PACK_NAME, barcodeIndex, categoryOptions, markupPct, minAllowedPrice } from './lib';
+import { PACK_NAME, barcodeIndex, categoryOptions, markupPct, minAllowedPrice, pct1 } from './lib';
 
 interface PackRow {
   key: PackKey;
@@ -374,7 +374,7 @@ export default function ProductForm({ product, onClose, onSaved }: { product?: P
               <div className="field">
                 <span className="field-label">Наценка опт / розница</span>
                 <div className="prd-pack-fixed num">
-                  {cost !== null && (wholesale ?? retail) !== null ? `${fmt.pct(markupPct((wholesale ?? retail)!, cost))} / ${fmt.pct(markupPct(retail ?? 0, cost))}` : '—'}
+                  {cost !== null && (wholesale ?? retail) !== null ? `${pct1(markupPct((wholesale ?? retail)!, cost))} / ${pct1(markupPct(retail ?? 0, cost))}` : '—'}
                 </div>
               </div>
             ) : null}

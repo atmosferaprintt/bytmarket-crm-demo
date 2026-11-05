@@ -30,7 +30,7 @@ import {
   toast,
 } from '../../ui';
 import { ConditionsStrip, Dash, DiscountChip, LimitBar, PriceCell } from './parts';
-import { INTERVALS, capitalize, newKey, nextWorkday, norm, orderProblems, productName, useIsPhone } from './lib';
+import { INTERVALS, capitalize, fixNo, newKey, nextWorkday, norm, orderProblems, productName, useIsPhone } from './lib';
 import { DiscountModal, HistoryPicker, ProductSearch, RepeatChanges } from './OrderEditorParts';
 import { TopMenu } from './TopMenu';
 import './sales.css';
@@ -291,7 +291,7 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
   const getOrderNumber = (id: ID) => db.orders.find((o) => o.id === id)?.number ?? '';
 
   const fail = (msg: string) => {
-    setError(msg);
+    setError(fixNo(msg));
     setBusy(false);
   };
 
@@ -563,7 +563,7 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
                           </span>
                           <span className={cx(r.short ? 'c-bad w-600' : 'muted')}> · доступно {fmt.qty(r.available)}</span>
                         </span>
-                        <DiscountChip promoPct={r.promoPct} manualPct={r.l.discountPct} />
+                        <DiscountChip promoPct={r.promoPct} manualPct={r.l.discountPct} promo={r.promo} today={today} />
                         <PriceCell price={r.price} base={r.base} />
                         <span className="w-700 num">{fmt.money(r.sum)}</span>
                       </div>
@@ -626,10 +626,10 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
                           <td>
                             {discountLimit > 0 ? (
                               <button type="button" className="sales-disc-btn" onClick={() => setDiscountFor(r.l.key)} title={r.l.discountReason ? `Основание: ${r.l.discountReason}` : 'Ручная скидка'}>
-                                <DiscountChip promoPct={r.promoPct} manualPct={r.l.discountPct} />
+                                <DiscountChip promoPct={r.promoPct} manualPct={r.l.discountPct} promo={r.promo} today={today} />
                               </button>
                             ) : (
-                              <DiscountChip promoPct={r.promoPct} manualPct={r.l.discountPct} />
+                              <DiscountChip promoPct={r.promoPct} manualPct={r.l.discountPct} promo={r.promo} today={today} />
                             )}
                           </td>
                           <td className="num w-700">{fmt.money(r.sum)}</td>
@@ -807,7 +807,7 @@ function ClientPicker({ clients, onPick }: { clients: Client[]; onPick: (c: Clie
               <div className="grow">
                 <div className="w-600 ellipsis">{c.name}</div>
                 <div className="muted t-12 ellipsis">
-                  {[c.points[0]?.address, c.priceType === 'wholesale' ? 'опт' : 'розница', b.lastOrderAt ? `последний заказ ${fmt.relDate(b.lastOrderAt, db.meta.today)}` : null].filter(Boolean).join(' · ')}
+                  {[c.points[0]?.address, c.priceType === 'wholesale' ? 'опт' : 'розница', b.lastOrderAt ? `последний заказ ${fmt.date(b.lastOrderAt)}` : null].filter(Boolean).join(' · ')}
                 </div>
               </div>
               {b.maxOverdueDays > 0 ? <StatusChip s={overdueStatus(b.maxOverdueDays)} /> : b.debt > 0 ? <span className="t-12 muted num">долг {fmt.money(b.debt)}</span> : <Dash />}

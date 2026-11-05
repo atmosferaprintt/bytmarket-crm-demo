@@ -4,7 +4,7 @@ import type { AccountKey, DB, ID, ISODate, Order, Payment, PaymentKind, PayMetho
 import { ACCOUNT_NAMES } from '../../data/types';
 import { dispatch } from '../../data/store';
 import type { OpPayload, OpType } from '../../data/ops';
-import { orderPayment, type OrderPayment } from '../../data/selectors';
+import { orderPayment, supplierBalances, type OrderPayment } from '../../data/selectors';
 import { firstOfMonth, lastOfMonth, plusDays, plusMonths, dow } from '../../data/dates';
 import { useSession } from '../../roles/session';
 import type { Perm } from '../../roles/roles';
@@ -237,7 +237,36 @@ export function weekEnd(iso: ISODate): ISODate {
 }
 
 export function deferText(days: number): string {
-  return days > 0 ? `${days} дн.` : 'Сразу';
+  return days > 0 ? `${days} дн.` : 'Без отсрочки';
+}
+
+/* ---------- поставщикам на этой неделе ---------- */
+
+export interface WeekDue {
+  purchaseId: ID;
+  supplierId: ID;
+  dueDate: ISODate;
+  amount: number;
+  overdue: boolean;
+}
+
+/** «Эта неделя» в долгах поставщикам: все просроченные платежи плюс к оплате до воскресенья текущей недели включительно.
+    Одно определение для рабочего стола бухгалтера, вкладки «Долги поставщикам» и обзора владельца. */
+export function supplierWeekDues(db: DB): { items: WeekDue[]; total: number; overdue: number; sunday: ISODate } {
+  const today = db.meta.today;
+  const sunday = weekEnd(today);
+  const items: WeekDue[] = [];
+  for (const [supplierId, b] of supplierBalances(db)) {
+    for (const u of b.upcoming) if (u.dueDate <= sunday) items.push({ purchaseId: u.purchaseId, supplierId, dueDate: u.dueDate, amount: u.amount, overdue: u.dueDate < today });
+  }
+  items.sort((a, z) => a.dueDate.localeCompare(z.dueDate) || a.purchaseId.localeCompare(z.purchaseId));
+  let total = 0;
+  let overdue = 0;
+  for (const x of items) {
+    total += x.amount;
+    if (x.overdue) overdue += x.amount;
+  }
+  return { items, total, overdue, sunday };
 }
 
 

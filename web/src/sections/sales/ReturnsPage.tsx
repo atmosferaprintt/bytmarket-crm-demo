@@ -108,14 +108,14 @@ export default function ReturnsPage() {
     () => [
       {
         key: 'at',
-        header: 'Возврат',
+        header: '№ и дата',
         sort: (x) => x.r.at,
         csv: (x) => `№ ${x.r.number} от ${x.r.at.replace('T', ' ')}`,
         render: (x) => (
           <>
             <div className="cell-title nowrap">№ {x.r.number}</div>
             <div className="cell-sub nowrap">
-              {fmt.date(x.r.at)}, {fmt.time(x.r.at)}
+              {fmt.dateShort(x.r.at)}, {fmt.time(x.r.at)}
             </div>
           </>
         ),

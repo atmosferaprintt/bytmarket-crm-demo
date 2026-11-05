@@ -137,6 +137,15 @@ export function DocsDrawer({ title, sub, rows, onClose, amountLabel = 'Сумм�
   );
 }
 
+/** Заголовок колонки в две строки, когда слова длинные: таблица помещается в ширину без прокрутки. */
+export function WrapHead({ children, width }: { children: ReactNode; width: number }) {
+  return (
+    <span className="rp-th-wrap" style={{ width }}>
+      {children}
+    </span>
+  );
+}
+
 export const money = (v: number) => fmt.money(v);
 export const qty = (v: number) => fmt.num(v);
 export const sum = <T,>(rows: T[], f: (r: T) => number) => rows.reduce((s, r) => s + f(r), 0);

@@ -16,6 +16,10 @@
 .entity-link.money-link { font-weight: 600; color: var(--link); font-size: inherit; }
 .money-row-actions { justify-content: flex-end; gap: 4px; white-space: nowrap; }
 .money-comment { display: block; max-width: 360px; color: var(--ink-2); }
+.money-adv { color: var(--info); }
+.money-next { display: inline-flex; align-items: center; gap: 8px; }
+.money-next.is-stack { flex-wrap: wrap; row-gap: 4px; }
+.money-stack-r { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .money-col-amt { min-width: 96px; text-align: right; }
 .money-wrap { white-space: normal; text-align: right; display: inline-block; max-width: 340px; }
 
@@ -65,6 +69,8 @@
 .money-li-sub > .chip { flex: 0 0 auto; }
 .money-li-amt { flex: 0 0 auto; font-weight: 700; text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
 .money-li-act { flex: 0 0 auto; display: inline-flex; gap: 4px; }
+.money-li-stack { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.money-li-cap { font-size: var(--fs-12); font-weight: 500; color: var(--muted); white-space: nowrap; }
 .money-act-gap { display: inline-block; width: 92px; }
 
 .money-kpi-link { border: 0; padding: 0; background: none; text-align: left; border-radius: var(--r-card); cursor: pointer; display: flex; min-width: 0; }
@@ -72,7 +78,7 @@
 .money-kpi-link:hover > .kpi { box-shadow: var(--sh-pop); }
 
 /* ---------- рабочий стол бухгалтера ---------- */
-.money-home-a { display: grid; gap: var(--sp-4); grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); }
+.money-home-a { display: grid; gap: var(--sp-4); grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); align-items: start; }
 .money-home-b { display: grid; gap: var(--sp-4); grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
 .money-home-list .list-row { padding: 10px 20px; min-height: 56px; }
 .money-home-list .empty { padding: 28px 20px; }
@@ -131,3 +137,17 @@
   .money-form-grid, .money-form-grid.is-3 { grid-template-columns: minmax(0, 1fr); }
   .money-act-req, .money-act-sign { grid-template-columns: 1fr; }
 }
+
+/* ---------- телефон ---------- */
+.money-phone-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; padding: 0; overflow: hidden; background: var(--line); }
+.money-phone-stat { display: flex; flex-direction: column; gap: 2px; padding: 12px 16px; background: var(--panel); min-width: 0; }
+.money-phone-stat-label { font-size: var(--fs-12); font-weight: 600; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.money-phone-stat-value { font-size: var(--fs-20); font-weight: 700; line-height: var(--lh-tight); white-space: nowrap; }
+.money-phone-seg { overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; }
+.money-phone-seg::-webkit-scrollbar { display: none; }
+.money-phone-seg .seg-item { height: 34px; font-size: var(--fs-13); }
+.money-phone-card { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; cursor: pointer; text-align: left; }
+.money-phone-card:active { background: var(--row-hover); }
+.money-phone-card-top { display: flex; align-items: flex-start; gap: var(--sp-3); min-width: 0; }
+.money-phone-card-chips { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.money-phone-card-chips:empty { display: none; }

@@ -11,7 +11,8 @@ import { plusDays } from '../../data/dates';
 import { useSession } from '../../roles/session';
 import { PageHeader } from '../../shell/PageHeader';
 import { useOpenEntity } from '../../shell/entities';
-import { Button, Card, Checkbox, Chip, EmptyState, Field, Input, Modal, Notice, QtyInput, StatList, StatRow, cx, fmt, toast } from '../../ui';
+import { Button, Card, Checkbox, Chip, EmptyState, Field, Input, Modal, Notice, QtyInput, StatList, StatRow, PURCHASE_STATE, cx, fmt, toast } from '../../ui';
+import { SALES_WINDOW_DAYS, SUGGEST_SAFETY_DAYS } from '../../data/thresholds';
 import { act } from '../stock/act';
 import { cap } from '../stock/calc';
 import { suggestionAll, usePurchaseCounts } from './counts';
@@ -131,14 +132,14 @@ export default function SuggestPage() {
           <div className="list">
             {groups.map((x) => (
               <button key={x.sid} type="button" className={cx('pur-sup-row', x.sid === g.sid && 'is-active')} onClick={() => setSel(x.sid)}>
-                <span style={{ minWidth: 0 }}>
-                  <span className="pur-sup-name">{x.name}</span>
-                  <span className="cell-sub" style={{ display: 'block' }}>
+                <span className="pur-sup-name">{x.name}</span>
+                <span className="pur-sup-meta">
+                  <span>
                     {fmt.num(x.lines.length)} поз.
                     {seeCost ? ` · ${fmt.money(groupSum(x))}` : ''}
                   </span>
+                  {x.urgent ? <Chip tone="bad" title="Закончится раньше, чем придёт поставка">Срочно {x.urgent}</Chip> : null}
                 </span>
-                {x.urgent ? <Chip tone="bad">Срочно {x.urgent}</Chip> : null}
               </button>
             ))}
           </div>
@@ -150,7 +151,7 @@ export default function SuggestPage() {
             title={s.name}
             actions={
               <span className="t-13 ink-2 nowrap">
-                Поставка {fmt.count(s.leadDays, 'день', 'дня', 'дней')} · отсрочка {fmt.count(s.deferDays, 'день', 'дня', 'дней')}
+                Поставка {fmt.count(s.leadDays, 'день', 'дня', 'дней')} · наша отсрочка {s.deferDays ? fmt.count(s.deferDays, 'день', 'дня', 'дней') : 'нет, предоплата'}
                 {seeCost && s.minOrder ? ` · минимум ${fmt.money(s.minOrder)}` : ''}
               </span>
             }
@@ -172,7 +173,7 @@ export default function SuggestPage() {
             {waiting.length ? (
               <div style={{ padding: '0 20px 12px' }}>
                 <Notice tone="info">
-                  У поставщика уже есть {waiting.map((p) => `№ ${p.number} (${p.state === 'draft' ? 'черновик' : `ждём ${fmt.relDate(p.expectedAt, today)}`})`).join(', ')}. Черновик в расчёт «в пути» не входит
+                  У поставщика уже есть {waiting.map((p) => `№ ${p.number} (${p.state === 'draft' ? PURCHASE_STATE.draft.label.toLowerCase() : `${PURCHASE_STATE[p.state].label.toLowerCase()}, ждём ${fmt.relDate(p.expectedAt, today)}`})`).join(', ')}. Черновик в «Ожидается» не входит
                 </Notice>
               </div>
             ) : null}
@@ -181,9 +182,13 @@ export default function SuggestPage() {
                 <thead>
                   <tr>
                     <th style={{ width: 36 }} aria-label="В закупку" />
-                    <th>Товар и почему</th>
-                    <th className="num">В день</th>
-                    <th className="num">Хватит на</th>
+                    <th>Товар</th>
+                    <th className="num" title={`Продажи за ${SALES_WINDOW_DAYS} дней на кассе и оптом, в среднем за день`}>
+                      В день
+                    </th>
+                    <th className="num" title={`Доступное ÷ продажи в день. Поставка от ${s.name} — ${fmt.count(s.leadDays, 'день', 'дня', 'дней')}`}>
+                      Хватит на
+                    </th>
                     <th className="num">Ожидается</th>
                     <th style={{ width: 120 }}>Коробок</th>
                     <th className="num" title="Коробок × штук в коробке">Штук</th>
@@ -207,20 +212,13 @@ export default function SuggestPage() {
                           />
                         </td>
                         <td>
-                          <button type="button" className="entity-link pur-line-name" onClick={() => open('product', l.productId)}>
+                          <button type="button" className="entity-link pur-line-name" title={cap(l.reason)} onClick={() => open('product', l.productId)}>
                             {l.name}
                           </button>
-                          <div className="cell-sub pur-why">{cap(l.reason)}</div>
                         </td>
-                        <td className="num">{l.perDay ? fmt.num(l.perDay, l.perDay < 10 ? 1 : 0) : <span className="faint">0</span>}</td>
-                        <td className="num">
-                          {l.daysLeft === null ? (
-                            <span className="faint">—</span>
-                          ) : l.available === 0 ? (
-                            <span className="c-bad w-700">закончился</span>
-                          ) : (
-                            <span className={urgent ? 'c-bad w-700' : undefined}>{fmt.count(l.daysLeft, 'день', 'дня', 'дней')}</span>
-                          )}
+                        <td className="num">{l.perDay >= 0.05 ? fmt.num(l.perDay, l.perDay < 10 ? 1 : 0) : <span className="faint">0</span>}</td>
+                        <td className="num" title={cap(l.reason)}>
+                          <WhyCell l={l} urgent={urgent} />
                         </td>
                         <td className="num">{l.expected ? fmt.num(l.expected) : <span className="faint">0</span>}</td>
                         <td>
@@ -263,7 +261,7 @@ export default function SuggestPage() {
               const a = act('purchase.approve', { purchaseId: r.id, expectedAt }, me.id);
               if (!a.ok) return `Закупка № ${n} создана черновиком, но не подтверждена: ${a.error}`;
             }
-            toast(`Закупка № ${n} ${approve ? 'создана и подтверждена' : 'создана — ждёт подтверждения'}${r.info ? `. ${r.info}` : ''}`);
+            toast(`Закупка № ${n} ${approve ? 'создана и подтверждена' : 'создана черновиком'}${r.info ? `. ${r.info}` : ''}`);
             setConfirm(false);
             setBoxes({});
             setOff({});
@@ -276,16 +274,24 @@ export default function SuggestPage() {
       {explain ? (
         <Modal title="Как считается предложение" onClose={() => setExplain(false)} footer={<Button variant="primary" onClick={() => setExplain(false)}>Понятно</Button>}>
           <div className="col-3 t-14 ink-2">
-            <p>Берём продажи товара за последние 30 дней — на кассе и оптом — и делим на дни. Это «продаётся в день».</p>
-            <p>Нужно, чтобы товара хватило на срок поставки поставщика и ещё на 14 дней после неё, плюс минимальный остаток.</p>
-            <p>Из этого вычитаем то, что уже есть и свободно (без резерва под заказы), и то, что уже едет по подтверждённым закупкам.</p>
+            <p>Берём продажи товара за последние {SALES_WINDOW_DAYS} дней — на кассе и оптом — и делим на дни. Это «В день».</p>
+            <p>«Хватит на» — сколько дней продержится доступное: магазин + склад − резерв под заказы.</p>
+            <p>Предлагаем товар, которого не хватит на срок поставки и ещё {fmt.count(SUGGEST_SAFETY_DAYS, 'день', 'дня', 'дней')} запаса, и товар ниже минимального остатка. Уже заказанное у поставщика вычитаем.</p>
             <p>Недостающее округляем вверх до целой коробки поставщика. Количество можно поправить или снять строку.</p>
-            <p>Закупку подтверждает владелец. Пока она черновик, товар не считается «в пути».</p>
+            <p>Закупку подтверждает владелец. Пока она черновик, товар не входит в «Ожидается».</p>
+            <p>Причина по каждому товару — в подсказке при наведении на строку.</p>
           </div>
         </Modal>
       ) : null}
     </>
   );
+}
+
+/** «Хватит на»: число дней, а если продаж нет или товар закончился — короткий чип вместо пустоты. */
+function WhyCell({ l, urgent }: { l: SuggestionLine; urgent: boolean }) {
+  if (l.available <= 0) return <Chip tone="bad">Закончился</Chip>;
+  if (l.daysLeft === null) return <Chip tone="warn">Ниже минимума</Chip>;
+  return <span className={urgent ? 'c-bad w-700 nowrap' : 'nowrap'}>{l.daysLeft === 0 ? 'меньше дня' : fmt.count(l.daysLeft, 'день', 'дня', 'дней')}</span>;
 }
 
 function ConfirmModal({

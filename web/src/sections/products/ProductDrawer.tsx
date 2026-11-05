@@ -10,7 +10,7 @@ import { indexes, promoApplies } from '../../data/selectors';
 import { diffDays, plusDays } from '../../data/dates';
 import { useSession } from '../../roles/session';
 import { useScoped } from '../../roles/scope';
-import { Button, Chip, Drawer, EmptyState, MoreMenu, Segmented, StatList, StatRow, Tabs, cx, fmt, toast, type TabItem } from '../../ui';
+import { Button, Chip, Drawer, EmptyState, MoreMenu, Segmented, StatList, StatRow, StatusChip, Tabs, cx, fmt, toast, type TabItem } from '../../ui';
 import {
   AUDIENCE,
   MOVE_KIND,
@@ -22,6 +22,7 @@ import {
   useIsPhone,
   minAllowedPrice,
   moveDoc,
+  pct1,
   movesByProduct,
   promoState,
   promoValueText,
@@ -30,7 +31,7 @@ import {
   type CatalogMode,
   type CatalogRow,
 } from './lib';
-import { Bars, Block, FromTo, LevelChip, PriceCell, PromoChip, Tiles, type BarDatum } from './bits';
+import { Bars, Block, FromTo, PriceCell, PromoChip, Qty, StockChip, Tiles, type BarDatum } from './bits';
 import ProductForm from './ProductForm';
 import PriceModal from './PriceModal';
 
@@ -113,9 +114,9 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
         head={
           <div className="prd-drawer-head">
             <div className="prd-chips">
-              <LevelChip level={mode === 'seller' ? row.shopLevel : mode === 'sales' ? row.whLevel : row.level} />
+              <StockChip row={row} />
               {row.promo && p.active ? <PromoChip promo={row.promo} /> : null}
-              {row.expirySoon && row.stock.nearestExpiry ? (
+              {row.expirySoon && row.stock.nearestExpiry && !row.status?.label.startsWith('Срок') ? (
                 <Chip tone="warn" icon={<CalendarClock />}>
                   Срок до {fmt.date(row.stock.nearestExpiry)}
                 </Chip>
@@ -158,19 +159,30 @@ function PriceTiles({ row }: { row: CatalogRow }) {
   ];
   if (can('seeCost')) {
     items.push({ label: 'Себестоимость', value: <>{p.cost === null ? 'не известна' : fmt.price(p.cost)}</> });
-    items.push({ label: 'Наценка в опте', value: <>{fmt.pct(markupPct(row.wholesale.price, p.cost))}</> });
+    items.push({ label: 'Наценка в опте', value: <>{pct1(markupPct(row.wholesale.price, p.cost))}</> });
   }
   return <Tiles items={items} />;
 }
 
 function StockTiles({ row, mode }: { row: CatalogRow; mode: CatalogMode }) {
   const s = row.stock;
+  const availTile = { label: 'Доступно', value: <Qty v={row.available} strong />, title: 'Доступно = магазин + склад − резерв' };
   if (mode === 'seller')
     return (
       <Tiles
         items={[
-          { label: 'В магазине', value: fmt.num(s.shop.available) },
-          { label: 'На складе', value: fmt.num(s.warehouse.available) },
+          { label: 'В магазине', value: <Qty v={s.shop.available} /> },
+          availTile,
+          { label: 'Ожидается', value: fmt.num(s.expected) },
+        ]}
+      />
+    );
+  if (mode === 'sales')
+    return (
+      <Tiles
+        items={[
+          availTile,
+          { label: 'На складе для опта', value: <Qty v={row.whAvailable} strong />, title: 'Склад − резерв: столько можно обещать оптом' },
           { label: 'Ожидается', value: fmt.num(s.expected) },
         ]}
       />
@@ -180,8 +192,8 @@ function StockTiles({ row, mode }: { row: CatalogRow; mode: CatalogMode }) {
       items={[
         { label: 'Магазин', value: fmt.num(s.shop.onHand) },
         { label: 'Склад', value: fmt.num(s.warehouse.onHand) },
-        { label: 'Резерв', value: fmt.num(s.warehouse.reserved + s.shop.reserved) },
-        { label: 'Доступно', value: <span className="w-700">{fmt.num(s.warehouse.available)}</span>, title: 'Склад минус резерв: столько можно обещать оптом' },
+        { label: 'Резерв', value: fmt.num(s.total.reserved) },
+        availTile,
         { label: 'Ожидается', value: fmt.num(s.expected) },
       ]}
     />
@@ -367,8 +379,8 @@ function PricesTab({ row }: { row: CatalogRow }) {
           <StatRow label="Розница" value={<PriceCell info={row.retail} />} />
           <StatRow label="Опт" value={<PriceCell info={row.wholesale} />} />
           {seeCost ? <StatRow label="Себестоимость" value={p.cost === null ? 'не известна' : fmt.price(p.cost)} /> : null}
-          {seeCost ? <StatRow label="Наценка в рознице" value={fmt.pct(markupPct(p.retailPrice, p.cost))} /> : null}
-          {seeCost ? <StatRow label="Наценка в опте" value={fmt.pct(markupPct(p.wholesalePrice, p.cost))} /> : null}
+          {seeCost ? <StatRow label="Наценка в рознице" value={pct1(markupPct(p.retailPrice, p.cost))} /> : null}
+          {seeCost ? <StatRow label="Наценка в опте" value={pct1(markupPct(p.wholesalePrice, p.cost))} /> : null}
           {seeCost && minPrice !== null ? <StatRow label={`Не ниже, с наценкой ${db.settings.minMarginPct} %`} value={fmt.price(minPrice)} /> : null}
         </StatList>
       </Block>
@@ -385,7 +397,7 @@ function PricesTab({ row }: { row: CatalogRow }) {
                       {promoValueText(pr)} · {AUDIENCE[pr.audience].toLowerCase()} · {fmt.date(pr.start)} — {fmt.date(pr.end)}
                     </div>
                   </div>
-                  <Chip tone={PROMO_STATE[st].tone}>{PROMO_STATE[st].label}</Chip>
+                  <StatusChip s={PROMO_STATE[st]} />
                 </div>
               );
             })}
@@ -512,9 +524,12 @@ function StockTab({ row, mode }: { row: CatalogRow; mode: CatalogMode }) {
         </div>
         {mode === 'full' ? (
           <div className="row prd-min-row">
-            <span className="muted">Минимальный остаток</span>
+            <span className="muted" title="По магазину и складу вместе; сравниваем с «Доступно»">
+              Минимальный остаток
+            </span>
             <span className="w-700 num">{fmt.qty(p.minStock)}</span>
-            <LevelChip level={row.level} />
+            <span className="muted">· в магазине держим от {fmt.qty(row.line.shopMin)}</span>
+            <StockChip row={row} />
           </div>
         ) : null}
       </Block>

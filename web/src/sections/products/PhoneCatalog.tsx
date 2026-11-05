@@ -7,7 +7,7 @@ import { PageHeader } from '../../shell/PageHeader';
 import { useOpenEntity } from '../../shell/entities';
 import { Button, EmptyState, SearchInput, cx, fmt } from '../../ui';
 import { catalogMode, catalogRows, type CatalogRow } from './lib';
-import { LevelChip, PromoChip } from './bits';
+import { PromoChip, Qty } from './bits';
 
 const norm = (s: string) => s.toLowerCase().replace(/ё/g, 'е');
 const PAGE = 30;
@@ -78,7 +78,7 @@ export default function PhoneCatalog() {
           ))}
           {list.length > limit ? (
             <Button size="lg" block onClick={() => setLimit((l) => l + PAGE)}>
-              Показать ещё {fmt.num(Math.min(PAGE, list.length - limit))} из {fmt.num(list.length - limit)}
+              Показать ещё {fmt.num(Math.min(PAGE, list.length - limit))} (осталось {fmt.num(list.length - limit)})
             </Button>
           ) : null}
         </div>
@@ -95,7 +95,6 @@ function ProductCard({ row, mode, promo, onOpen }: { row: CatalogRow; mode: Retu
   const p = row.p;
   const seller = mode === 'seller';
   const info = seller ? row.retail : row.wholesale;
-  const avail = seller ? row.stock.shop.available : row.stock.warehouse.available;
   const discounted = !!info.promo && info.price < info.base;
   return (
     <button type="button" className="card prd-m-card" onClick={onOpen}>
@@ -113,8 +112,18 @@ function ProductCard({ row, mode, promo, onOpen }: { row: CatalogRow; mode: Retu
           </span>
         </div>
         <div className="prd-m-col is-right">
-          <span className="prd-m-label">{seller ? 'В магазине' : 'Доступно на складе'}</span>
-          {avail > 0 ? <span className="prd-m-avail">{fmt.qty(avail)}</span> : <LevelChip level="out" />}
+          <span className="prd-m-label" title="Магазин + склад − резерв">
+            Доступно
+          </span>
+          <span className="prd-m-avail">
+            <Qty v={row.available} />
+          </span>
+        </div>
+        <div className="prd-m-col is-right">
+          <span className="prd-m-label">{seller ? 'В магазине' : 'На складе для опта'}</span>
+          <span className="prd-m-avail">
+            <Qty v={seller ? row.stock.shop.available : row.whAvailable} />
+          </span>
         </div>
       </div>
       {promo ? (

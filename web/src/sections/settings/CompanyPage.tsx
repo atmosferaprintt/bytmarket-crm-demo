@@ -204,7 +204,7 @@ export function CompanyPage() {
           <Card title="Так видит клиент в счёте">
             <div className="set-doc">
               <div className="set-doc-title">
-                Счёт на оплату № {fmt.num(docSample.number)} от {fmt.date(db.meta.today, { year: true })}
+                Счёт на оплату № {docSample.number} от {fmt.date(db.meta.today, { year: true })}
               </div>
               <div className="set-doc-row">
                 <span>Поставщик</span>
