@@ -78,7 +78,7 @@ svg { flex-shrink: 0; }
   height: 100%;
   display: flex; flex-direction: column;
   background: var(--nav-bg);
-  border-radius: var(--r-lg);
+  border-radius: var(--r-nav);
   color: var(--nav-ink);
   overflow: hidden;
 }
@@ -103,7 +103,7 @@ svg { flex-shrink: 0; }
 .nav-item {
   display: flex; align-items: center; gap: 12px;
   height: 40px; padding: 0 12px;
-  border-radius: var(--r-sm);
+  border-radius: var(--r-nav-item);
   color: var(--nav-ink); font-size: var(--fs-13); font-weight: 600;
   text-decoration: none; border: 0; background: transparent; width: 100%; text-align: left;
   transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
@@ -122,10 +122,10 @@ svg { flex-shrink: 0; }
 .is-collapsed .nav-item { justify-content: center; padding: 0; }
 .is-collapsed .nav-item .nav-label, .is-collapsed .nav-badge, .is-collapsed .nav-group-label { display: none; }
 
-.sidebar-foot { padding: 10px; border-top: 1px solid rgba(255, 255, 255, 0.08); }
+.sidebar-foot { padding: 10px 10px 12px; border-top: 1px solid rgba(255, 255, 255, 0.08); }
 .role-button {
   display: flex; align-items: center; gap: 10px; width: 100%;
-  padding: 8px; border-radius: var(--r-sm); border: 0; background: transparent; color: var(--nav-ink); text-align: left;
+  padding: 8px; border-radius: var(--r-nav-item); border: 0; background: transparent; color: var(--nav-ink); text-align: left;
 }
 .role-button:hover { background: var(--nav-hover); }
 .role-button .role-meta { min-width: 0; flex: 1 1 auto; }
