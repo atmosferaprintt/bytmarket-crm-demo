@@ -11,7 +11,7 @@ export type OpType = keyof typeof ops;
 
 const STORAGE_KEY = 'bytmarket-demo-v2-ops';
 /** Версия исходных данных. Менять при любой правке генератора: старый журнал тогда отбрасывается, а не применяется к другим товарам. */
-export const DATA_VERSION = 'g7';
+export const DATA_VERSION = 'g8';
 const MIN_MINUTES = 14 * 60 + 5; // сгенерированные события идут до 14:00
 const MAX_MINUTES = 20 * 60 + 55;
 
@@ -114,12 +114,16 @@ export function useDBVersion(): number {
 
 const pad2 = (n: number): string => (n < 10 ? '0' + n : String(n));
 
-/** «Сейчас» демо: сегодняшняя дата демо и текущее время суток, но не раньше 14:05 и не позже 20:55.
+/** Часы демо идут с момента открытия: показ всегда начинается в 14:05, сразу после сгенерированных событий,
+    в какое бы время суток его ни открыли. Так опоздания и время визитов выглядят одинаково утром и вечером. */
+const SESSION_START = Date.now();
+
+/** «Сейчас» демо: сегодняшняя дата демо, 14:05 плюс время с открытия демо, не позже 20:55.
     Время не идёт назад относительно последней операции пользователя. */
 export function nowDemo(): ISODateTime {
   const today = getDB().meta.today;
-  const d = new Date();
-  const m = Math.min(MAX_MINUTES, Math.max(MIN_MINUTES, d.getHours() * 60 + d.getMinutes()));
+  const elapsed = Math.floor((Date.now() - SESSION_START) / 60000);
+  const m = Math.min(MAX_MINUTES, MIN_MINUTES + Math.max(0, elapsed));
   let at = `${today}T${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
   const last = journal[journal.length - 1]?.at;
   if (last && last > at && last.startsWith(today)) at = last;

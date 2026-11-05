@@ -1,6 +1,6 @@
 /* После симуляции: планы продаж, переписка WhatsApp и задачи сотрудников.
    Тексты собраны из настоящих документов базы: номера заказов, суммы долгов, товары. */
-import type { ChatMessage, Client, DB, ID, ISODate, ISODateTime, Order, TaskLink } from '../types';
+import type { ChatMessage, Client, TaskKind, DB, ID, ISODate, ISODateTime, Order, TaskLink } from '../types';
 import type { Rng } from '../rng';
 import { applyOp } from '../ops';
 import { shortName } from '../opkit';
@@ -322,6 +322,10 @@ interface TaskDraft {
   link?: TaskLink;
   priority?: 'high';
   time?: string;
+  /** вид — такие задачи закрываются сами, когда дело сделано */
+  kind?: TaskKind;
+  /** кто поставил (по умолчанию — владелец или руководитель) */
+  author?: ID;
 }
 
 export function buildTasks(db: DB, rng: Rng, meta: ProdMeta[]): void {
@@ -380,6 +384,42 @@ export function buildTasks(db: DB, rng: Rng, meta: ProdMeta[]): void {
   add(todayTasks, draftPurchase && { who: E.owner, title: `Согласовать закупку №${draftPurchase.number} у «Бумажного мира» на ${rub(draftPurchase.total)}`, link: { type: 'purchase', id: draftPurchase.id }, priority: 'high' });
   const over0 = overdueClients[0];
   add(todayTasks, over0 && { who: E.owner, title: `Решить по ${toClient(over0.c.id)}: просрочка ${rub(over0.b.overdue)}, отгружать ли дальше`, link: { type: 'client', id: over0.c.id } });
+  // заявка представителя клиенту с просрочкой: менеджер не может подтвердить сам и запросил согласие владельца
+  let ask = requests.find((o) => clientBalance(db, o.clientId).overdue > 0);
+  if (!ask) {
+    // нет такой заявки — представитель сегодня в визите оформил заявку должнику
+    const d = overdueClients.find((x) => x.c.active && x.c.ownerId && (REPS as readonly string[]).includes(x.c.ownerId) && x.c.ownerId !== E.khalilov);
+    const last = d && db.orders.filter((o) => o.clientId === d.c.id && o.state !== 'cancelled').slice(-1)[0];
+    if (d && last) {
+      try {
+        const r = applyOp(
+          db,
+          'order.create',
+          { clientId: d.c.id, pointId: last.pointId, lines: last.lines.slice(0, 3).map((l) => ({ productId: l.productId, pack: l.pack, packQty: l.packQty })), state: 'request', source: 'rep', fulfillment: last.fulfillment, comment: 'Заявка из визита' },
+          { actorId: d.c.ownerId!, at: (() => { const lastAt = db.orders.reduce((m, o) => (o.createdAt > m ? o.createdAt : m), ''); const lm = lastAt.startsWith(today) ? +lastAt.slice(11, 13) * 60 + +lastAt.slice(14, 16) : 11 * 60; return atTime(today, Math.min(13 * 60 + 40, lm + 3)); })() },
+        );
+        ask = r.id ? get(db, 'orders', r.id) : undefined;
+        if (ask) requests.push(ask);
+      } catch {
+        /* не вышло — без этого примера */
+      }
+    }
+  }
+  if (ask) {
+    const cl = get(db, 'clients', ask.clientId);
+    const mgr = (MANAGERS as readonly string[]).includes(cl?.ownerId ?? '') ? cl!.ownerId! : E.omarov;
+    const b = clientBalance(db, ask.clientId);
+    add(todayTasks, {
+      who: E.owner,
+      author: mgr,
+      title: `Согласовать заказ № ${ask.number} ${toClient(ask.clientId)}: просрочка ${rub(b.overdue)} — ${b.maxOverdueDays} ${plural(b.maxOverdueDays, 'день', 'дня', 'дней')}`,
+      link: { type: 'order', id: ask.id },
+      priority: 'high',
+      kind: 'approve_order',
+    });
+    const created = ask.createdAt.slice(0, 10) === today ? +ask.createdAt.slice(11, 13) * 60 + +ask.createdAt.slice(14, 16) : 0;
+    ask.history.push({ at: atTime(today, Math.max(11 * 60 + 20, Math.min(13 * 60 + 55, created + 15))), actorId: mgr, text: 'Отправлен владельцу на согласование: у клиента просрочка' });
+  }
   add(todayTasks, { who: E.owner, title: 'Посмотреть, как идёт акция «Осенняя стирка»: порошки к середине ноября', time: '16:00' });
   add(todayTasks, { who: E.owner, title: 'Подписать продление аренды склада на 2027 год', time: '12:00' });
   add(overdueTasks, { who: E.owner, title: 'Ответить «ЭкоХим Поволжье» по новым условиям отсрочки' });
@@ -397,14 +437,20 @@ export function buildTasks(db: DB, rng: Rng, meta: ProdMeta[]): void {
 
   // менеджеры
   MANAGERS.forEach((m, i) => {
-    const oc = pick(overdueClients, i * 2 + 1);
-    add(todayTasks, oc && { who: m, title: `Позвонить ${callTo(oc.c.id)} по долгу ${rub(oc.b.overdue)} — просрочка ${oc.b.maxOverdueDays} дн.`, link: { type: 'client', id: oc.c.id }, priority: 'high' });
-    add(todayTasks, requests.length > 0 && { who: m, title: `Подтвердить заявки представителей до 15:00 — ждут ${requests.length}`, time: '15:00' });
-    const co = pick(confirmedToday, i);
-    add(todayTasks, co && { who: m, title: `Отправить счёт ${toClient(co.clientId)} по заказу №${co.number}`, link: { type: 'order', id: co.id } });
-    add(todayTasks, i === 0 && pending[0] && { who: m, title: `Проверить скриншот перевода на ${rub(pending[0].amount)} — передать Ольге`, link: { type: 'payment', id: pending[0].id } });
+    // менеджер работает со своими клиентами и клиентами представителей — задачи только по ним
+    const sees = (cid: ID): boolean => {
+      const own = get(db, 'clients', cid)?.ownerId ?? null;
+      return own === m || own === null || (REPS as readonly string[]).includes(own);
+    };
+    const mine = overdueClients.filter((x) => sees(x.c.id));
+    const oc = pick(mine, i);
+    add(todayTasks, oc && { who: m, title: `Позвонить ${callTo(oc.c.id)} по долгу ${rub(oc.b.overdue)} — просрочка ${oc.b.maxOverdueDays} ${plural(oc.b.maxOverdueDays, 'день', 'дня', 'дней')}`, link: { type: 'client', id: oc.c.id }, priority: 'high', kind: 'call_debt' });
+    add(todayTasks, requests.length > 0 && { who: m, title: 'Подтвердить заявки представителей до 15:00', time: '15:00', kind: 'confirm_requests' });
+    const co = pick(confirmedToday.filter((o) => sees(o.clientId)), i);
+    add(todayTasks, co && { who: m, title: `Отправить счёт ${toClient(co.clientId)} по заказу №${co.number}`, link: { type: 'order', id: co.id }, kind: 'send_invoice' });
+    add(todayTasks, i === 0 && pending[0] && { who: m, title: `Проверить скриншот перевода на ${rub(pending[0].amount)} — передать Хадижат`, link: { type: 'payment', id: pending[0].id } });
     add(todayTasks, i === 1 && waiting[0] && { who: m, title: `Согласовать с клиентом ${shortClient(waiting[0].clientId)} время доставки №${waiting[0].number}`, link: { type: 'delivery', id: waiting[0].id } });
-    const oc2 = pick(overdueClients, i * 2 + 2);
+    const oc2 = pick(mine, i + 2);
     add(overdueTasks, oc2 && { who: m, title: `Отправить акт сверки ${toClient(oc2.c.id)}`, link: { type: 'client', id: oc2.c.id } });
   });
 
@@ -415,7 +461,7 @@ export function buildTasks(db: DB, rng: Rng, meta: ProdMeta[]): void {
     const c3 = repClient(r, 5);
     add(todayTasks, c1 && { who: r, title: `Привезти образцы Synergetic ${intoPlace(c1.id)}`, link: { type: 'client', id: c1.id } });
     const debtor = overdueClients.find((x) => x.c.ownerId === r);
-    add(todayTasks, debtor && { who: r, title: `Напомнить ${toClient(debtor.c.id)} об оплате ${rub(debtor.b.overdue)}`, link: { type: 'client', id: debtor.c.id }, priority: 'high' });
+    add(todayTasks, debtor && { who: r, title: `Напомнить ${toClient(debtor.c.id)} об оплате ${rub(debtor.b.overdue)}`, link: { type: 'client', id: debtor.c.id }, priority: 'high', kind: 'remind_debt' });
     add(todayTasks, c2 && { who: r, title: `Сфотографировать выкладку ${atPlace(c2.id)} — обещали место на кассе`, link: { type: 'client', id: c2.id } });
     add(todayTasks, i === 2 && { who: r, title: 'Познакомиться с новыми точками на Татищева: взять контакты закупщиков' });
     const c4 = repClient(r, 7) ?? repClient(r, 0);
@@ -425,13 +471,14 @@ export function buildTasks(db: DB, rng: Rng, meta: ProdMeta[]): void {
 
   // бухгалтер
   const so = pick(supplierOverdue);
-  add(todayTasks, so && { who: E.suleymanova, title: `Оплатить долг поставщику ${so.s.name}: просрочено ${rub(so.b.overdue)}`, priority: 'high' });
+  add(todayTasks, so && { who: E.suleymanova, title: `Оплатить долг поставщику ${so.s.name}: просрочено ${rub(so.b.overdue)}`, priority: 'high', link: { type: 'supplier', id: so.s.id }, kind: 'pay_supplier' });
   const ss = pick(supplierSoon);
   add(todayTasks, ss?.u && { who: E.suleymanova, title: `Запланировать оплату поставщику ${ss.s.name} — ${rub(ss.u.amount)} до ${dayText(ss.u.dueDate)}`, link: { type: 'purchase', id: ss.u.purchaseId } });
-  add(todayTasks, unidentified[0] && { who: E.suleymanova, title: `Разнести неопознанный платёж ${rub(unidentified[0].amount)} от ${dayText(unidentified[0].at.slice(0, 10))}`, link: { type: 'payment', id: unidentified[0].id } });
-  add(todayTasks, { who: E.suleymanova, title: 'Сверка с «ЮгХимОпт» за октябрь' });
+  add(todayTasks, unidentified[0] && { who: E.suleymanova, title: `Разнести неопознанный платёж ${rub(unidentified[0].amount)} от ${dayText(unidentified[0].at.slice(0, 10))}`, link: { type: 'payment', id: unidentified[0].id }, kind: 'identify_payment' });
+  const yug = db.suppliers.find((x) => x.name.includes('ЮгХимОпт'));
+  add(todayTasks, { who: E.suleymanova, title: 'Сверка с «ЮгХимОпт» за октябрь', ...(yug ? { link: { type: 'supplier' as const, id: yug.id } } : {}) });
   add(todayTasks, { who: E.suleymanova, title: 'Подготовить платёжный календарь на следующую неделю', time: '17:00' });
-  add(overdueTasks, unidentified[1] && { who: E.suleymanova, title: `Выяснить у банка плательщика на ${rub(unidentified[1].amount)}`, link: { type: 'payment', id: unidentified[1].id } });
+  add(overdueTasks, unidentified[1] && { who: E.suleymanova, title: `Выяснить у банка плательщика на ${rub(unidentified[1].amount)}`, link: { type: 'payment', id: unidentified[1].id }, kind: 'identify_payment' });
 
   // склад
   const tr = pick(transit);
@@ -441,22 +488,22 @@ export function buildTasks(db: DB, rng: Rng, meta: ProdMeta[]): void {
   add(overdueTasks, { who: E.ibragimov, title: 'Пересчитать стеллаж с мешками — расходится с учётом' });
   add(todayTasks, { who: E.ibragimov, title: 'Проверить сроки на гелях для душа в зоне хранения' });
   const co = pick(confirmedToday, 2);
-  add(todayTasks, co && { who: E.ismailov, title: `Собрать заказ №${co.number} к 15:00`, link: { type: 'order', id: co.id }, time: '15:00' });
+  add(todayTasks, co && { who: E.ismailov, title: `Собрать заказ №${co.number} к 15:00`, link: { type: 'order', id: co.id }, time: '15:00', kind: 'pick_order' });
   const df = pick(deficit);
   add(todayTasks, df && { who: E.ismailov, title: `Проверить остаток: ${shortName(df)} — на полке почти нет`, link: { type: 'product', id: df.id } });
   add(todayTasks, { who: E.ismailov, title: 'Подготовить пополнение магазина на пятницу' });
   add(overdueTasks, { who: E.ismailov, title: 'Убрать паллеты из прохода у ворот' });
 
   // диспетчер
-  add(todayTasks, failedToday && { who: E.abakarova, title: `Решить по неудачной доставке №${failedToday.number}: повтор или на склад`, link: { type: 'delivery', id: failedToday.id }, priority: 'high' });
-  add(todayTasks, waiting.length > 0 && { who: E.abakarova, title: `Назначить курьеров на ${waiting.length} доставки без курьера`, link: { type: 'delivery', id: waiting[0].id } });
-  add(todayTasks, denis.onHand > 0 && { who: E.abakarova, title: `Проверить, сдал ли Денис деньги за вчера — ${rub(denis.onHand)}` });
+  add(todayTasks, failedToday && { who: E.abakarova, title: `Решить по неудачной доставке №${failedToday.number}: повтор или на склад`, link: { type: 'delivery', id: failedToday.id }, priority: 'high', kind: 'failed_delivery' });
+  add(todayTasks, waiting.length > 0 && { who: E.abakarova, title: `Назначить курьеров на доставки без курьера: ${waiting.length}`, link: { type: 'delivery', id: waiting[0].id }, kind: 'assign_couriers' });
+  add(todayTasks, denis.onHand > 0 && { who: E.abakarova, title: `Принять у Саида деньги за вчера — ${rub(denis.onHand)}`, kind: 'courier_cash' });
   add(overdueTasks, { who: E.abakarova, title: 'Собрать с курьеров чеки за бензин за неделю' });
   add(todayTasks, { who: E.abakarova, title: 'Составить маршруты на завтра до 17:00', time: '17:00' });
 
   // курьеры
-  const courierTasks: [ID, string][] = [
-    [E.musaev, `Сдать в кассу ${rub(denis.onHand)} за вчера и сегодня`],
+  const courierTasks: [ID, string, TaskKind?][] = [
+    [E.musaev, `Сдать в кассу ${rub(denis.onHand)} за вчера и сегодня`, 'courier_cash'],
     [E.musaev, 'Заехать на заправку, чек — диспетчеру'],
     [E.musaev, 'Отвезти закрывающие документы в гостиницу «Волжские зори»'],
     [E.ramazanov, 'Забрать возврат у клиента на Боевой'],
@@ -466,7 +513,7 @@ export function buildTasks(db: DB, rng: Rng, meta: ProdMeta[]): void {
     [E.daudov, 'Отдать путевой лист за неделю'],
     [E.daudov, 'Уточнить подъезд на Хибинской — шлагбаум'],
   ];
-  for (const [who, title] of courierTasks) add(todayTasks, { who, title });
+  for (const [who, title, kind] of courierTasks) add(todayTasks, { who, title, ...(kind ? { kind } : {}) });
   add(overdueTasks, { who: E.daudov, title: 'Сдать акт по возврату на склад' });
   add(overdueTasks, { who: E.ramazanov, title: 'Получить новую карту для бензина' });
   add(overdueTasks, { who: E.musaev, title: 'Отдать диспетчеру путевой лист за прошлую неделю' });
@@ -476,7 +523,7 @@ export function buildTasks(db: DB, rng: Rng, meta: ProdMeta[]): void {
   let i = 0;
   const create = (t: TaskDraft, due: ISODate, createdAt: ISODateTime): ID | undefined => {
     try {
-      return applyOp(db, 'task.create', { title: t.title, assigneeId: t.who, due, dueTime: t.time ?? null, priority: t.priority ?? 'normal', link: t.link ?? null }, { actorId: authorFor(t.who), at: createdAt }).id;
+      return applyOp(db, 'task.create', { title: t.title, assigneeId: t.who, due, dueTime: t.time ?? null, priority: t.priority ?? 'normal', link: t.link ?? null, ...(t.kind ? { kind: t.kind } : {}) }, { actorId: t.author ?? authorFor(t.who), at: createdAt }).id;
     } catch {
       return undefined;
     }

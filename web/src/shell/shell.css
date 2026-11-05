@@ -28,6 +28,10 @@
 .topbar-logo { height: 28px; width: auto; }
 .topbar-date { font-size: var(--fs-13); font-weight: 600; color: var(--ink-2); white-space: nowrap; }
 .topbar-tasks { position: relative; }
+@media (max-width: 760px) {
+  /* на телефоне значки в шапке — под палец, не меньше 44 px */
+  .topbar .btn-icon { width: 44px; height: 44px; }
+}
 .tasks-count {
   position: absolute; top: 0; right: -2px;
   min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--r-full); background: var(--bad); color: #fff;

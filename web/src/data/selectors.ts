@@ -183,6 +183,14 @@ export function priceFor(db: DB, productId: ID, opts: { priceType: PriceType; da
       promo = pr;
     }
   }
+  // опт не дороже розницы: если розничная акция дала цену ниже оптовой, оптовый клиент платит её
+  if (opts.priceType === 'wholesale') {
+    const r = priceFor(db, productId, { priceType: 'retail', date: opts.date });
+    if (r.promo && r.price < price) {
+      price = r.price;
+      promo = r.promo;
+    }
+  }
   return { base, price, promo };
 }
 
@@ -388,7 +396,8 @@ export function clientBalances(db: DB): Map<ID, ClientBalance> {
     for (const [cid, b] of m) {
       b.advance = Math.max(0, b.advance);
       b.avgOrder = b.ordersCount ? Math.round((sums.get(cid) ?? 0) / b.ordersCount) : 0;
-      b.creditLeft = b.creditLimit > 0 ? b.creditLimit - b.debt : 0;
+      // остаток лимита — та же формула, что при подтверждении заказа: лимит − долг − подтверждённые, но не отгруженные заказы
+      b.creditLeft = b.creditLimit > 0 ? b.creditLimit - b.debt - b.openOrders : 0;
     }
     return m;
   });

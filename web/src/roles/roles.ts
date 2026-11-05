@@ -98,7 +98,7 @@ export const ROLES: Record<RoleKey, RoleMeta> = {
     name: 'Менеджер',
     short: 'Менеджер',
     about: 'Свои оптовые клиенты, заказы, резервы и оплаты',
-    sees: 'своих клиентов, их заказы, долги и доставки',
+    sees: 'своих клиентов и клиентов представителей: заказы, долги, доставки',
     mobile: false,
     sections: ['overview', 'sales', 'chats', 'clients', 'products', 'delivery', 'money'],
     perms: ['editClients', 'createOrder', 'createRequest', 'confirmOrder', 'cancelOrder', 'shipOrder', 'acceptPayment', 'planVisits', 'export'],

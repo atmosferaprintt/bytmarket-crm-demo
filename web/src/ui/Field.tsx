@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useState, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
+import { forwardRef, useEffect, useRef, useState, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { Minus, Plus, Search, X } from 'lucide-react';
 import { cx } from './cx';
 
@@ -126,7 +126,11 @@ export function Switch({ checked, onChange, disabled, label }: { checked: boolea
 /** Количество с кнопками − / + и вводом с клавиатуры. */
 export function QtyInput({ value, onChange, min = 0, max, step = 1, ariaLabel = 'Количество' }: { value: number; onChange: (v: number) => void; min?: number; max?: number; step?: number; ariaLabel?: string }) {
   const [text, setText] = useState(String(value));
-  useEffect(() => setText(String(value)), [value]);
+  const focused = useRef(false);
+  // поле всегда показывает то, что принято: если раздел урезал количество (больше нет в наличии), текст тоже меняется
+  useEffect(() => {
+    if (!focused.current && text !== String(value)) setText(String(value));
+  });
   const clamp = (v: number) => Math.max(min, max !== undefined ? Math.min(max, v) : v);
   return (
     <span className="qty">
@@ -138,7 +142,11 @@ export function QtyInput({ value, onChange, min = 0, max, step = 1, ariaLabel = 
         inputMode="numeric"
         value={text}
         onChange={(e) => setText(e.target.value.replace(/[^\d]/g, ''))}
+        onFocus={() => {
+          focused.current = true;
+        }}
         onBlur={() => {
+          focused.current = false;
           const v = clamp(Number(text || 0));
           setText(String(v));
           if (v !== value) onChange(v);

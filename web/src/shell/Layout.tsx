@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { ChevronsUpDown, ListChecks, PanelLeftClose, PanelLeftOpen, Search, MoreHorizontal } from 'lucide-react';
+import { ChevronsUpDown, ListChecks, PanelLeftClose, PanelLeftOpen, Search, MoreHorizontal, Wallet } from 'lucide-react';
 import { Avatar, ToastStack, cx, fmt } from '../ui';
 import { useDB, useDBVersion } from '../data/store';
 import { useSession } from '../roles/session';
@@ -116,6 +116,8 @@ export function Layout({ children }: { children: ReactNode }) {
 
   const phoneSections = sections.slice(0, sections.length > 5 ? 4 : 5);
   const restSections = sections.length > 5 ? sections.slice(4) : [];
+  // курьеру деньги на руках нужны так же часто, как доставки — отдельный пункт внизу
+  const phoneExtra = role === 'courier' ? [{ key: 'cash', label: 'Деньги', path: '/delivery/cash', icon: Wallet }] : [];
 
   return (
     <div className={cx('app', collapsed && 'is-collapsed', meta.mobile && 'is-mobile-role')}>
@@ -172,7 +174,7 @@ export function Layout({ children }: { children: ReactNode }) {
               </button>
               <button type="button" className="search-trigger" onClick={() => setSearchOpen(true)}>
                 <Search />
-                <span>Найти товар, клиента или заказ</span>
+                <span>{sees("clients") || sees("products") ? "Найти товар, клиента или заказ" : "Найти доставку"}</span>
                 <span className="kbd">⌘K</span>
               </button>
               <span className="topbar-date">{todayLabel}</span>
@@ -199,12 +201,23 @@ export function Layout({ children }: { children: ReactNode }) {
             const Icon = s.icon;
             const b = badges[s.key];
             return (
-              <NavLink key={s.key} to={s.path} className={({ isActive }) => cx(isActive && 'is-active')}>
+              <NavLink key={s.key} to={s.path} end={role === 'courier' && s.key === 'delivery'} className={({ isActive }) => cx(isActive && 'is-active')}>
                 <span className="mobile-icon">
                   <Icon />
                   {b ? <span className="mobile-badge">{b.n}</span> : null}
                 </span>
                 {sectionLabel(s.key, role)}
+              </NavLink>
+            );
+          })}
+          {phoneExtra.map((x) => {
+            const Icon = x.icon;
+            return (
+              <NavLink key={x.key} to={x.path} className={({ isActive }) => cx(isActive && 'is-active')}>
+                <span className="mobile-icon">
+                  <Icon />
+                </span>
+                {x.label}
               </NavLink>
             );
           })}

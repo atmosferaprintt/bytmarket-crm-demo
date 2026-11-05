@@ -1,4 +1,6 @@
 /* Чьи данные видно роли. Одно правило «чей клиент»: Client.ownerId.
+   Менеджер работает со своими клиентами и с клиентами торговых представителей (их заявки подтверждает менеджер);
+   клиенты другого менеджера ему не видны. Одно правило для списков, заказа, поиска, чатов и долгов.
    Использование: const clients = useScoped().clients; */
 import { useMemo } from 'react';
 import type { Client, DB, Delivery, Order, Visit, Chat, Receipt, Task } from '../data/types';
@@ -22,8 +24,13 @@ export function scopeFor(db: DB, s: Pick<Session, 'me' | 'role' | 'can'>): Scope
   const own = s.role === 'manager' || s.role === 'rep';
   const ownClientIds = new Set(db.clients.filter((c) => c.ownerId === meId).map((c) => c.id));
 
+  // клиенты, с которыми работает менеджер: свои, представителей и ещё никем не закреплённые
+  const repIds = new Set(db.employees.filter((e) => e.roles[0] === 'rep').map((e) => e.id));
+  const workIds =
+    s.role === 'manager' ? new Set(db.clients.filter((c) => c.ownerId === meId || c.ownerId === null || repIds.has(c.ownerId)).map((c) => c.id)) : ownClientIds;
+
   let clients = db.clients;
-  if (own) clients = db.clients.filter((c) => ownClientIds.has(c.id));
+  if (own) clients = db.clients.filter((c) => workIds.has(c.id));
   else if (s.role === 'seller') clients = db.clients.filter((c) => c.segment === 'retail');
   else if (s.role === 'courier' || s.role === 'dispatcher' || s.role === 'warehouse') {
     clients = db.clients; // видят только через доставки/заказы; разделы «Клиенты» им закрыты
@@ -31,13 +38,7 @@ export function scopeFor(db: DB, s: Pick<Session, 'me' | 'role' | 'can'>): Scope
 
   let orders = db.orders;
   if (s.role === 'rep') orders = db.orders.filter((o) => o.ownerId === meId || ownClientIds.has(o.clientId));
-  else if (s.role === 'manager') {
-    // менеджер подтверждает заявки представителей, поэтому видит их все, плюс свои заказы и оформленные им
-    const repIds = new Set(db.employees.filter((e) => e.roles[0] === 'rep').map((e) => e.id));
-    orders = db.orders.filter(
-      (o) => o.ownerId === meId || o.authorId === meId || ownClientIds.has(o.clientId) || (o.state === 'request' && (repIds.has(o.authorId) || (o.ownerId !== null && repIds.has(o.ownerId)))),
-    );
-  }
+  else if (s.role === 'manager') orders = db.orders.filter((o) => o.authorId === meId || workIds.has(o.clientId));
 
   let deliveries = db.deliveries;
   if (s.role === 'courier') deliveries = db.deliveries.filter((d) => d.courierId === meId);
@@ -50,8 +51,7 @@ export function scopeFor(db: DB, s: Pick<Session, 'me' | 'role' | 'can'>): Scope
   if (s.role === 'rep') visits = db.visits.filter((v) => v.repId === meId);
 
   let chats = db.chats;
-  if (s.role === 'rep') chats = db.chats.filter((c) => ownClientIds.has(c.clientId) || c.ownerId === meId);
-  // менеджеры отвечают в общий WhatsApp магазина — видят все переписки
+  if (own) chats = db.chats.filter((c) => workIds.has(c.clientId));
 
   let receipts = db.receipts;
   if (s.role === 'seller') receipts = db.receipts.filter((r) => r.sellerId === meId);

@@ -176,7 +176,8 @@ export default function SalePage() {
   }, []);
 
   /* ---------- поиск ---------- */
-  const found = useMemo(() => searchCatalog(catalog, query, 8), [catalog, query]);
+  // в магазине есть — выше: на кассе продаётся только то, что лежит в зале
+  const found = useMemo(() => searchCatalog(catalog, query, 8, db, (id) => stockOf(db, id).shop.available), [catalog, query, db, version]);
   const popular = useMemo(() => popularItems(catalog, db, 6), [catalog, db, version]);
   const list = query.trim() ? found.list : popular;
   // пока поле пустое, ходовые товары выбираются только стрелками: случайный Enter ничего не добавит

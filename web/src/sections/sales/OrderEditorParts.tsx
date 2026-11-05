@@ -7,6 +7,7 @@ import { indexes, priceFor, stockIndex, type RepeatPreviewResult } from './data'
 import { Button, Checkbox, Chip, Field, Input, Modal, Notice, STOCK_LEVEL, StatusChip, cx, fmt } from '../../ui';
 import { linePackLabel, norm, productName } from './lib';
 import { PriceCell, PromoChip } from './parts';
+import { searchProducts } from '../../data/search';
 
 /* ---------- поиск товара: штрихкод, название, артикул ---------- */
 
@@ -39,17 +40,19 @@ export function ProductSearch({ priceType, onPick, autoFocus }: { priceType: Pri
       const it = catalog.items.find((x) => x.p.id === code.productId);
       return it ? [{ ...it, pack: code.pack as PackKey | undefined }] : [];
     }
-    const tokens = norm(s).split(/\s+/);
+    // общий поиск товара: точное совпадение названия выше, то, что есть на складе, — чуть выше
     const si = stockIndex(db);
-    return catalog.items
-      .filter((x) => tokens.every((t) => x.text.includes(t)))
-      .map((x) => {
-        const avail = si.get(x.p.id)?.warehouse.available ?? 0;
-        const unit = x.p.packs[x.p.packs.length - 1]?.qty ?? 1;
-        return { ...x, pack: undefined as PackKey | undefined, avail, score: avail >= unit ? 2 : avail > 0 ? 1 : 0 };
-      })
-      .sort((a, b) => b.score - a.score || Number(norm(b.p.name).startsWith(tokens[0])) - Number(norm(a.p.name).startsWith(tokens[0])) || a.p.name.localeCompare(b.p.name, 'ru'))
-      .slice(0, 8);
+    const byId = new Map(catalog.items.map((x) => [x.p.id, x]));
+    return searchProducts(db, s, {
+      limit: 8,
+      boost: (p) => {
+        const avail = si.get(p.id)?.warehouse.available ?? 0;
+        const unit = p.packs[p.packs.length - 1]?.qty ?? 1;
+        return avail >= unit ? 1.5 : avail > 0 ? 0.5 : 0;
+      },
+    }).list
+      .filter((h) => byId.has(h.p.id))
+      .map((h) => ({ ...byId.get(h.p.id)!, pack: undefined as PackKey | undefined }));
   }, [q, catalog, db, version]);
 
   const pick = (i: number) => {

@@ -139,12 +139,13 @@ export interface Movement {
 }
 
 export type StockDocKind = 'initial' | 'income' | 'transfer' | 'writeoff' | 'count';
-export type WriteoffReason = 'leak' | 'damage' | 'expired' | 'shortage' | 'other';
+export type WriteoffReason = 'leak' | 'damage' | 'expired' | 'shortage' | 'supplier_return' | 'other';
 export const WRITEOFF_REASONS: Record<WriteoffReason, string> = {
   leak: 'Протечка',
   damage: 'Повреждение',
   expired: 'Просрочка',
   shortage: 'Недостача',
+  supplier_return: 'Возврат поставщику',
   other: 'Другое',
 };
 
@@ -293,6 +294,8 @@ export interface Order {
   total: number; // сумма строк, целые рубли
   idempotencyKey: string | null;
   history: OrderEvent[];
+  /** отмеченные при сборке товары — прогресс не теряется, если сборщик отвлёкся */
+  pickChecked?: ID[];
 }
 // Оплата заказа не хранится в заказе: считается из Payment.allocations (selectors.orderPayment).
 
@@ -385,6 +388,8 @@ export interface Payment {
   authorId: ID;
   comment: string;
   idempotencyKey: string | null;
+  /** плательщик из банковской выписки — для неопознанных поступлений */
+  payer?: { name: string; inn: string } | null;
 }
 
 export const EXPENSE_CATEGORIES = [
@@ -396,6 +401,7 @@ export const EXPENSE_CATEGORIES = [
   'Упаковка и расходники',
   'Реклама',
   'Ремонт и обслуживание',
+  'Недостача',
 ] as const;
 
 /* ---------- закупки ---------- */
@@ -440,13 +446,14 @@ export interface Purchase {
 }
 
 /* ---------- возвраты ---------- */
-export type ReturnReason = 'defect' | 'not_fit' | 'wrong_item' | 'expired' | 'delivery_failed' | 'other';
+export type ReturnReason = 'defect' | 'not_fit' | 'wrong_item' | 'expired' | 'delivery_failed' | 'not_taken' | 'other';
 export const RETURN_REASONS: Record<ReturnReason, string> = {
   defect: 'Брак',
   not_fit: 'Не подошёл',
   wrong_item: 'Привезли не то',
   expired: 'Истёк срок',
   delivery_failed: 'Не доставлен',
+  not_taken: 'Клиент не взял при доставке',
   other: 'Другое',
 };
 
@@ -519,6 +526,15 @@ export interface Delivery {
   handedIn: boolean; // курьер сдал деньги в кассу
   comment: string;
   attempts: DeliveryAttempt[];
+  /** заметки по доставке: перенос с причиной, задержка курьера, пожелание клиента */
+  notes?: DeliveryNote[];
+  /** курьер задерживается: ожидаемое время приезда «15:30» */
+  delayUntil?: string | null;
+}
+export interface DeliveryNote {
+  at: ISODateTime;
+  actorId: ID;
+  text: string;
 }
 
 /* ---------- торговые представители ---------- */
@@ -528,8 +544,8 @@ export const REFUSAL_REASONS = [
   'Дорого',
   'Нет денег',
   'Взяли у конкурента',
-  'Не было хозяина',
-  'Магазин закрыт',
+  'Нет места на полке',
+  'Не берут у них',
 ] as const;
 
 export interface Visit {
@@ -550,9 +566,25 @@ export interface Visit {
 
 /* ---------- задачи ---------- */
 export interface TaskLink {
-  type: 'client' | 'order' | 'delivery' | 'product' | 'purchase' | 'payment';
+  type: 'client' | 'order' | 'delivery' | 'product' | 'purchase' | 'payment' | 'supplier';
   id: ID;
 }
+/** Вид задачи: такие задачи закрываются сами, когда сделано то, о чём они (см. tasksAfterOp в ops.ts). */
+export type TaskKind =
+  | 'approve_order' // владельцу: согласовать заказ сверх условий — закрывается подтверждением или отменой заказа
+  | 'confirm_requests' // менеджеру: подтвердить заявки — закрывается, когда заявок не осталось
+  | 'send_invoice' // отправить счёт по заказу
+  | 'remind_debt' // напомнить клиенту об оплате — закрывается напоминанием в WhatsApp или оплатой
+  | 'call_debt' // позвонить по долгу — закрывается, когда просрочки нет
+  | 'identify_payment' // разнести неопознанный платёж
+  | 'check_transfer' // проверить перевод по выписке
+  | 'pay_supplier' // оплатить поставщику
+  | 'move_to_shop' // перенести товар со склада в магазин
+  | 'pick_order' // собрать заказ
+  | 'assign_couriers' // назначить курьеров — когда ожидающих не осталось
+  | 'failed_delivery' // решить по неудачной доставке
+  | 'courier_cash'; // принять деньги у курьера
+export const TASK_KINDS: TaskKind[] = ['approve_order', 'confirm_requests', 'send_invoice', 'remind_debt', 'call_debt', 'identify_payment', 'check_transfer', 'pay_supplier', 'move_to_shop', 'pick_order', 'assign_couriers', 'failed_delivery', 'courier_cash'];
 export interface Task {
   id: ID;
   title: string;
@@ -565,6 +597,8 @@ export interface Task {
   link: TaskLink | null;
   createdAt: ISODateTime;
   doneAt: ISODateTime | null;
+  /** вид задачи — такие закрываются сами, когда дело сделано */
+  kind?: TaskKind;
 }
 
 /* ---------- чаты WhatsApp (пример подключения: сообщения хранятся в программе, наружу не уходят) ---------- */
@@ -588,7 +622,10 @@ export interface ChatMessage {
   file?: ChatFile;
   /** ключ события, чтобы одно событие не отправлялось дважды: «delivered:dl-12» */
   ref?: string;
+  /** что отправили: счёт, напоминание об оплате, акт сверки, прайс */
+  purpose?: ChatPurpose;
 }
+export type ChatPurpose = 'invoice' | 'reminder' | 'act' | 'price';
 export interface Chat {
   id: ID;
   clientId: ID;

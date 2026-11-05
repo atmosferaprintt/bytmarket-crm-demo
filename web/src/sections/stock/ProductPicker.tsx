@@ -7,7 +7,8 @@ import type { LocationKey, Pack, Product } from '../../data/types';
 import { useDB, useDBVersion } from '../../data/store';
 import { stockIndex } from '../../data/selectors';
 import { Input, cx, fmt } from '../../ui';
-import { barcodeIndex, norm, packLabel, productSearchIndex } from './calc';
+import { barcodeIndex, packLabel } from './calc';
+import { searchProducts } from '../../data/search';
 import './stock.css';
 
 interface Match {
@@ -46,17 +47,11 @@ export function ProductPicker({
     if (!s) return [];
     const exact = barcodeIndex(db).get(s);
     if (exact && (!filter || filter(exact.p))) return [{ p: exact.p, pack: exact.pack, byBarcode: true }];
-    const tokens = norm(s).split(/\s+/);
-    const res: Match[] = [];
-    for (const x of productSearchIndex(db)) {
-      if (!x.p.active) continue;
-      if (filter && !filter(x.p)) continue;
-      if (tokens.every((t) => x.text.includes(t))) {
-        res.push({ p: x.p, pack: x.p.packs[0], byBarcode: false });
-        if (res.length >= 8) break;
-      }
-    }
-    return res;
+    // общий поиск: русские названия брендов, объём в любой записи, точное совпадение выше; короткие числа — не штрихкод
+    return searchProducts(db, s, { limit: 8, filter: (p) => p.active && (!filter || filter(p)) }).list.map((h) => {
+      const pk = h.pack ? h.p.packs.find((k) => k.key === h.pack) ?? h.p.packs[0] : h.p.packs[0];
+      return { p: h.p, pack: pk, byBarcode: !!h.pack };
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, db, version, filter]);
 

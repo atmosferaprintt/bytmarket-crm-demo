@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { Package, Receipt, Users, CornerDownLeft, ArrowRight } from 'lucide-react';
+import { Package, Receipt, Truck, Users, CornerDownLeft, ArrowRight } from 'lucide-react';
+import { phoneDigits, searchProducts } from '../data/search';
 import { SearchInput, cx, fmt } from '../ui';
 import { useDB } from '../data/store';
 import { useSession } from '../roles/session';
@@ -11,7 +12,7 @@ import { useOpenEntity } from './entities';
 
 interface Hit {
   key: string;
-  group: 'Разделы' | 'Товары' | 'Клиенты' | 'Заказы';
+  group: 'Разделы' | 'Товары' | 'Клиенты' | 'Поставщики' | 'Документы';
   title: string;
   sub: string;
   run: () => void;
@@ -19,7 +20,8 @@ interface Hit {
 
 const norm = (s: string) => s.toLowerCase().replace(/ё/g, 'е');
 
-/** Общий поиск ⌘K: разделы, товары (название, артикул, штрихкод), клиенты (имя, телефон), заказы (номер). */
+/** Общий поиск ⌘K: разделы, товары (название по-русски и латиницей, артикул, штрихкод), клиенты (имя, контакт, телефон с 8 или 7),
+    поставщики, документы по номеру (заказ, закупка, чек, доставка; «закупка 238»), доставки по клиенту и адресу у диспетчера и курьера. */
 export function CommandPalette({ onClose }: { onClose: () => void }) {
   const db = useDB();
   const { role, sees } = useSession();
@@ -40,38 +42,82 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         out.push({ key: `s-${s.key}`, group: 'Разделы', title: label, sub: s.tabs.map((x) => x.label).slice(0, 4).join(' · '), run: () => navigate(s.path) });
     }
     if (!t) return out.slice(0, 8);
-    const digits = t.replace(/\D/g, '');
-    if (sees('products')) {
-      let n = 0;
-      for (const p of db.products) {
-        if (n >= 6) break;
-        const hay = norm(p.name + ' ' + p.sku);
-        const barcode = digits.length >= 4 && p.packs.some((pk) => pk.barcode.includes(digits));
-        if (barcode || t.split(/\s+/).every((tok) => hay.includes(tok))) {
-          out.push({ key: `p-${p.id}`, group: 'Товары', title: p.name, sub: `${p.sku} · ${fmt.price(p.retailPrice)}`, run: () => open('product', p.id) });
-          n++;
-        }
+    const digits = phoneDigits(t);
+    const onlyNumber = /^[№#\s\d]+$/.test(q.trim());
+    // «закупка 238», «чек 54210», «доставка 1652», «заказ 3587» — номер документа с подсказкой вида
+    const kindWord = /^(закупк|заказ|чек|доставк|платеж|платёж|оплат)/.exec(t)?.[1] ?? null;
+    const num = (kindWord ? t.replace(/^\S+\s*/, '') : t).replace(/[№#\s]/g, '');
+    const isNum = /^\d{2,}$/.test(num) && (onlyNumber || !!kindWord);
+    const wants = (k: string) => !kindWord || kindWord.startsWith(k);
+    const wholesale = role === 'manager' || role === 'rep';
+
+    if (sees('products') && !kindWord) {
+      for (const h of searchProducts(db, q, { limit: 6 }).list) {
+        const p = h.p;
+        out.push({ key: `p-${p.id}`, group: 'Товары', title: p.name, sub: `${p.sku} · ${wholesale ? `опт ${fmt.price(p.wholesalePrice)}` : fmt.price(p.retailPrice)}`, run: () => open('product', p.id) });
       }
     }
-    if (sees('clients')) {
+    if (sees('clients') && !kindWord) {
       let n = 0;
       for (const c of scoped.clients) {
         if (n >= 5) break;
-        const phoneHit = digits.length >= 4 && c.phone.replace(/\D/g, '').includes(digits);
-        if (phoneHit || norm(c.name).includes(t)) {
-          out.push({ key: `c-${c.id}`, group: 'Клиенты', title: c.name, sub: fmt.phone(c.phone), run: () => open('client', c.id) });
+        const phones = [c.phone, ...c.contacts.map((x) => x.phone)].map((x) => phoneDigits(x ?? ''));
+        const phoneHit = digits.length >= 4 && phones.some((x) => x.includes(digits));
+        const contact = c.contacts.find((x) => norm(x.name).includes(t));
+        if (phoneHit || norm(c.name).includes(t) || contact) {
+          out.push({ key: `c-${c.id}`, group: 'Клиенты', title: c.name, sub: contact ? `${contact.name}, ${contact.role.toLowerCase()} · ${fmt.phone(contact.phone)}` : fmt.phone(c.phone), run: () => open('client', c.id) });
           n++;
         }
       }
     }
-    // заказы ищем по номеру, только если запрос — номер: «3587», «№ 3587» (а не «persil 1,3»)
-    if (sees('sales') && digits.length >= 2 && /^[№#\s\d]+$/.test(q.trim())) {
+    if (sees('purchases') && !kindWord) {
+      for (const sp of db.suppliers) {
+        if (norm(`${sp.name} ${sp.contact}`).includes(t) || (digits.length >= 4 && phoneDigits(sp.phone).includes(digits)))
+          out.push({ key: `sp-${sp.id}`, group: 'Поставщики', title: sp.name, sub: sp.contact, run: () => open('supplier', sp.id) });
+      }
+    }
+    if (isNum) {
+      if (sees('sales') && wants('заказ')) {
+        let n = 0;
+        for (let i = scoped.orders.length - 1; i >= 0 && n < 5; i--) {
+          const o = scoped.orders[i];
+          if (String(o.number).startsWith(num)) {
+            const c = db.clients.find((x) => x.id === o.clientId);
+            out.push({ key: `o-${o.id}`, group: 'Документы', title: `Заказ № ${o.number}`, sub: `${c?.name ?? ''} · ${fmt.money(o.total)}`, run: () => open('order', o.id) });
+            n++;
+          }
+        }
+      }
+      if (sees('purchases') && wants('закупк')) {
+        for (const pu of db.purchases) {
+          if (String(pu.number) !== num) continue;
+          const sp = db.suppliers.find((x) => x.id === pu.supplierId);
+          out.push({ key: `pu-${pu.id}`, group: 'Документы', title: `Закупка № ${pu.number}`, sub: `${sp?.name ?? ''} · ${fmt.money(pu.total)}`, run: () => open('purchase', pu.id) });
+        }
+      }
+      if (sees('register') && wants('чек')) {
+        const mine = role === 'seller' ? scoped.receipts : db.receipts;
+        for (const r of mine) {
+          if (String(r.number) !== num) continue;
+          out.push({ key: `r-${r.id}`, group: 'Документы', title: `${r.kind === 'sale' ? 'Чек' : 'Возврат'} № ${r.number}`, sub: `${fmt.dateTime(r.at)} · ${fmt.money(r.total)}`, run: () => open('receipt', r.id) });
+        }
+      }
+      if (sees('delivery') && wants('доставк')) {
+        for (const d of scoped.deliveries) {
+          const o = db.orders.find((x) => x.id === d.orderId);
+          if (String(d.number) !== num && String(o?.number ?? '') !== num) continue;
+          out.push({ key: `d-${d.id}`, group: 'Документы', title: `Доставка № ${d.number}`, sub: `${d.address} · заказ № ${o?.number ?? ''}`, run: () => open('delivery', d.id) });
+        }
+      }
+    }
+    // доставки по клиенту и адресу — для диспетчера и курьера («где мой заказ»)
+    if (sees('delivery') && !sees('clients') && !isNum && t.length >= 3) {
       let n = 0;
-      for (let i = scoped.orders.length - 1; i >= 0 && n < 5; i--) {
-        const o = scoped.orders[i];
-        if (String(o.number).includes(digits)) {
-          const c = db.clients.find((x) => x.id === o.clientId);
-          out.push({ key: `o-${o.id}`, group: 'Заказы', title: `Заказ № ${o.number}`, sub: `${c?.name ?? ''} · ${fmt.money(o.total)}`, run: () => open('order', o.id) });
+      for (let i = scoped.deliveries.length - 1; i >= 0 && n < 6; i--) {
+        const d = scoped.deliveries[i];
+        const c = db.clients.find((x) => x.id === d.clientId);
+        if (norm(`${c?.name ?? ''} ${d.address} ${d.contactName}`).includes(t) || (digits.length >= 4 && phoneDigits(d.contactPhone).includes(digits))) {
+          out.push({ key: `d-${d.id}`, group: 'Документы', title: `Доставка № ${d.number} · ${c?.name ?? ''}`, sub: `${fmt.date(d.date)}, ${d.interval} · ${d.address}`, run: () => open('delivery', d.id) });
           n++;
         }
       }
@@ -95,8 +141,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     h.run();
   };
 
-  const groups: Hit['group'][] = ['Разделы', 'Товары', 'Клиенты', 'Заказы'];
-  const icon = (g: Hit['group']) => (g === 'Товары' ? <Package /> : g === 'Клиенты' ? <Users /> : g === 'Заказы' ? <Receipt /> : <ArrowRight />);
+  const groups: Hit['group'][] = ['Разделы', 'Документы', 'Товары', 'Клиенты', 'Поставщики'];
+  const icon = (g: Hit['group']) => (g === 'Товары' ? <Package /> : g === 'Клиенты' ? <Users /> : g === 'Поставщики' ? <Truck /> : g === 'Документы' ? <Receipt /> : <ArrowRight />);
 
   return createPortal(
     <div className="overlay palette-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -106,7 +152,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           size="lg"
           value={q}
           onChange={setQ}
-          placeholder="Товар, штрихкод, клиент, телефон или номер заказа"
+          placeholder={sees("clients") || sees("products") ? "Товар, клиент, телефон или номер документа" : "Номер доставки, клиент или адрес"}
           onKeyDown={(e) => {
             if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(hits.length - 1, a + 1)); }
             if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(0, a - 1)); }

@@ -78,9 +78,9 @@ describe('история WhatsApp', () => {
         if (m.from !== 'client' || !m.text.startsWith('Добрый день! Нам бы на завтра')) continue;
         const r = parseOrderText(base, m.text, ch.clientId);
         // неоднозначные названия (matches > 1) помечены для проверки — их сверяем только по упаковке
-        const o = base.orders.filter((x) => x.clientId === ch.clientId && (x.source === 'chat' || x.source === 'phone')).find((x) =>
-          r.items.every((it, i) => it.matches > 1 || x.lines[i]?.productId === it.productId),
-        );
+        const o = base.orders
+          .filter((x) => x.clientId === ch.clientId && (x.source === 'chat' || x.source === 'phone') && x.createdAt.slice(0, 10) === m.at.slice(0, 10))
+          .find((x) => r.items.every((it, i) => it.matches > 1 || x.lines[i]?.productId === it.productId));
         expect(o).toBeTruthy();
         r.items.forEach((it, i) => {
           expect(it.pack).toBe(o!.lines[i].pack);

@@ -82,7 +82,7 @@ describe('деньги', () => {
       }
       expect(b.debt).toBe(debt);
       expect(b.overdue).toBe(overdue);
-      expect(b.creditLeft).toBe(c.creditLimit > 0 ? c.creditLimit - debt : 0);
+      expect(b.creditLeft).toBe(c.creditLimit > 0 ? c.creditLimit - debt - b.openOrders : 0);
     }
   });
 

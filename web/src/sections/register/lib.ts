@@ -17,6 +17,7 @@ import {
 import type { Client, DB, ID, PackKey, Product, Promo, Receipt, Shift } from '../../data/types';
 import { indexes, priceFor, stockOf } from '../../data/selectors';
 import { fmt } from '../../ui';
+import { searchProducts } from '../../data/search';
 
 export const PACK_SHORT: Record<PackKey, string> = { pcs: 'шт', pack: 'упак.', box: 'кор.' };
 
@@ -80,22 +81,17 @@ export function buildCatalog(db: DB): Catalog {
   return { items, byId, byBarcode, bySku, popularity };
 }
 
-export function searchCatalog(cat: Catalog, query: string, limit = 8): { list: CatalogItem[]; total: number } {
-  const q = norm(query.trim());
-  if (!q) return { list: [], total: 0 };
-  const tokens = q.split(/\s+/).filter(Boolean);
-  const found: { it: CatalogItem; score: number }[] = [];
-  for (const it of cat.items) {
-    if (!tokens.every((t) => it.text.includes(t))) continue;
-    let score = 0;
-    if (it.nameNorm.startsWith(tokens[0])) score += 4;
-    if (norm(it.brand).startsWith(tokens[0])) score += 3;
-    if (tokens.every((t) => it.nameNorm.includes(t))) score += 2;
-    score += Math.min(3, Math.log10(1 + (cat.popularity.get(it.p.id) ?? 0)));
-    found.push({ it, score });
-  }
-  found.sort((a, b) => b.score - a.score || a.it.p.name.localeCompare(b.it.p.name, 'ru'));
-  return { list: found.slice(0, limit).map((f) => f.it), total: found.length };
+/** Поиск на кассе: общий поиск товара (русские названия брендов, объём, точное совпадение выше) + ходовые товары
+    и то, что есть в магазине, выше. inShop — сколько можно продать из магазина. */
+export function searchCatalog(cat: Catalog, query: string, limit = 8, db?: DB, inShop?: (id: ID) => number): { list: CatalogItem[]; total: number } {
+  const q = query.trim();
+  if (!q || !db) return { list: [], total: 0 };
+  const r = searchProducts(db, q, {
+    limit: 400,
+    filter: (p) => cat.byId.has(p.id),
+    boost: (p) => Math.min(2, Math.log10(1 + (cat.popularity.get(p.id) ?? 0))) + (inShop ? (inShop(p.id) > 0 ? 2.5 : 0) : 0),
+  });
+  return { list: r.list.slice(0, limit).map((h) => cat.byId.get(h.p.id)!), total: r.total };
 }
 
 /** Ходовые товары магазина — показываем, пока поле поиска пустое. */

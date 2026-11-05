@@ -44,7 +44,8 @@ export function AuditView({ onOpenEmployee }: { onOpenEmployee: (id: ID) => void
         key: 'at',
         header: 'Когда',
         width: 150,
-        sort: (a) => a.at,
+        // в одну минуту — по порядку записи: «выключено» и сразу «включено» стоят в правильном порядке
+        sort: (a) => `${a.at}|${a.id.replace(/\D/g, '').padStart(8, '0')}`,
         csv: (a) => `${fmt.dateShort(a.at, true)} ${fmt.time(a.at)}`,
         render: (a) => (
           <span className="nowrap">

@@ -17,10 +17,12 @@ function emit() {
   for (const l of listeners) l(items);
 }
 
-/** Короткое сообщение внизу справа: toast('Оплата записана'); toast('Не хватает товара', 'error') */
+/** Короткое сообщение сверху по центру — не закрывает кнопки внизу окон и панелей.
+    На экране не больше двух, на телефоне — одно последнее: toast('Оплата записана'); toast('Не хватает товара', 'error') */
 export function toast(text: string, tone: ToastTone = 'ok') {
   const id = ++seq;
-  items = [...items, { id, text, tone }].slice(-4);
+  const phone = typeof window !== 'undefined' && window.matchMedia?.('(max-width: 760px)').matches;
+  items = [...items, { id, text, tone }].slice(phone ? -1 : -2);
   emit();
   window.setTimeout(() => {
     items = items.filter((t) => t.id !== id);

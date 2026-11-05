@@ -730,6 +730,30 @@ export function simulate(input: SimInput): SimStats {
       list.push(dl);
       byCourier.set(c, list);
     }
+    if (d === TODAY) {
+      // сегодня к 14:00 курьер успевает 2–3 точки и едет к следующей; остальные клиенты ждут днём.
+      // Опаздывает одна доставка — чтобы на показе было видно, как выглядит опоздание, а не красный весь маршрут
+      let lateLeft = 1;
+      const AFTERNOON = ['14:00–17:00', '15:00–18:00', '16:00–19:00'];
+      for (const [courier, list] of byCourier) {
+        const morning = courier === E.daudov ? 2 : 3; // столько точек в плане до 14:00 (см. todayRoute)
+        list.forEach((dl, i) => {
+          const end = minutesOf(dl.interval.slice(-5));
+          if (i < morning - 1) return;
+          if (i === morning - 1) {
+            if (end < 14 * 60 + 30) dl.interval = '13:00–16:00'; // к этой точке курьер едет сейчас
+            return;
+          }
+          if (end > 15 * 60) return;
+          if (lateLeft > 0) {
+            lateLeft--;
+            return;
+          }
+          dl.interval = AFTERNOON[(i - morning) % AFTERNOON.length];
+        });
+        list.sort((a, b) => a.interval.localeCompare(b.interval));
+      }
+    }
     for (const [courier, list] of byCourier) {
       // маршрут курьера — по началу интервала (список уже отсортирован по интервалу)
       list.forEach((dl, i) => {
@@ -1034,13 +1058,20 @@ export function simulate(input: SimInput): SimStats {
   };
 
   /* ---------- склад ---------- */
+  // ходовые товары магазин держит целой коробкой (до 12 шт): покупатель часто берёт коробку — её продают с кассы
+  const popularRate = (() => {
+    const r = activeIdx.map((m) => retailRate[m.index]).sort((x, y) => y - x);
+    return r[Math.floor(r.length * 0.2)] ?? Infinity;
+  })();
   const restockShop = (d: ISODate, t: ISODateTime): void => {
     const lines: { productId: ID; qty: number }[] = [];
     for (const m of activeIdx) {
       const p = P[m.index];
       if (!p.active) continue;
       const rate = retailRate[m.index];
-      const target = Math.max(3, Math.ceil(rate * 7) + 2);
+      const box = p.packs.find((k) => k.key === 'box')?.qty ?? 0;
+      const boxTarget = rate >= popularRate && box > 0 && box <= 12 ? box + 2 : 0;
+      const target = Math.max(3, Math.ceil(rate * 7) + 2, boxTarget);
       const sh = stockRow(db, p.id, 'shop')?.onHand ?? 0;
       if (sh >= target * 0.6) continue;
       const qty = Math.min(target - sh, avail(p.id, 'warehouse'));
@@ -1442,14 +1473,19 @@ export function simulate(input: SimInput): SimStats {
     on('2026-08-21T14:00', () => void run('payment.expense', { category: 'Ремонт и обслуживание', amount: 14500, method: 'cash', comment: 'Ремонт гидравлической тележки' }, E.suleymanova, '2026-08-21T14:00'));
     on('2026-09-28T14:00', () => void run('payment.expense', { category: 'Ремонт и обслуживание', amount: 6000, method: 'transfer', comment: 'Обслуживание кассового терминала' }, E.suleymanova, '2026-09-28T14:00'));
     on('2026-10-16T14:00', () => void run('payment.expense', { category: 'Ремонт и обслуживание', amount: 23000, method: 'transfer', comment: 'Ремонт ворот склада' }, E.suleymanova, '2026-10-16T14:00'));
+    const usedPayers = new Set<ID>();
     const unknown = (when: string, amount: number, identifyIn: number | null): void =>
       on(when, () => {
-        const r = run('payment.client', { clientId: null, amount, method: 'transfer', comment: 'Поступление на счёт без назначения платежа' }, E.suleymanova, when);
+        // в выписке есть плательщик и ИНН, но нет назначения: бухгалтер находит клиента по ИНН
+        const payerClient = clients.find((c) => c.seg !== 'retail' && c.client.inn && !usedPayers.has(c.id) && clientBalance(db, c.id).debt >= amount);
+        if (payerClient) usedPayers.add(payerClient.id);
+        const payer = payerClient ? { name: payerClient.client.name.split(' · ')[0], inn: payerClient.client.inn! } : undefined;
+        const r = run('payment.client', { clientId: null, amount, method: 'transfer', comment: 'Поступление на счёт без назначения платежа', ...(payer ? { payer } : {}) }, E.suleymanova, when);
         if (!r?.id || identifyIn === null) return;
         const pid = r.id;
         const t2 = at(nextOfficeDay(plusDays(when.slice(0, 10), identifyIn)), 10 * 60 + 40);
         on(t2, () => {
-          const debtor = clients.find((c) => c.seg !== 'retail' && clientBalance(db, c.id).debt >= amount);
+          const debtor = (payerClient && clientBalance(db, payerClient.id).debt >= amount ? payerClient : undefined) ?? clients.find((c) => c.seg !== 'retail' && clientBalance(db, c.id).debt >= amount);
           if (debtor) run('payment.identify', { paymentId: pid, clientId: debtor.id }, E.suleymanova, t2);
         });
       });
@@ -1572,7 +1608,7 @@ export function simulate(input: SimInput): SimStats {
       .filter((p) => p.active && avail(p.id, loc) >= 3 && (reason !== 'expired' || p.expiryTracked) && (reason !== 'leak' || / (мл|л)$/.test(p.volume ?? '')));
     for (const p of rng.sample(pool, n)) lines.push({ productId: p.id, qty: Math.min(avail(p.id, loc) - 1, rng.int(1, 4)), reason });
     if (!lines.length) return;
-    const comment = { leak: 'Протекли при разгрузке', damage: 'Повреждены при перемещении', expired: 'Истёк срок годности', shortage: 'Недостача по итогам проверки полки', other: '' }[reason];
+    const comment = { leak: 'Протекли при разгрузке', damage: 'Повреждены при перемещении', expired: 'Истёк срок годности', shortage: 'Недостача по итогам проверки полки', supplier_return: 'Возврат поставщику', other: '' }[reason];
     run('stock.writeoff', { location: loc, lines, comment }, E.ibragimov, when);
   }
 

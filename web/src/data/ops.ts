@@ -43,9 +43,11 @@ import type {
   VisitResult,
   WaAutoKey,
   WhatsAppSettings,
+  ChatPurpose,
+  TaskKind,
   WriteoffReason,
 } from './types';
-import { ACCOUNT_NAMES, EXPENSE_CATEGORIES, PAY_METHOD_NAMES, RETURN_REASONS, WA_AUTO_KEYS, WRITEOFF_REASONS } from './types';
+import { ACCOUNT_NAMES, EXPENSE_CATEGORIES, PAY_METHOD_NAMES, RETURN_REASONS, TASK_KINDS, WA_AUTO_KEYS, WRITEOFF_REASONS } from './types';
 import { byIdempotencyKey, get, removeFrom, stockRow } from './idx';
 import {
   accountBalances,
@@ -671,6 +673,23 @@ function orderPick(db: DB, payload: { orderId: ID; stage?: 'picking' | 'picked' 
   return { id: o.id };
 }
 
+/** Отметки сборщика по строкам заказа: сохраняются, чтобы прогресс не терялся. Первая отметка начинает сборку. */
+function orderPickProgress(db: DB, payload: { orderId: ID; checked: ID[] }, ctx: OpCtx): OpResult {
+  const p = obj(payload);
+  requireRole(db, ctx, ['warehouse', 'manager'], 'Сборка заказа');
+  const o = orderOf(db, p.orderId);
+  if (o.state !== 'confirmed') fail('Собирать можно только подтверждённый заказ');
+  if (o.pick === 'picked') fail('Заказ уже собран');
+  const ids = new Set(o.lines.map((l) => l.productId));
+  const checked = arr(p.checked, 'Отмеченные строки').map((x) => String(x)).filter((x) => ids.has(x));
+  o.pickChecked = [...new Set(checked)];
+  if (o.pick === 'none' && checked.length) {
+    o.pick = 'picking';
+    event(o, ctx, 'Сборка начата');
+  }
+  return { id: o.id };
+}
+
 /** Отгрузка: списывает факт и резерв, ставит срок оплаты. Без lines — весь остаток. */
 function shipOrder(db: DB, o: Order, linesRaw: unknown, ctx: OpCtx): string {
   if (o.state !== 'confirmed') fail('Отгрузить можно только подтверждённый заказ');
@@ -941,6 +960,8 @@ interface PaymentClientPayload {
   status?: 'posted' | 'pending';
   comment?: string;
   idempotencyKey?: string;
+  /** плательщик из выписки — для поступления без назначения */
+  payer?: { name: string; inn: string };
 }
 
 function paymentClient(db: DB, payload: PaymentClientPayload, ctx: OpCtx): OpResult {
@@ -966,6 +987,10 @@ function paymentClient(db: DB, payload: PaymentClientPayload, ctx: OpCtx): OpRes
       idempotencyKey: ik,
       deliveryId: null,
     });
+    if (p.payer !== undefined && p.payer !== null) {
+      const py = obj(p.payer);
+      pay.payer = { name: text(py.name, 'Плательщик'), inn: text(py.inn, 'ИНН плательщика', false) };
+    }
     return { id: pay.id, info: 'Неопознанное поступление — разнесите его на клиента' };
   }
   const client = clientOf(db, p.clientId);
@@ -1098,9 +1123,17 @@ function paymentSupplier(
   return { id: pay.id };
 }
 
-function paymentExpense(db: DB, payload: { category: string; amount: number; method?: PayMethod; account?: AccountKey; comment?: string }, ctx: OpCtx): OpResult {
+function paymentExpense(db: DB, payload: { category: string; amount: number; method?: PayMethod; account?: AccountKey; comment?: string; date?: ISODate }, ctx0: OpCtx): OpResult {
   const p = obj(payload);
-  requireRole(db, ctx, ['accountant'], 'Записать расход');
+  requireRole(db, ctx0, ['accountant'], 'Записать расход');
+  // дата расхода: сегодня или прошлые дни (счёт за электричество за октябрь записывают в ноябре — датой счёта)
+  let ctx = ctx0;
+  if (p.date !== undefined && p.date !== null && p.date !== dayOf(ctx0)) {
+    const date = isoDate(p.date, 'Дата расхода');
+    if (date > dayOf(ctx0)) fail('Дата расхода не может быть в будущем');
+    if (diffDays(date, dayOf(ctx0)) > 62) fail('Расход старше двух месяцев записать нельзя');
+    ctx = { ...ctx0, at: `${date}T12:00` };
+  }
   const category = oneOf(p.category, EXPENSE_CATEGORIES, 'Категория расхода');
   const amount = posInt(p.amount, 'Сумма');
   const method = oneOf(p.method ?? 'transfer', PAY_METHODS, 'Способ');
@@ -1597,8 +1630,16 @@ function returnCreate(
   payload: { orderId: ID; lines: { productId: ID; qty: number; reason: ReturnReason }[]; refund?: boolean; method?: PayMethod; account?: AccountKey; comment?: string },
   ctx: OpCtx,
 ): OpResult {
-  const p = obj(payload);
   requireRole(db, ctx, ['manager', 'warehouse', 'accountant'], 'Оформить возврат');
+  return returnFromOrder(db, payload, ctx);
+}
+
+function returnFromOrder(
+  db: DB,
+  payload: { orderId: ID; lines: { productId: ID; qty: number; reason: ReturnReason }[]; refund?: boolean; method?: PayMethod; account?: AccountKey; comment?: string },
+  ctx: OpCtx,
+): OpResult {
+  const p = obj(payload);
   const o = orderOf(db, p.orderId);
   if (o.state === 'cancelled') fail('Заказ отменён');
   const returned = orderReturns(db).get(o.id)?.byProduct ?? new Map<ID, number>();
@@ -1777,7 +1818,7 @@ function placeInRoute(db: DB, d: Delivery): void {
   list.forEach((x, i) => (x.routeOrder = i + 1));
 }
 
-function deliveryAssign(db: DB, payload: { deliveryId: ID; courierId: ID; date?: ISODate; routeOrder?: number }, ctx: OpCtx): OpResult {
+function deliveryAssign(db: DB, payload: { deliveryId: ID; courierId: ID; date?: ISODate; interval?: string; routeOrder?: number }, ctx: OpCtx): OpResult {
   const p = obj(payload);
   requireRole(db, ctx, ['dispatcher', 'manager'], 'Назначить курьера');
   const d = deliveryOf(db, p.deliveryId);
@@ -1788,9 +1829,15 @@ function deliveryAssign(db: DB, payload: { deliveryId: ID; courierId: ID; date?:
   const date = p.date === undefined ? d.date : isoDate(p.date, 'Дата');
   const routeOrder = p.routeOrder === undefined ? null : posInt(p.routeOrder, 'Порядок');
   const wasFailed = d.state === 'failed';
+  if (p.interval !== undefined) {
+    const iv = String(p.interval).replace('-', '–');
+    if (!INTERVAL_RE.test(iv)) fail('Интервал: в виде «10:00–13:00»');
+    d.interval = iv;
+  }
   d.courierId = courier.id;
   d.date = date;
   d.state = 'assigned';
+  d.delayUntil = null;
   if (routeOrder === null) placeInRoute(db, d);
   else d.routeOrder = routeOrder;
   const o = get(db, 'orders', d.orderId);
@@ -1818,7 +1865,7 @@ function deliveryStart(db: DB, payload: { deliveryId: ID }, ctx: OpCtx): OpResul
   return { id: d.id, info };
 }
 
-function deliveryDeliver(db: DB, payload: { deliveryId: ID; collected?: number; method?: PayMethod; comment?: string }, ctx: OpCtx): OpResult {
+function deliveryDeliver(db: DB, payload: { deliveryId: ID; collected?: number; method?: PayMethod; comment?: string; returned?: { productId: ID; qty: number }[] }, ctx: OpCtx): OpResult {
   const p = obj(payload);
   const d = deliveryOf(db, p.deliveryId);
   courierMayAct(db, ctx, d, 'Вручение');
@@ -1849,25 +1896,50 @@ function deliveryDeliver(db: DB, payload: { deliveryId: ID; collected?: number; 
   if (o.ship === 'shipped') o.ship = 'delivered';
   event(o, ctx, `Доставлен${collected ? `, курьер получил ${rub(collected)} (${PAY_METHOD_NAMES[method].toLowerCase()})` : ''}`);
   const notes: string[] = [];
+  // часть товара клиент не взял: курьер везёт её обратно — оформляем возврат (товар на проверку, долг клиента меньше)
+  if (Array.isArray(p.returned) && p.returned.length) {
+    const lines = (p.returned as unknown[]).map((x) => {
+      const l = obj(x);
+      return { productId: String(l.productId ?? ''), qty: posInt(l.qty, 'Не взяли, шт'), reason: 'not_taken' as ReturnReason };
+    });
+    const r = returnFromOrder(db, { orderId: o.id, lines, comment: `Не взяли при доставке №${d.number}` }, ctx);
+    const ret = get(db, 'returns', r.id ?? '');
+    if (ret) notes.push(`Не взяли товара на ${rub(ret.amount)} — курьер везёт его обратно, долг клиента уменьшен`);
+  }
   if (d.collect > 0 && collected < d.collect) notes.push(`Получено ${rub(collected)} из ${rub(d.collect)} — остаток в долге клиента`);
   if (method === 'transfer' && collected > 0) notes.push('Перевод ждёт подтверждения банка');
   return { id: d.id, info: notes.join('. ') || undefined };
 }
 
-function deliveryFail(db: DB, payload: { deliveryId: ID; reason: string }, ctx: OpCtx): OpResult {
+function deliveryFail(db: DB, payload: { deliveryId: ID; reason: string; comment?: string; wish?: { date: ISODate; interval: string } }, ctx: OpCtx): OpResult {
   const p = obj(payload);
   const d = deliveryOf(db, p.deliveryId);
   courierMayAct(db, ctx, d, 'Неудачная попытка');
   if (d.state !== 'on_way' && d.state !== 'assigned') fail('Отметить неудачу можно только для доставки в пути');
   const reason = text(p.reason, 'Причина');
+  const comment = text(p.comment, 'Комментарий', false);
+  let wishText = '';
+  if (p.wish !== undefined && p.wish !== null) {
+    const w = obj(p.wish);
+    const date = isoDate(w.date, 'Когда привезти');
+    const iv = String(w.interval ?? '').replace('-', '–');
+    if (!INTERVAL_RE.test(iv)) fail('Интервал: в виде «10:00–13:00»');
+    wishText = `клиент просит ${dayText(date)}, ${iv}`;
+  }
   d.attempts.push({ at: ctx.at, courierId: d.courierId ?? ctx.actorId, result: 'failed', reason });
   d.state = 'failed';
+  d.delayUntil = null;
+  if (comment || wishText) addNote(d, ctx, [wishText && wishText.charAt(0).toUpperCase() + wishText.slice(1), comment].filter(Boolean).join('. '));
   const o = get(db, 'orders', d.orderId);
-  if (o) event(o, ctx, `Доставка не удалась: ${reason}`);
-  return { id: d.id, info: 'Выберите: повторная доставка или возврат на склад' };
+  if (o) event(o, ctx, `Доставка не удалась: ${reason}${wishText ? `; ${wishText}` : ''}`);
+  return { id: d.id, info: 'Диспетчер решит, когда привезти снова' };
 }
 
-function deliveryReschedule(db: DB, payload: { deliveryId: ID; date: ISODate; interval?: string; courierId?: ID }, ctx: OpCtx): OpResult {
+function addNote(d: Delivery, ctx: OpCtx, txt: string): void {
+  (d.notes ??= []).push({ at: ctx.at, actorId: ctx.actorId, text: txt });
+}
+
+function deliveryReschedule(db: DB, payload: { deliveryId: ID; date: ISODate; interval?: string; courierId?: ID; reason?: string }, ctx: OpCtx): OpResult {
   const p = obj(payload);
   requireRole(db, ctx, ['dispatcher', 'manager'], 'Перенести доставку');
   const d = deliveryOf(db, p.deliveryId);
@@ -1889,9 +1961,28 @@ function deliveryReschedule(db: DB, payload: { deliveryId: ID; date: ISODate; in
     d.state = 'waiting';
     d.routeOrder = 0;
   }
+  d.delayUntil = null;
+  const reason = text(p.reason, 'Причина переноса', false);
+  addNote(d, ctx, `Перенесена на ${dayText(date)}, ${d.interval}${reason ? `: ${reason}` : ''}`);
   const o = get(db, 'orders', d.orderId);
-  if (o) event(o, ctx, `Доставка перенесена на ${dayText(date)}`);
+  if (o) event(o, ctx, `Доставка перенесена на ${dayText(date)}${reason ? `: ${reason}` : ''}`);
   return { id: d.id };
+}
+
+/** Курьер задерживается: ожидаемое время и причина — видно диспетчеру и в карточке доставки. */
+function deliveryDelay(db: DB, payload: { deliveryId: ID; until: string; reason: string }, ctx: OpCtx): OpResult {
+  const p = obj(payload);
+  const d = deliveryOf(db, p.deliveryId);
+  courierMayAct(db, ctx, d, 'Задержка');
+  if (d.state !== 'assigned' && d.state !== 'on_way') fail('Задержку можно отметить только у доставки в работе');
+  const until = String(p.until ?? '');
+  if (!/^\d{2}:\d{2}$/.test(until)) fail('Время приезда: в виде «15:30»');
+  const reason = text(p.reason, 'Причина задержки');
+  d.delayUntil = until;
+  addNote(d, ctx, `Задерживается до ${until}: ${reason}`);
+  const o = get(db, 'orders', d.orderId);
+  if (o) event(o, ctx, `Курьер задерживается до ${until}: ${reason}`);
+  return { id: d.id, info: 'Диспетчер увидит задержку' };
 }
 
 function deliveryReturnToStock(db: DB, payload: { deliveryId: ID; comment?: string }, ctx: OpCtx): OpResult {
@@ -1943,7 +2034,7 @@ function deliveryReturnToStock(db: DB, payload: { deliveryId: ID; comment?: stri
   return { id: ret.id, info: pay.paid > 0 ? `Оплата ${rub(pay.paid)} осталась авансом клиента` : undefined };
 }
 
-function courierHandIn(db: DB, payload: { courierId?: ID } | undefined, ctx: OpCtx): OpResult {
+function courierHandIn(db: DB, payload: { courierId?: ID; counted?: number; comment?: string } | undefined, ctx: OpCtx): OpResult {
   const p = obj(payload ?? {});
   const me = requireRole(db, ctx, ['courier', 'dispatcher', 'seller', 'accountant'], 'Сдача денег курьером');
   const courierId = typeof p.courierId === 'string' ? p.courierId : me.id;
@@ -1954,18 +2045,41 @@ function courierHandIn(db: DB, payload: { courierId?: ID } | undefined, ctx: OpC
   const sum = list.reduce((z, d) => z + d.collected, 0);
   if (sum === 0) fail('Курьеру нечего сдавать');
   needMoney(db, 'courier_cash', sum);
-  const pay = newPayment(db, ctx, {
-    kind: 'transfer',
-    direction: 'out',
-    amount: sum,
-    method: 'cash',
-    account: 'courier_cash',
-    toAccount: 'shop_cash',
-    deliveryId: list[list.length - 1].id,
-    comment: `Сдал курьер ${courier.name}: ${list.length} ${list.length === 1 ? 'доставка' : list.length < 5 ? 'доставки' : 'доставок'}`,
-  });
+  // пересчитали меньше, чем курьер получил по доставкам: принимаем пересчитанное, разницу записываем недостачей на курьере
+  const counted = p.counted === undefined ? sum : nonNegInt(p.counted, 'Пересчитано');
+  if (counted > sum) fail(`Пересчитано ${rub(counted)} — больше, чем курьер получил по доставкам (${rub(sum)}). Проверьте сумму`);
+  const shortage = sum - counted;
+  const reason = text(p.comment, 'Комментарий', false);
+  if (shortage > 0 && !reason) fail('Недостача: напишите, что сказал курьер');
+  let payId: ID | null = null;
+  if (counted > 0) {
+    const pay = newPayment(db, ctx, {
+      kind: 'transfer',
+      direction: 'out',
+      amount: counted,
+      method: 'cash',
+      account: 'courier_cash',
+      toAccount: 'shop_cash',
+      deliveryId: list[list.length - 1].id,
+      comment: `Сдал курьер ${courier.name}: ${list.length} ${list.length === 1 ? 'доставка' : list.length < 5 ? 'доставки' : 'доставок'}`,
+    });
+    payId = pay.id;
+  }
+  if (shortage > 0) {
+    const loss = newPayment(db, ctx, {
+      kind: 'expense',
+      direction: 'out',
+      amount: shortage,
+      method: 'cash',
+      account: 'courier_cash',
+      expenseCategory: 'Недостача',
+      comment: `Недостача у курьера ${courier.name} при сдаче денег: ${reason}`,
+    });
+    payId ??= loss.id;
+    audit(db, ctx, 'payment', loss.id, `Недостача ${rub(shortage)} у курьера ${courier.name}: ${reason}`);
+  }
   for (const d of list) d.handedIn = true;
-  return { id: pay.id, info: `Принято ${rub(sum)} в кассу магазина` };
+  return { id: payId!, info: shortage > 0 ? `Принято ${rub(counted)}, недостача ${rub(shortage)} записана на курьера` : `Принято ${rub(sum)} в кассу магазина` };
 }
 
 /* =====================================================================
@@ -2048,7 +2162,7 @@ function visitComplete(
 
 function taskCreate(
   db: DB,
-  payload: { title: string; assigneeId: ID; due: ISODate; dueTime?: string | null; priority?: 'normal' | 'high'; link?: TaskLink | null },
+  payload: { title: string; assigneeId: ID; due: ISODate; dueTime?: string | null; priority?: 'normal' | 'high'; link?: TaskLink | null; kind?: TaskKind },
   ctx: OpCtx,
 ): OpResult {
   const p = obj(payload);
@@ -2062,8 +2176,8 @@ function taskCreate(
   let link: TaskLink | null = null;
   if (p.link) {
     const l = obj(p.link);
-    const type = oneOf(l.type, ['client', 'order', 'delivery', 'product', 'purchase', 'payment'] as const, 'Связь');
-    const key = ({ client: 'clients', order: 'orders', delivery: 'deliveries', product: 'products', purchase: 'purchases', payment: 'payments' } as const)[type];
+    const type = oneOf(l.type, ['client', 'order', 'delivery', 'product', 'purchase', 'payment', 'supplier'] as const, 'Связь');
+    const key = ({ client: 'clients', order: 'orders', delivery: 'deliveries', product: 'products', purchase: 'purchases', payment: 'payments', supplier: 'suppliers' } as const)[type];
     if (!get(db, key, String(l.id ?? ''))) fail('Связанная запись не найдена');
     link = { type, id: String(l.id) };
   }
@@ -2079,6 +2193,7 @@ function taskCreate(
     link,
     createdAt: ctx.at,
     doneAt: null,
+    ...(p.kind !== undefined ? { kind: oneOf(p.kind, TASK_KINDS, 'Вид задачи') } : {}),
   };
   db.tasks.push(t);
   return { id: t.id };
@@ -2537,7 +2652,7 @@ function chatFile(raw: unknown): ChatFile | undefined {
 }
 
 /** Сообщение клиенту в WhatsApp: в диалог (chatId) или клиенту (clientId) — диалог появится, если его не было. */
-function chatSend(db: DB, payload: { chatId?: ID; clientId?: ID; text: string; orderId?: ID | null; file?: ChatFile }, ctx: OpCtx): OpResult {
+function chatSend(db: DB, payload: { chatId?: ID; clientId?: ID; text: string; orderId?: ID | null; file?: ChatFile; purpose?: ChatPurpose }, ctx: OpCtx): OpResult {
   const p = obj(payload);
   requireRole(db, ctx, ['manager', 'rep', 'accountant'], 'Написать клиенту');
   if (!db.settings.whatsapp.connected) fail('WhatsApp не подключён — подключите его в настройках');
@@ -2556,8 +2671,11 @@ function chatSend(db: DB, payload: { chatId?: ID; clientId?: ID; text: string; o
     if (o.clientId !== chat.clientId) fail('Заказ другого клиента');
     orderId = o.id;
   }
-  chat.messages.push({ at: ctx.at, from: 'staff', authorId: ctx.actorId, text: msg, orderId, ...(file ? { file } : {}) });
+  const purpose = p.purpose === undefined ? undefined : oneOf(p.purpose, ['invoice', 'reminder', 'act', 'price'] as const, 'Что отправляем');
+  chat.messages.push({ at: ctx.at, from: 'staff', authorId: ctx.actorId, text: msg, orderId, ...(file ? { file } : {}), ...(purpose ? { purpose } : {}) });
   chat.unread = 0;
+  if (orderId && purpose === 'invoice') event(orderOf(db, orderId), ctx, `Счёт отправлен клиенту в WhatsApp: ${empName(db, ctx.actorId)}`);
+  if (purpose === 'reminder') audit(db, ctx, 'client', chat.clientId, 'Напоминание об оплате отправлено в WhatsApp');
   return { id: chat.id };
 }
 
@@ -2718,6 +2836,7 @@ export const ops = {
   'order.confirm': orderConfirm,
   'order.cancel': orderCancel,
   'order.pick': orderPick,
+  'order.pickProgress': orderPickProgress,
   'order.ship': orderShip,
 
   'payment.client': paymentClient,
@@ -2750,6 +2869,7 @@ export const ops = {
   'delivery.deliver': deliveryDeliver,
   'delivery.fail': deliveryFail,
   'delivery.reschedule': deliveryReschedule,
+  'delivery.delay': deliveryDelay,
   'delivery.returnToStock': deliveryReturnToStock,
   'courier.handIn': courierHandIn,
 
@@ -2783,6 +2903,73 @@ export type OpPayload<T extends OpType> = Parameters<(typeof ops)[T]>[1];
 const AT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 
 /** Выполнить операцию: проверка времени и автора, номер версии, откат добавленного при ошибке. */
+/** Задачи, о которых было действие, закрываются сами. Возвращает, сколько закрыто. */
+function tasksAfterOp(db: DB, type: string, payload: unknown, r: OpResult, ctx: OpCtx): number {
+  const open = db.tasks.filter((t) => t.state === 'open' && t.kind);
+  if (!open.length) return 0;
+  const pl = (payload && typeof payload === 'object' ? payload : {}) as Record<string, unknown>;
+  let n = 0;
+  const close = (pred: (t: Task) => boolean): void => {
+    for (const t of open) {
+      if (t.state === 'open' && pred(t)) {
+        t.state = 'done';
+        t.doneAt = ctx.at;
+        n++;
+      }
+    }
+  };
+  const linked = (t: Task, lt: TaskLink['type'], id: unknown): boolean => t.link?.type === lt && t.link.id === id;
+  const clientMoney = (clientId: ID | null | undefined): void => {
+    if (!clientId) return;
+    close((t) => t.kind === 'remind_debt' && linked(t, 'client', clientId));
+    if (clientBalance(db, clientId).overdue === 0) close((t) => (t.kind === 'call_debt' || t.kind === 'remind_debt') && linked(t, 'client', clientId));
+  };
+  switch (type) {
+    case 'order.confirm':
+    case 'order.cancel':
+      close((t) => t.kind === 'approve_order' && linked(t, 'order', r.id));
+      if (!db.orders.some((o) => o.state === 'request')) close((t) => t.kind === 'confirm_requests');
+      break;
+    case 'chat.send': {
+      const chat = db.chats.find((c) => c.id === r.id);
+      if (pl.purpose === 'invoice' && pl.orderId) close((t) => t.kind === 'send_invoice' && linked(t, 'order', pl.orderId));
+      if (pl.purpose === 'reminder' && chat) close((t) => t.kind === 'remind_debt' && linked(t, 'client', chat.clientId));
+      break;
+    }
+    case 'payment.client':
+    case 'payment.confirm':
+    case 'payment.identify': {
+      const pay = get(db, 'payments', r.id ?? '');
+      if (type === 'payment.confirm') close((t) => t.kind === 'check_transfer' && linked(t, 'payment', r.id));
+      if (type === 'payment.identify') close((t) => t.kind === 'identify_payment' && linked(t, 'payment', r.id));
+      clientMoney(pay?.clientId);
+      break;
+    }
+    case 'payment.supplier':
+      close((t) => t.kind === 'pay_supplier' && linked(t, 'supplier', pl.supplierId));
+      break;
+    case 'stock.transfer':
+      if (pl.to === 'shop' && Array.isArray(pl.lines))
+        for (const l of pl.lines as { productId?: unknown }[]) close((t) => t.kind === 'move_to_shop' && linked(t, 'product', l.productId));
+      break;
+    case 'order.pick': {
+      const o = get(db, 'orders', r.id ?? '');
+      if (o?.pick === 'picked') close((t) => t.kind === 'pick_order' && linked(t, 'order', o.id));
+      break;
+    }
+    case 'delivery.assign':
+    case 'delivery.reschedule':
+    case 'delivery.returnToStock':
+      close((t) => t.kind === 'failed_delivery' && linked(t, 'delivery', r.id));
+      if (!db.deliveries.some((d) => d.state === 'waiting' && d.date <= dateOf(ctx.at))) close((t) => t.kind === 'assign_couriers');
+      break;
+    case 'courier.handIn':
+      close((t) => t.kind === 'courier_cash');
+      break;
+  }
+  return n;
+}
+
 export function applyOp(db: DB, type: OpType | string, payload: unknown, ctx: OpCtx): OpResult {
   const fn = (ops as Record<string, AnyOp>)[type];
   if (!fn) throw new OpError(`Неизвестная операция: ${type}`);
@@ -2798,11 +2985,12 @@ export function applyOp(db: DB, type: OpType | string, payload: unknown, ctx: Op
     db.meta.version++;
     // автосообщение клиенту в WhatsApp по событию (после версии: подсчёты долга видят новое состояние)
     const wa = waAfterOp(db, type, r, ctx);
-    if (wa) {
-      db.meta.version++;
-      return { ...r, info: r.info ? `${r.info}. ${wa}` : wa };
-    }
-    return r;
+    if (wa) db.meta.version++;
+    // задачи, о которых это действие, закрываются сами: «разнести платёж», «отправить счёт», «согласовать заказ»…
+    const closed = tasksAfterOp(db, type, payload, r, ctx);
+    if (closed) db.meta.version++;
+    const notes = [r.info, wa, closed ? (closed === 1 ? 'Задача отмечена выполненной' : `Задачи отмечены выполненными: ${closed}`) : undefined].filter(Boolean);
+    return notes.length ? { ...r, info: notes.join('. ') } : r;
   } catch (e) {
     for (const [k, n] of lengths) {
       const a = (db as unknown as Record<string, unknown[]>)[k];
