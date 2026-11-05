@@ -860,7 +860,20 @@ function ClientPicker({ clients, onPick }: { clients: Client[]; onPick: (c: Clie
   return (
     <div className="col-3">
       <div className="t-16 w-700">Для кого заказ</div>
-      <SearchInput value={q} onChange={setQ} placeholder="Название, телефон, ИНН или адрес точки" autoFocus size="lg" />
+      <SearchInput
+        value={q}
+        onChange={setQ}
+        placeholder="Название, телефон, ИНН или адрес точки"
+        autoFocus
+        size="lg"
+        onKeyDown={(e) => {
+          // Enter — первый найденный клиент: с клавиатуры без мыши
+          if (e.key === 'Enter' && q.trim() && list.length) {
+            e.preventDefault();
+            onPick(list[0].c);
+          }
+        }}
+      />
       <div className="card sales-picker">
         {list.length || foreign.length ? (
           [

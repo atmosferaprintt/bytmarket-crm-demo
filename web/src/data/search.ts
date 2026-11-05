@@ -117,12 +117,15 @@ export function scoreProduct(h: ProductHay, tokens: string[]): number | null {
     }
   }
   let score = 0;
-  const covered = h.head.filter((hw) => tokens.some((t) => wordMatch(t, hw))).length;
+  // бренд, названный по-русски («фейри»), закрывает слово бренда в коротком названии так же, как «fairy»
+  const brandWords = normTokens(h.brand);
+  const aliases = BRAND_ALIASES[h.brand] ?? [];
+  const aliasHit = tokens.some((t) => aliases.some((a) => a.startsWith(t) && t.length >= 2));
+  const covered = h.head.filter((hw) => tokens.some((t) => wordMatch(t, hw)) || (aliasHit && brandWords.includes(hw))).length;
   score += (covered / h.head.length) * 6; // насколько полно названо короткое название
   if (covered === h.head.length) score += 3; // названо целиком
-  if (wordMatch(tokens[0], h.first)) score += 2;
-  const brandWords = normTokens(h.brand);
-  if (brandWords.some((b) => wordMatch(tokens[0], b)) || (BRAND_ALIASES[h.brand] ?? []).some((a) => a.startsWith(tokens[0]))) score += 2;
+  if (wordMatch(tokens[0], h.first) || (aliasHit && brandWords.includes(h.first))) score += 2;
+  if (brandWords.some((b) => wordMatch(tokens[0], b)) || aliases.some((a) => a.startsWith(tokens[0]))) score += 2;
   return score;
 }
 

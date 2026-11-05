@@ -713,7 +713,11 @@ export function simulate(input: SimInput): SimStats {
     if (d === TODAY) {
       todays.sort((a, b) => a.number - b.number);
       const nWait = 2 + (todays.length > 17 ? 1 : 0);
-      todays.splice(Math.max(0, todays.length - nWait), nWait); // самые свежие — ждут назначения
+      // самые свежие — ждут назначения; клиенты, заказавшие сегодня, ждут вечером, а не утром
+      const waitingNow = todays.splice(Math.max(0, todays.length - nWait), nWait);
+      waitingNow.forEach((dl, i) => {
+        if (minutesOf(dl.interval.slice(-5)) < 17 * 60) dl.interval = ['15:00–18:00', '16:00–19:00', '14:00–17:00'][i % 3];
+      });
       // лишние — на завтра
       while (todays.length > 15) {
         const x = todays.pop()!;

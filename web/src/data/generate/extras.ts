@@ -332,6 +332,26 @@ interface TaskDraft {
 
 export function buildTasks(db: DB, rng: Rng, meta: ProdMeta[]): void {
   const today = db.meta.today;
+  // плательщик в выписке у неопознанных поступлений — клиент, у которого на эту сумму есть неоплаченный долг
+  // (без переводов на проверке): бухгалтер находит его по ИНН, и деньги гасят долг, а не уходят в аванс
+  {
+    const usedPayer = new Set<ID>();
+    for (const pay of db.payments.filter((x) => x.status === 'unidentified')) {
+      const cands = db.clients
+        .filter((c) => c.active && c.inn && c.segment !== 'retail' && !usedPayer.has(c.id))
+        .map((c) => {
+          const b = clientBalance(db, c.id);
+          const exact = db.orders.some((o) => o.clientId === c.id && Math.abs(orderPayment(db, o).due - orderPayment(db, o).pending - pay.amount) < 1);
+          return { c, free: b.debt - b.pending, exact };
+        })
+        .filter((x) => x.free >= pay.amount && x.c.ownerId)
+        .sort((a, b2) => Number(b2.exact) - Number(a.exact) || a.free - b2.free);
+      const pick = cands[0];
+      if (!pick) continue;
+      usedPayer.add(pick.c.id);
+      pay.payer = { name: pick.c.name.split(' · ')[0], inn: pick.c.inn! };
+    }
+  }
   const yesterday = plusDays(today, -1);
   const si = stockIndex(db);
   const clients = db.clients;
@@ -397,7 +417,7 @@ export function buildTasks(db: DB, rng: Rng, meta: ProdMeta[]): void {
         const r = applyOp(
           db,
           'order.create',
-          { clientId: d.c.id, pointId: last.pointId, lines: last.lines.slice(0, 3).map((l) => ({ productId: l.productId, pack: l.pack, packQty: l.packQty })), state: 'request', source: 'rep', fulfillment: last.fulfillment, comment: 'Заявка из визита' },
+          { clientId: d.c.id, pointId: last.pointId, lines: last.lines.filter((l) => (si.get(l.productId)?.warehouse.available ?? 0) >= l.qty * 2).slice(0, 3).map((l) => ({ productId: l.productId, pack: l.pack, packQty: l.packQty })), state: 'request', source: 'rep', fulfillment: last.fulfillment, comment: 'Заявка из визита' },
           { actorId: d.c.ownerId!, at: (() => { const lastAt = db.orders.reduce((m, o) => (o.createdAt > m ? o.createdAt : m), ''); const lm = lastAt.startsWith(today) ? +lastAt.slice(11, 13) * 60 + +lastAt.slice(14, 16) : 11 * 60; return atTime(today, Math.min(13 * 60 + 40, lm + 3)); })() },
         );
         ask = r.id ? get(db, 'orders', r.id) : undefined;
