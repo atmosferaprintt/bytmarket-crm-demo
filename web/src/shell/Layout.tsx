@@ -125,8 +125,8 @@ export function Layout({ children }: { children: ReactNode }) {
       <aside className="sidebar">
         <div className="sidebar-inner">
           <NavLink to="/overview" className="sidebar-logo" aria-label="БытМаркет — на главную">
-            <img className="logo-full" src="/brand/bytmarket-light.png" alt="БытМаркет" />
-            <img className="logo-mark" src="/brand/bytmarket-mark-light.png" alt="" />
+            <img className="logo-full" src={`${import.meta.env.BASE_URL}brand/bytmarket-light.png`} alt="БытМаркет" />
+            <img className="logo-mark" src={`${import.meta.env.BASE_URL}brand/bytmarket-mark-light.png`} alt="" />
           </NavLink>
           <nav className="nav" aria-label="Разделы" data-hint="shell.nav">
             {groups.map((g) => (
@@ -165,7 +165,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <header className="topbar">
           {phone ? (
             <>
-              <img src="/brand/bytmarket-color.png" alt="БытМаркет" className="topbar-logo" />
+              <img src={`${import.meta.env.BASE_URL}brand/bytmarket-color.png`} alt="БытМаркет" className="topbar-logo" />
               <span className="spacer" />
             </>
           ) : (
