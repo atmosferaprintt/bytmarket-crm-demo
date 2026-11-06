@@ -126,10 +126,11 @@ export default function Attention() {
   ];
 
   // число в заголовке группы — проблемы: строка «Ещё 8 товаров» — это восемь
-  const group = (title: string, tone: 'bad' | 'warn' | undefined, cards: Signal[], lines: Signal[], hint?: string) =>
+  const group = (title: string, tone: 'bad' | 'warn' | undefined, cards: Signal[], lines: Signal[], hint?: string, trainingHint?: string) =>
     cards.length || lines.length ? (
       <Card
         flush
+        hint={trainingHint}
         title={
           <span className="att-group-head" title={hint}>
             {title}
@@ -145,7 +146,7 @@ export default function Attention() {
     ) : null;
 
   const summary = (
-    <div className="att-summary">
+    <div className="att-summary" data-hint="attention.summary">
       <Kpi label="Срочных" value={fmt.num(urgentCount)} />
       <Kpi label={`Просрочено покупателями · ${fmt.num(kindCount.get('overdue') ?? 0)}`} value={fmt.money(sumOf('overdue'))} onClick={() => setKind('overdue')} />
       <Kpi label={`Ждут подтверждения · ${fmt.num(kindCount.get('payment') ?? 0)}`} value={fmt.money(sumOf('payment'))} onClick={() => setKind('payment')} />
@@ -171,7 +172,7 @@ export default function Attention() {
         ) : null}
         {group('Срочно', 'bad', urgentList, urgentMore)}
         {group('Важно', 'warn', main, [])}
-        {group(kind === 'all' ? 'Остальное' : 'Не горит', undefined, [], small, kind === 'all' ? `Однотипное — одной строкой на вид, суммы до ${fmt.money(SMALL_AMOUNT)} и то, что не горит` : undefined)}
+        {group(kind === 'all' ? 'Остальное' : 'Не горит', undefined, [], small, kind === 'all' ? `Однотипное — одной строкой на вид, суммы до ${fmt.money(SMALL_AMOUNT)} и то, что не горит` : undefined, kind === 'all' ? 'attention.rest' : undefined)}
       </>
     );
 
@@ -205,6 +206,7 @@ export default function Attention() {
         <>
           <Select
             className="att-phone-filter"
+            data-hint="attention.phone-filter"
             value={phoneValue}
             aria-label="Какие сигналы"
             onChange={(e) => {
@@ -225,7 +227,7 @@ export default function Attention() {
         <>
           {summary}
           {view === 'active' ? (
-            <div className="att-toolbar">
+            <div className="att-toolbar" data-hint="attention.kinds">
               <Segmented ariaLabel="Вид сигнала" value={kind} onChange={setKind} options={kindOptions} />
             </div>
           ) : null}
@@ -252,6 +254,7 @@ function DoneList({ manual, gone, card }: { manual: Signal[]; gone: GoneSignal[]
       {gone.length ? (
         <Card
           flush
+          hint="attention.done-auto"
           title={
             <span className="att-group-head">
               Сделано
@@ -277,6 +280,7 @@ function DoneList({ manual, gone, card }: { manual: Signal[]; gone: GoneSignal[]
       {manual.length ? (
         <Card
           flush
+          hint="attention.done-manual"
           title={
             <span className="att-group-head">
               Отмечено «Разобрано»

@@ -113,7 +113,8 @@ export default function PurchasesPage() {
     },
     {
       key: 'state',
-      header: 'Состояние',
+      header: <span data-hint="purchases.state">Состояние</span>,
+      csvHeader: 'Состояние',
       sort: (r) => r.pu.state,
       csv: (r) => PURCHASE_STATE[r.pu.state].label,
       render: (r) => (
@@ -127,7 +128,8 @@ export default function PurchasesPage() {
     },
     {
       key: 'debt',
-      header: 'Долг',
+      header: <span data-hint="purchases.debt">Долг</span>,
+      csvHeader: 'Долг',
       align: 'right',
       hidden: !seeCost,
       sort: (r) => r.debt,
@@ -153,13 +155,13 @@ export default function PurchasesPage() {
         counts={counts}
         actions={
           can('createPurchase') ? (
-            <Button variant="primary" icon={<Plus />} onClick={() => setCreating(true)}>
+            <Button variant="primary" icon={<Plus />} onClick={() => setCreating(true)} data-hint="purchases.new">
               Новая закупка
             </Button>
           ) : null
         }
       />
-      <div className="card stock-strip is-4">
+      <div className="card stock-strip is-4" data-hint="purchases.kpi">
         <Kpi label="В пути" value={<>{fmt.num(kpi.inWay)} {seeCost ? <small className="stock-kpi-unit">на {fmt.money(kpi.inWaySum)}</small> : unit(kpi.inWay, 'закупка', 'закупки', 'закупок')}</>} onClick={() => setFlt('ordered')} />
         {seeCost ? (
           <>
@@ -188,8 +190,8 @@ export default function PurchasesPage() {
         totalLabel={(n) => `Итого ${fmt.count(n, 'закупка', 'закупки', 'закупок')}`}
         toolbar={
           <>
-            <Select className="stock-select is-wide" value={sid} onChange={(e) => setSid(e.target.value)} aria-label="Поставщик" options={[{ value: '', label: 'Все поставщики' }, ...db.suppliers.map((s) => ({ value: s.id, label: s.name }))]} />
-            <div className="stock-pills">
+            <Select className="stock-select is-wide" value={sid} onChange={(e) => setSid(e.target.value)} data-hint="purchases.supplier" aria-label="Поставщик" options={[{ value: '', label: 'Все поставщики' }, ...db.suppliers.map((s) => ({ value: s.id, label: s.name }))]} />
+            <div className="stock-pills" data-hint="purchases.filters">
               <Segmented ariaLabel="Отбор" value={flt} onChange={(v) => setFlt(v as F)} options={options.map((o) => ({ value: o.key, label: o.label, count: bySupplier.filter(tests[o.key]).length }))} />
             </div>
           </>

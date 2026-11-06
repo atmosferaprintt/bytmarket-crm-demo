@@ -49,10 +49,10 @@ export function PromoPriceChip({ info }: { info: PriceInfo }) {
   );
 }
 
-/** Блок с заголовком внутри карточки или панели. */
-export function Block({ title, actions, children, className }: { title: ReactNode; actions?: ReactNode; children: ReactNode; className?: string }) {
+/** Блок с заголовком внутри карточки или панели. hint — метка для подсказок режима обучения (data-hint). */
+export function Block({ title, actions, children, className, hint }: { title: ReactNode; actions?: ReactNode; children: ReactNode; className?: string; hint?: string }) {
   return (
-    <section className={cx('prd-block', className)}>
+    <section className={cx('prd-block', className)} data-hint={hint}>
       <div className="prd-block-head">
         <h3 className="prd-block-title">{title}</h3>
         {actions ? <div className="row">{actions}</div> : null}

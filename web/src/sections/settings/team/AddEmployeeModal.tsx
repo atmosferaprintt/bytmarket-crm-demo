@@ -77,7 +77,7 @@ export function AddEmployeeModal({ onClose, onCreated }: { onClose: () => void; 
             <Input type="date" value={hiredAt} max={db.meta.today} onChange={(e) => setHiredAt(e.target.value || db.meta.today)} />
           </Field>
         </div>
-        <div className="col-3">
+        <div className="col-3" data-hint="settings.add.roles">
           <div className="set-section-label">Роли</div>
           <RolePicker value={roles} onChange={setRoles} hideOwner />
           {tried && rolesErr ? <span className="field-error">{rolesErr}</span> : null}

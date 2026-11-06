@@ -99,7 +99,7 @@ export function PlanVisitModal({ repId: fixedRep, clientId: fixedClient, date: f
           <Select value={pointId} onChange={(e) => setPointId(e.target.value)} options={client.points.map((p) => ({ value: p.id, label: `${p.name} · ${p.address}` }))} />
         </Field>
       ) : null}
-      <div className="grid-2">
+      <div className="grid-2" data-hint="clients.plan-when">
         <Field label="Дата">
           <Input type="date" value={date} min={today} onChange={(e) => setDate(e.target.value)} />
         </Field>
@@ -108,7 +108,7 @@ export function PlanVisitModal({ repId: fixedRep, clientId: fixedClient, date: f
         </Field>
       </div>
       <Field label="Комментарий">
-        <Input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Например: привезти образцы нового геля" />
+        <Input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Например: привезти образцы нового геля" data-hint="clients.plan-comment" />
       </Field>
     </Modal>
   );

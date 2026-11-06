@@ -99,6 +99,7 @@ export default function DeliveryReport() {
         <KpiTile label="Доставок" value={fmt.num(facts.length)} title={facts.some((f) => !f.d.courierId) ? `Из них курьер не назначен: ${fmt.num(facts.filter((f) => !f.d.courierId).length)} — в таблице курьеров их нет` : undefined} extra={<div className="rp-kpi-line">Вручено <b>{fmt.num(delivered)}</b></div>} />
         <KpiTile
           label="Вовремя"
+          hint="reports.delivery.ontime"
           value={pctOf(onTime)}
           title="Вручены вовремя ÷ (вручены + опаздывают сейчас)"
           extra={
@@ -109,11 +110,11 @@ export default function DeliveryReport() {
         />
         <KpiTile label="Неудачных попыток" value={fmt.num(failedAttempts)} extra={<div className="rp-kpi-line">Повторных выездов <b>{fmt.num(facts.filter((f) => f.repeat).length)}</b></div>} />
         <KpiTile label="Расходы на доставку" value={fmt.money(cost)} title="Доставки, на которые курьер уже выезжал. Сходится с итогом по курьерам" extra={<div className="rp-kpi-line">Оплатили клиенты <b>{fmt.money(fee)}</b></div>} />
-        <KpiTile label={<span title="Наличные у курьеров на сегодня, не сданные в кассу">Курьеры не сдали</span>} value={fmt.money(notHanded)} />
+        <KpiTile label={<span title="Наличные у курьеров на сегодня, не сданные в кассу">Курьеры не сдали</span>} value={fmt.money(notHanded)} hint="reports.delivery.cash" />
       </div>
 
       <div className="rp-two">
-        <Card title="Чем закончились доставки">
+        <Card title="Чем закончились доставки" hint="reports.delivery.outcomes">
           <SegmentBar
             ariaLabel="Итоги доставок"
             parts={[
@@ -144,7 +145,7 @@ export default function DeliveryReport() {
             </div>
           </div>
         </Card>
-        <Card title="Почему не получилось доставить">
+        <Card title="Почему не получилось доставить" hint="reports.delivery.reasons">
           <HBarList rows={reasonRows} max={Math.max(1, ...reasonRows.map((r) => r.value))} slot={4} empty="Неудачных попыток не было" />
         </Card>
       </div>
@@ -152,6 +153,7 @@ export default function DeliveryReport() {
       <div className="rp-tight">
       <DataTable
         id="rp-couriers"
+        hint="reports.delivery.couriers"
         title="Курьеры"
         rows={couriers}
         columns={ccols}
@@ -165,6 +167,7 @@ export default function DeliveryReport() {
       <div className="rp-tight">
       <DataTable
         id="rp-delivery-problems"
+        hint="reports.delivery.problems"
         title="Доставки с задержкой и неудачами"
         rows={problems}
         columns={pcols}

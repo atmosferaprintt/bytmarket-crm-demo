@@ -245,7 +245,7 @@ export default function ProductForm({ product, onClose, onSaved }: { product?: P
       }
     >
       <div className="prd-form">
-        <div className="prd-form-sec">
+        <div className="prd-form-sec" data-hint="products.form-main">
           <h3 className="prd-block-title">Товар</h3>
           <Field label="Название" error={tried && !f.name.trim() ? 'Укажите название' : undefined}>
             <Input autoFocus value={f.name} invalid={tried && !f.name.trim()} placeholder="Fairy «Сочный лимон», средство для посуды, 450 мл" onChange={(e) => set('name', e.target.value)} />
@@ -294,7 +294,7 @@ export default function ProductForm({ product, onClose, onSaved }: { product?: P
           </div>
         </div>
 
-        <div className="prd-form-sec">
+        <div className="prd-form-sec" data-hint="products.form-packs">
           <div className="prd-block-head">
             <h3 className="prd-block-title">Единицы продажи</h3>
             <span className="muted t-12">Учёт ведётся в штуках: коробка 24 шт списывает 24 шт</span>
@@ -356,7 +356,7 @@ export default function ProductForm({ product, onClose, onSaved }: { product?: P
           ) : null}
         </div>
 
-        <div className="prd-form-sec">
+        <div className="prd-form-sec" data-hint="products.form-prices">
           <h3 className="prd-block-title">Цены за штуку</h3>
           <div className={cx(seeCost ? 'prd-form-grid-4' : 'prd-form-grid-3')}>
             <Field label="Розница" error={tried && retail === null ? 'Укажите цену' : undefined}>
@@ -386,7 +386,7 @@ export default function ProductForm({ product, onClose, onSaved }: { product?: P
           ) : null}
         </div>
 
-        <div className="prd-form-sec">
+        <div className="prd-form-sec" data-hint="products.form-stock">
           <h3 className="prd-block-title">Склад и учёт</h3>
           <div className="prd-form-grid-4">
             <Field label="Минимальный остаток, шт">

@@ -54,7 +54,7 @@ export function FixRowModal({
             ))}
           </Notice>
         ) : null}
-        <div className="set-form">
+        <div className="set-form" data-hint="settings.setup.fix">
           {cols.map(({ f, i }) => (
             <Field key={i} label={FIELD_LABEL[f]} className={f === 'name' ? 'is-wide' : undefined}>
               <Input

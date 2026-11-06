@@ -71,7 +71,8 @@ export default function SuppliersPage() {
     },
     {
       key: 'contact',
-      header: 'Контакт',
+      header: <span data-hint="purchases.sup-contact">Контакт</span>,
+      csvHeader: 'Контакт',
       sort: (r) => r.s.contact,
       csv: (r) => `${r.s.contact} ${r.s.phone}`,
       render: (r) => (
@@ -81,11 +82,11 @@ export default function SuppliersPage() {
         </div>
       ),
     },
-    { key: 'lead', header: 'Срок поставки', align: 'right', sort: (r) => r.s.leadDays, csv: (r) => r.s.leadDays, render: (r) => fmt.count(r.s.leadDays, 'день', 'дня', 'дней') },
+    { key: 'lead', header: <span data-hint="purchases.sup-terms">Срок поставки</span>, csvHeader: 'Срок поставки', align: 'right', sort: (r) => r.s.leadDays, csv: (r) => r.s.leadDays, render: (r) => fmt.count(r.s.leadDays, 'день', 'дня', 'дней') },
     { key: 'defer', header: <span title="Сколько дней поставщик ждёт нашу оплату после приёмки">Наша отсрочка</span>, align: 'right', sort: (r) => r.s.deferDays, csv: (r) => r.s.deferDays, render: (r) => (r.s.deferDays ? fmt.count(r.s.deferDays, 'день', 'дня', 'дней') : 'предоплата') },
     { key: 'min', header: 'Мин. заказ', align: 'right', hidden: !seeCost || narrow, sort: (r) => r.s.minOrder, csv: (r) => r.s.minOrder, render: (r) => (r.s.minOrder ? fmt.money(r.s.minOrder) : '—') },
     { key: 'purchases', header: 'Закупок', align: 'right', sort: (r) => r.purchases, csv: (r) => r.purchases, render: (r) => fmt.num(r.purchases), total: (rs) => fmt.num(rs.reduce((z, r) => z + r.purchases, 0)) },
-    { key: 'inWay', header: 'В пути', align: 'right', sort: (r) => r.inWay, csv: (r) => r.inWay, render: (r) => (r.inWay ? <span className="w-700">{r.inWay}</span> : <span className="faint">0</span>), total: (rs) => fmt.num(rs.reduce((z, r) => z + r.inWay, 0)) },
+    { key: 'inWay', header: <span data-hint="purchases.sup-inway">В пути</span>, csvHeader: 'В пути', align: 'right', sort: (r) => r.inWay, csv: (r) => r.inWay, render: (r) => (r.inWay ? <span className="w-700">{r.inWay}</span> : <span className="faint">0</span>), total: (rs) => fmt.num(rs.reduce((z, r) => z + r.inWay, 0)) },
     { key: 'last', header: 'Последняя', hidden: narrow, sort: (r) => r.last, csv: (r) => (r.last ? fmt.dateShort(r.last, true) : ''), render: (r) => <span className="nowrap">{r.last ? fmt.relDate(r.last, today) : '—'}</span> },
     {
       key: 'debt',
@@ -99,7 +100,8 @@ export default function SuppliersPage() {
     },
     {
       key: 'next',
-      header: 'Ближайший платёж',
+      header: <span data-hint="purchases.sup-next">Ближайший платёж</span>,
+      csvHeader: 'Ближайший платёж',
       hidden: !seeCost,
       sort: (r) => r.bal.upcoming[0]?.dueDate ?? null,
       csv: (r) => (r.bal.upcoming[0] ? `${r.bal.upcoming[0].amount} до ${r.bal.upcoming[0].dueDate}` : ''),
@@ -121,7 +123,7 @@ export default function SuppliersPage() {
     <>
       <PageHeader section="purchases" counts={counts} />
       {seeCost ? (
-        <div className="card stock-strip is-4">
+        <div className="card stock-strip is-4" data-hint="purchases.sup-kpi">
           <Kpi label="Долг поставщикам" value={fmt.money(totals.debt)} />
           <Kpi label="Просрочено" value={<span className={totals.overdue ? 'c-bad' : undefined}>{fmt.money(totals.overdue)}</span>} />
           <Kpi label="Платежи на неделю" value={fmt.money(week)} />

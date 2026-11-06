@@ -1,4 +1,194 @@
-/* Подсказки режима обучения для раздела. Описание полей — web/src/shell/training/types.ts. */
+/* Подсказки режима обучения для раздела. Описание полей — web/src/shell/training/types.ts.
+   Обзор владельца и «Требует внимания». Рабочий стол бухгалтера — в sections/money/hints.ts. */
 import type { HintDef } from '../../shell/training/types';
 
-export const hints: HintDef[] = [];
+const ATT = '/overview/attention';
+
+export const hints: HintDef[] = [
+  /* ---------- обзор владельца ---------- */
+  {
+    id: 'overview.period',
+    path: '/overview',
+    roles: ['owner'],
+    target: '[data-hint="period.nav"]',
+    title: 'Период',
+    text: 'Рядом выберите день, неделю, месяц или квартал, стрелками листайте назад. Проценты на плитках — к такому же отрезку прошлого периода. Тот же период откроется в отчётах.',
+  },
+  {
+    id: 'overview.sales',
+    path: '/overview',
+    roles: ['owner'],
+    target: '[data-hint="overview.sales"]',
+    title: 'Продажи и план',
+    text: 'Розница и опт за период, возвраты вычтены. Полоса — выполнение плана месяца, риска на ней — где надо быть сегодня по графику. Нажмите — отчёт по товарам.',
+  },
+  {
+    id: 'overview.profit',
+    path: '/overview',
+    roles: ['owner'],
+    target: '[data-hint="overview.profit"]',
+    title: 'Валовая прибыль',
+    text: 'Выручка минус себестоимость проданного. Значок «i» — себестоимость известна не у всех товаров, прибыль неполная. Маржа сравнивается в процентных пунктах.',
+  },
+  {
+    id: 'overview.cash',
+    path: '/overview',
+    roles: ['owner'],
+    target: '[data-hint="overview.cash"]',
+    title: 'Поступило денег',
+    text: 'Оплаты покупателей и выручка касс, включая идущую смену. «На счёт» — сколько из этого пришло в банк. Переводы, которые ждут подтверждения, сюда не входят.',
+  },
+  {
+    id: 'overview.debts',
+    path: '/overview',
+    roles: ['owner'],
+    target: '[data-hint="overview.debts"]',
+    title: 'Долги покупателей',
+    text: 'Остаток на сегодня, а не за период. Красным — сколько уже просрочено. Нажмите — список должников: принять оплату, напомнить в WhatsApp, акт сверки.',
+  },
+  {
+    id: 'overview.suppliers',
+    path: '/overview',
+    roles: ['owner'],
+    target: '[data-hint="overview.suppliers"]',
+    title: 'Долги поставщикам',
+    text: 'Сколько магазин должен поставщикам на сегодня. Ниже — просрочка, а если её нет, ближайший платёж по графику. Нажмите — график платежей.',
+  },
+  {
+    id: 'overview.chart',
+    path: '/overview',
+    roles: ['owner'],
+    target: '[data-hint="overview.chart"]',
+    title: 'Продажи по дням',
+    text: 'Столбцы — выбранный период, линия — прошлый. Справа переключите: всего, розница или опт. Наведите на столбец — сумма за день.',
+  },
+  {
+    id: 'overview.net',
+    path: '/overview',
+    roles: ['owner'],
+    target: '[data-hint="overview.net"]',
+    title: 'После расходов',
+    text: 'Валовая прибыль минус расходы за период из журнала денег: аренда, зарплата, топливо, недостачи. Нажмите «Расходы» рядом — откроется их список.',
+  },
+  {
+    id: 'overview.signals',
+    path: '/overview',
+    roles: ['owner'],
+    order: 1001, // после «После расходов»: сначала цифры периода, потом что делать
+    target: '[data-hint="overview.signals"]',
+    title: 'Требует внимания',
+    text: 'Главное на сегодня: просрочки, решения, деньги, задержки. Кнопка у сигнала сразу ведёт к делу. «Все» — полный список с фильтрами.',
+  },
+
+  /* ---------- «Требует внимания»: владелец и бухгалтер ---------- */
+  {
+    id: 'attention.summary',
+    path: ATT,
+    target: '[data-hint="attention.summary"]',
+    title: 'Сводка',
+    text: 'Сколько срочного и на какие суммы. Нажмите плитку — в списке останется только этот вид сигналов.',
+  },
+  {
+    id: 'attention.kinds',
+    path: ATT,
+    roles: ['owner'],
+    device: 'desktop',
+    target: '[data-hint="attention.kinds"]',
+    title: 'Виды сигналов',
+    text: 'Выберите вид — каждая проблема покажется отдельно, без групп. «Ждёт вашего решения» — заказы, где сотрудник просит вашего согласия. Число — сколько проблем.',
+  },
+  {
+    id: 'attention.kinds-acc',
+    path: ATT,
+    roles: ['accountant'],
+    device: 'desktop',
+    target: '[data-hint="attention.kinds"]',
+    title: 'Виды сигналов',
+    text: 'Здесь только денежное: просрочки покупателей, переводы и неопознанные поступления, оплаты поставщикам, деньги курьеров и касс. Выберите вид — останется только он.',
+  },
+  {
+    id: 'attention.phone-filter',
+    path: ATT,
+    device: 'phone',
+    target: '[data-hint="attention.phone-filter"]',
+    title: 'Какие сигналы',
+    text: 'Выберите вид сигналов или «Разобрано сегодня». Число — сколько проблем такого вида.',
+  },
+  {
+    id: 'attention.card',
+    path: ATT,
+    target: '[data-hint="attention.card"]',
+    title: 'Сигнал',
+    text: 'Что случилось, почему и главные цифры, рядом — кто отвечает. Сигнал уходит из списка сам, когда дело сделано.',
+  },
+  {
+    id: 'attention.act',
+    path: ATT,
+    roles: ['owner'],
+    target: '[data-hint="attention.act"]',
+    title: 'Сразу к делу',
+    text: '«Решить» откроет заказ, «Оплатить» — выплату поставщику, «Разнести» и «Проверить» — платёж, «Принять» — деньги курьера. «Поручить» создаст задачу сотруднику.',
+  },
+  {
+    id: 'attention.act-acc',
+    path: ATT,
+    roles: ['accountant'],
+    target: '[data-hint="attention.act"]',
+    title: 'Сразу к делу',
+    text: '«Проверить» — сверить перевод с выпиской, «Разнести» — опознать платёж, «Оплатить» — выплата поставщику, «Принять» — деньги курьера. «Поручить» — задача сотруднику.',
+  },
+  {
+    id: 'attention.assigned',
+    path: ATT,
+    target: '[data-hint="attention.assigned"]',
+    title: 'Поручено',
+    text: 'Кому поручено и когда. Задача — у сотрудника в «Моих задачах», а сигнал висит, пока дело не сделано.',
+  },
+  {
+    id: 'attention.remind',
+    path: ATT,
+    target: '[data-hint="attention.remind"]',
+    title: 'Напомнить в WhatsApp',
+    text: 'Готовый текст о долге с актом сверки во вложении. После отправки у сигнала появится «Напомнили сегодня в …» — чтобы не написать клиенту дважды.',
+  },
+  {
+    id: 'attention.resolve',
+    path: ATT,
+    device: 'desktop',
+    order: 1001, // после главной кнопки, поручения и напоминания
+    target: '[data-hint="attention.resolve"]',
+    title: 'Разобрано',
+    text: 'Уже разобрались, а сигнал висит — уберите его. Он попадёт в «Разобрано сегодня» вверху справа, туда же — всё, что решилось само. Оттуда можно вернуть.',
+  },
+  {
+    id: 'attention.resolve-phone',
+    path: ATT,
+    device: 'phone',
+    order: 1001,
+    target: '[data-hint="attention.resolve"]',
+    title: 'Разобрано',
+    text: 'Уже разобрались, а сигнал висит — уберите его. Он попадёт в «Разобрано сегодня»: выберите его в списке вверху. Оттуда сигнал можно вернуть.',
+  },
+  {
+    id: 'attention.rest',
+    path: ATT,
+    order: 1002,
+    target: '[data-hint="attention.rest"]',
+    title: 'Остальное',
+    text: 'Однотипное и мелкое — одной строкой на вид. «Показать» раскроет каждую проблему отдельно.',
+  },
+  {
+    id: 'attention.done-auto',
+    path: ATT,
+    target: '[data-hint="attention.done-auto"]',
+    title: 'Сделано',
+    text: 'Сигналы, которые ушли сами, потому что дело сделали: перевод подтвердили, платёж разнесли, деньги приняли, поставщику заплатили. Справа — во сколько.',
+  },
+  {
+    id: 'attention.done-manual',
+    path: ATT,
+    target: '[data-hint="attention.done-manual"]',
+    title: 'Отмечено «Разобрано»',
+    text: 'Что убрали вручную. «Вернуть» — сигнал снова в работе.',
+  },
+];

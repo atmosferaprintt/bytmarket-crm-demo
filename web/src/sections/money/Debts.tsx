@@ -148,7 +148,8 @@ export default function Debts() {
     },
     {
       key: 'limit',
-      header: 'Лимит и остаток',
+      header: <span data-hint="money.debts.limit">Лимит и остаток</span>,
+      csvHeader: 'Лимит и остаток',
       align: 'right',
       sort: (r) => (r.b.creditLimit > 0 ? r.b.creditLeft : null),
       csv: (r) => (r.b.creditLimit ? `${r.b.creditLimit} / ${r.b.creditLeft}` : ''),
@@ -181,7 +182,8 @@ export default function Debts() {
     },
     {
       key: 'reminded',
-      header: 'Напомнили',
+      header: <span data-hint="money.debts.reminded">Напомнили</span>,
+      csvHeader: 'Напомнили',
       sort: (r) => r.reminded ?? '',
       csv: (r) => (r.reminded ? r.reminded.replace('T', ' ') : ''),
       width: 92,
@@ -200,7 +202,7 @@ export default function Debts() {
       header: '',
       width: 1,
       render: (r) => (
-        <div className="row money-row-actions" onClick={(e) => e.stopPropagation()}>
+        <div className="row money-row-actions" onClick={(e) => e.stopPropagation()} data-hint="money.debts.row">
           {perms.accept ? (
             <Button size="sm" icon={<HandCoins />} title="Принять оплату" onClick={() => setModal({ kind: 'accept', clientId: r.c.id })}>
               Принять
@@ -248,9 +250,11 @@ export default function Debts() {
         counts={counts}
         actions={
           <>
-            <MoreMenu items={menu} />
+            <span data-hint="money.ops">
+              <MoreMenu items={menu} />
+            </span>
             {perms.accept ? (
-              <Button variant="primary" icon={<HandCoins />} onClick={() => setModal({ kind: 'accept' })}>
+              <Button variant="primary" icon={<HandCoins />} onClick={() => setModal({ kind: 'accept' })} data-hint="money.accept-btn">
                 Принять оплату
               </Button>
             ) : null}
@@ -271,7 +275,7 @@ export default function Debts() {
         </>
       ) : (
         <>
-          <div className="grid-4">
+          <div className="grid-4" data-hint="money.debts.kpis">
             <Kpi label="Долг покупателей" value={fmt.money(kpi.debt)} />
             <Kpi label={`Просрочено · ${fmt.count(kpi.overdueN, 'клиент', 'клиента', 'клиентов')}`} value={<span className={kpi.overdue ? 'c-bad' : undefined}>{fmt.money(kpi.overdue)}</span>} />
             <Kpi label="Сверх кредитного лимита" value={fmt.count(kpi.overLimit, 'клиент', 'клиента', 'клиентов')} />
@@ -280,6 +284,7 @@ export default function Debts() {
           <div className="money-tight">
           <DataTable
             id="money-debts"
+            hint="money.debts"
             rows={rows}
             columns={columns}
             rowKey={(r) => r.c.id}

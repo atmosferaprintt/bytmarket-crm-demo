@@ -141,18 +141,18 @@ export function DeliverSheet({ id, onClose }: { id: ID; onClose: () => void }) {
       sub={`№ ${d.number} · ${client?.name ?? d.contactName} · ${d.address}, ${shortDistrict(d.district)}`}
       onClose={onClose}
       footer={
-        <Button variant="primary" size="lg" block onClick={submit} icon={<Check />}>
+        <Button variant="primary" size="lg" block onClick={submit} icon={<Check />} data-hint="courier.deliver-submit">
           {btnText}
         </Button>
       }
     >
-      <div className="dl-collect">
+      <div className="dl-collect" data-hint="courier.deliver-collect">
         <span className="dl-collect-label">К получению</span>
         <span className="dl-collect-value">{fmt.money(toCollect)}</span>
       </div>
       {d.collect === 0 ? <Notice tone="ok">Заказ оплачен заранее или по отсрочке — деньги брать не нужно</Notice> : null}
 
-      <div className="dl-choices" role="radiogroup" aria-label="Способ оплаты">
+      <div className="dl-choices" role="radiogroup" aria-label="Способ оплаты" data-hint="courier.deliver-method">
         {choices.map((ch) => (
           <button
             key={ch.key}
@@ -177,6 +177,7 @@ export function DeliverSheet({ id, onClose }: { id: ID; onClose: () => void }) {
       </div>
 
       {method !== 'none' ? (
+        <div data-hint="courier.deliver-amount">
         <Field label={method === 'transfer' ? 'Перевёл' : 'Получил'}>
           <MoneyInput
             size="lg"
@@ -188,12 +189,13 @@ export function DeliverSheet({ id, onClose }: { id: ID; onClose: () => void }) {
             }}
           />
         </Field>
+        </div>
       ) : null}
       {method === 'transfer' && got > 0 ? <Notice tone="info">Долг клиента закроется, когда банк подтвердит перевод</Notice> : null}
 
       {lines.length ? (
         <div className="col-3">
-          <button type="button" className={cx('dl-choice dl-nt-toggle', ntCount > 0 && 'has-value')} aria-expanded={showNt} onClick={() => setShowNt((v) => !v)}>
+          <button type="button" className={cx('dl-choice dl-nt-toggle', ntCount > 0 && 'has-value')} aria-expanded={showNt} onClick={() => setShowNt((v) => !v)} data-hint="courier.deliver-nt">
             <PackageMinus />
             <span className="grow col" style={{ gap: 0 }}>
               <span>Часть товара не взяли</span>
@@ -314,7 +316,7 @@ export function FailSheet({ id, onClose }: { id: ID; onClose: () => void }) {
       }
     >
       <span className="field-label">Причина</span>
-      <div className="dl-reasons" role="radiogroup" aria-label="Причина">
+      <div className="dl-reasons" role="radiogroup" aria-label="Причина" data-hint="courier.fail-reason">
         {[...DELIVERY_FAIL_REASONS, OTHER].map((r) => (
           <button key={r} type="button" role="radio" aria-checked={reason === r} className={cx('dl-reason', reason === r && 'is-active')} onClick={() => { setReason(r); setError(null); }}>
             <span className="grow">{r}</span>
@@ -324,7 +326,7 @@ export function FailSheet({ id, onClose }: { id: ID; onClose: () => void }) {
       </div>
 
       {reason === ASKED ? (
-        <div className="dl-wish col-3">
+        <div className="dl-wish col-3" data-hint="courier.fail-when">
           <span className="field-label">Когда привезти</span>
           <DayChoice value={wishDate} onChange={pickDate} c={c} />
           <Select
@@ -350,10 +352,12 @@ export function FailSheet({ id, onClose }: { id: ID; onClose: () => void }) {
         </Field>
       ) : null}
 
-      <Notice tone="info">
-        {d.state === 'on_way' ? 'Товар остаётся у вас. ' : ''}Диспетчер решит: повторить доставку или вернуть товар на склад.
-      </Notice>
-      {isCourier && dispatcher ? <CallButton phone={dispatcher.phone} label="Позвонить диспетчеру" size="lg" block /> : null}
+      <div data-hint="courier.fail-next">
+        <Notice tone="info">
+          {d.state === 'on_way' ? 'Товар остаётся у вас. ' : ''}Диспетчер решит: повторить доставку или вернуть товар на склад.
+        </Notice>
+      </div>
+      {isCourier && dispatcher ? <CallButton phone={dispatcher.phone} label="Позвонить диспетчеру" size="lg" block hint="courier.fail-call" /> : null}
       {error ? <Notice tone="bad">{error}</Notice> : null}
     </Sheet>
   );
@@ -414,13 +418,13 @@ export function DelaySheet({ id, onClose }: { id: ID; onClose: () => void }) {
       sub={`№ ${d.number} · ${client?.name ?? d.contactName} · ${d.interval}`}
       onClose={onClose}
       footer={
-        <Button variant="primary" size="lg" block onClick={submit} disabled={!reason}>
+        <Button variant="primary" size="lg" block onClick={submit} disabled={!reason} data-hint="courier.delay-submit">
           {reason ? `Буду в ${until}` : 'Выберите причину'}
         </Button>
       }
     >
       <span className="field-label">Почему</span>
-      <div className="dl-reasons is-small" role="radiogroup" aria-label="Причина задержки">
+      <div className="dl-reasons is-small" role="radiogroup" aria-label="Причина задержки" data-hint="courier.delay-reason">
         {DELAY_REASONS.map((r) => (
           <button key={r} type="button" role="radio" aria-checked={reason === r} className={cx('dl-reason', reason === r && 'is-active')} onClick={() => { setReason(r); setError(null); }}>
             <span className="grow">{r}</span>
@@ -435,7 +439,7 @@ export function DelaySheet({ id, onClose }: { id: ID; onClose: () => void }) {
       ) : null}
 
       <span className="field-label">Когда приеду</span>
-      <div className="dl-soon" role="radiogroup" aria-label="Когда приеду">
+      <div className="dl-soon" role="radiogroup" aria-label="Когда приеду" data-hint="courier.delay-when">
         {SOON.map((m) => {
           const t = timeAfter(c, m);
           return (
@@ -451,7 +455,9 @@ export function DelaySheet({ id, onClose }: { id: ID; onClose: () => void }) {
       </Field>
       {afterInterval ? (
         <>
-          <Notice tone="warn">Позже интервала клиента ({d.interval}) — предупредите клиента</Notice>
+          <div data-hint="courier.delay-late">
+            <Notice tone="warn">Позже интервала клиента ({d.interval}) — предупредите клиента</Notice>
+          </div>
           {isCourier ? <CallButton phone={d.contactPhone} label="Позвонить клиенту" size="lg" block /> : null}
         </>
       ) : null}
@@ -485,6 +491,7 @@ export function LinesSheet({ id, onClose }: { id: ID; onClose: () => void }) {
           variant="secondary"
           size="lg"
           block
+          data-hint="courier.lines-card"
           onClick={() => {
             onClose();
             open('delivery', d.id);
@@ -494,7 +501,7 @@ export function LinesSheet({ id, onClose }: { id: ID; onClose: () => void }) {
         </Button>
       }
     >
-      <div className="dl-lines is-phone">
+      <div className="dl-lines is-phone" data-hint="courier.lines-list">
         {order.lines.map((l, i) => {
           const p = ix.products.get(l.productId);
           return (

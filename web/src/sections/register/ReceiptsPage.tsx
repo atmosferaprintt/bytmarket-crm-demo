@@ -163,7 +163,7 @@ export default function ReceiptsPage() {
         rowKey={(x) => x.r.id}
         search={{ placeholder: 'Номер, товар или дата 04.11', text: (x) => x.text }}
         toolbar={
-          <span className="reg-day">
+          <span className="reg-day" data-hint="register.receipts-day">
             <Input
               type="date"
               aria-label="Чеки за день"

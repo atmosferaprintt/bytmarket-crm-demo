@@ -103,18 +103,20 @@ export default function PromoForm({ onClose, onSaved }: { onClose: () => void; o
           <Button variant="ghost" onClick={onClose}>
             Отмена
           </Button>
-          <Button variant="primary" onClick={save}>
+          <Button variant="primary" onClick={save} data-hint="products.promo-save">
             Создать акцию
           </Button>
         </>
       }
     >
       <div className="prd-form">
-        <Field label="Название">
-          <Input autoFocus value={name} placeholder="Осенняя стирка" onChange={(e) => setName(e.target.value)} />
-        </Field>
+        <div data-hint="products.promo-name">
+          <Field label="Название">
+            <Input autoFocus value={name} placeholder="Осенняя стирка" onChange={(e) => setName(e.target.value)} />
+          </Field>
+        </div>
 
-        <div className="prd-form-sec">
+        <div className="prd-form-sec" data-hint="products.promo-target">
           <div className="prd-block-head">
             <h3 className="prd-block-title">На что действует</h3>
             <Segmented
@@ -195,26 +197,28 @@ export default function PromoForm({ onClose, onSaved }: { onClose: () => void; o
               ]}
             />
           </Field>
-          <Field
-            label={kind === 'percent' ? 'Скидка, %' : 'Цена за штуку'}
-            hint={
-              safePct !== null ? (
-                <span className="nowrap" title={`Наценка не падает ниже ${db.settings.minMarginPct} % ни у одного товара${audience === 'all' ? ' — ни в рознице, ни в опте' : ''}`}>
-                  {safePct > 0 ? <>Безопасная скидка — до {safePct}&nbsp;%</> : 'Наценка у части товаров уже на минимуме'}
-                </span>
-              ) : safePrice !== null ? (
-                <span className="nowrap" title={`Наценка не падает ниже ${db.settings.minMarginPct} % ни у одного товара`}>
-                  Безопасная цена — от {fmt.price(safePrice)}
-                </span>
-              ) : undefined
-            }
-          >
-            {kind === 'percent' ? (
-              <Input inputMode="numeric" className="num" value={value === '' ? '' : String(value)} onChange={(e) => setValue(e.target.value.replace(/[^\d]/g, '') === '' ? '' : Number(e.target.value.replace(/[^\d]/g, '')))} />
-            ) : (
-              <MoneyInput value={value} onChange={setValue} />
-            )}
-          </Field>
+          <div data-hint="products.promo-value">
+            <Field
+              label={kind === 'percent' ? 'Скидка, %' : 'Цена за штуку'}
+              hint={
+                safePct !== null ? (
+                  <span className="nowrap" title={`Наценка не падает ниже ${db.settings.minMarginPct} % ни у одного товара${audience === 'all' ? ' — ни в рознице, ни в опте' : ''}`}>
+                    {safePct > 0 ? <>Безопасная скидка — до {safePct}&nbsp;%</> : 'Наценка у части товаров уже на минимуме'}
+                  </span>
+                ) : safePrice !== null ? (
+                  <span className="nowrap" title={`Наценка не падает ниже ${db.settings.minMarginPct} % ни у одного товара`}>
+                    Безопасная цена — от {fmt.price(safePrice)}
+                  </span>
+                ) : undefined
+              }
+            >
+              {kind === 'percent' ? (
+                <Input inputMode="numeric" className="num" value={value === '' ? '' : String(value)} onChange={(e) => setValue(e.target.value.replace(/[^\d]/g, '') === '' ? '' : Number(e.target.value.replace(/[^\d]/g, '')))} />
+              ) : (
+                <MoneyInput value={value} onChange={setValue} />
+              )}
+            </Field>
+          </div>
           <Field label="С">
             <Input type="date" value={start} onChange={(e) => setStart(e.target.value)} />
           </Field>
@@ -223,52 +227,56 @@ export default function PromoForm({ onClose, onSaved }: { onClose: () => void; o
           </Field>
         </div>
 
-        <Field label="Для кого">
-          <Segmented
-            value={audience}
-            onChange={setAudience}
-            options={[
-              { value: 'all', label: 'Все покупатели' },
-              { value: 'retail', label: 'Розница' },
-              { value: 'wholesale', label: 'Опт' },
-            ]}
-          />
-        </Field>
+        <div data-hint="products.promo-audience">
+          <Field label="Для кого">
+            <Segmented
+              value={audience}
+              onChange={setAudience}
+              options={[
+                { value: 'all', label: 'Все покупатели' },
+                { value: 'retail', label: 'Розница' },
+                { value: 'wholesale', label: 'Опт' },
+              ]}
+            />
+          </Field>
+        </div>
 
         {target ? (
-          <Notice tone={issues.length ? 'warn' : 'info'} title={`Акция коснётся ${fmt.count(affected.length, 'товара', 'товаров', 'товаров')}`}>
-            {issues.length ? (
-              <>
-                <div>
-                  У {fmt.count(issues.length, 'товара', 'товаров', 'товаров')} цена со скидкой ниже себестоимости плюс {db.settings.minMarginPct}&nbsp;%
-                  {issues.some((i) => i.belowCost) ? ', у части — ниже себестоимости' : ''}:
-                </div>
-                <ul className="prd-issues">
-                  {issues.slice(0, 5).map((i) => (
-                    <li key={i.product.id}>
-                      <span className="ellipsis">{i.product.name}</span>
-                      <span className="num nowrap">
-                        {i.prices.map((x) => `${x.priceType === 'retail' ? 'розница' : 'опт'} ${fmt.price(x.price)}`).join(', ')}, нужно не меньше {fmt.price(i.min)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-                {issues.length > 5 ? <div>и ещё {fmt.count(issues.length - 5, 'товар', 'товара', 'товаров')}</div> : null}
-                <div className="prd-issues-foot">
-                  <span className="grow">
-                    Создать можно, но лучше {safePct !== null && safePct > 0 ? `дать скидку до ${safePct} %` : 'уменьшить скидку'} или убрать эти товары.
-                  </span>
-                  <Button size="sm" icon={<Trash2 />} onClick={dropIssues}>
-                    Убрать эти товары
-                  </Button>
-                </div>
-              </>
-            ) : noEffect ? (
-              `У ${fmt.count(noEffect, 'товара', 'товаров', 'товаров')} цена и так ниже — для них акция ничего не меняет`
-            ) : (
-              'Наценка не падает ниже минимальной'
-            )}
-          </Notice>
+          <div data-hint="products.promo-check">
+            <Notice tone={issues.length ? 'warn' : 'info'} title={`Акция коснётся ${fmt.count(affected.length, 'товара', 'товаров', 'товаров')}`}>
+              {issues.length ? (
+                <>
+                  <div>
+                    У {fmt.count(issues.length, 'товара', 'товаров', 'товаров')} цена со скидкой ниже себестоимости плюс {db.settings.minMarginPct}&nbsp;%
+                    {issues.some((i) => i.belowCost) ? ', у части — ниже себестоимости' : ''}:
+                  </div>
+                  <ul className="prd-issues">
+                    {issues.slice(0, 5).map((i) => (
+                      <li key={i.product.id}>
+                        <span className="ellipsis">{i.product.name}</span>
+                        <span className="num nowrap">
+                          {i.prices.map((x) => `${x.priceType === 'retail' ? 'розница' : 'опт'} ${fmt.price(x.price)}`).join(', ')}, нужно не меньше {fmt.price(i.min)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  {issues.length > 5 ? <div>и ещё {fmt.count(issues.length - 5, 'товар', 'товара', 'товаров')}</div> : null}
+                  <div className="prd-issues-foot">
+                    <span className="grow">
+                      Создать можно, но лучше {safePct !== null && safePct > 0 ? `дать скидку до ${safePct} %` : 'уменьшить скидку'} или убрать эти товары.
+                    </span>
+                    <Button size="sm" icon={<Trash2 />} onClick={dropIssues} data-hint="products.promo-drop">
+                      Убрать эти товары
+                    </Button>
+                  </div>
+                </>
+              ) : noEffect ? (
+                `У ${fmt.count(noEffect, 'товара', 'товаров', 'товаров')} цена и так ниже — для них акция ничего не меняет`
+              ) : (
+                'Наценка не падает ниже минимальной'
+              )}
+            </Notice>
+          </div>
         ) : null}
         {error ? <Notice tone="bad">{error}</Notice> : null}
       </div>

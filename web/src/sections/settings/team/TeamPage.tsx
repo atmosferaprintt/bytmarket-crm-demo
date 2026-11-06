@@ -34,7 +34,7 @@ export function TeamPage() {
         section="settings"
         actions={
           view === 'people' ? (
-            <Button variant="primary" icon={<UserPlus />} onClick={() => setAdding(true)}>
+            <Button variant="primary" icon={<UserPlus />} onClick={() => setAdding(true)} data-hint="settings.team.add">
               Добавить сотрудника
             </Button>
           ) : null
@@ -42,6 +42,7 @@ export function TeamPage() {
       />
 
       <div className="row">
+        <span data-hint="settings.team.view">
         <Segmented
           ariaLabel="Что показать"
           value={view}
@@ -52,6 +53,7 @@ export function TeamPage() {
             { value: 'audit', label: 'Журнал изменений', count: db.audit.length },
           ]}
         />
+        </span>
       </div>
 
       {view === 'people' ? <EmployeesView onOpen={setOpenId} selectedId={openId} /> : null}

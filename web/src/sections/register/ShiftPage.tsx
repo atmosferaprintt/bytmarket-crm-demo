@@ -148,6 +148,7 @@ export default function ShiftPage() {
             </div>
             <Card
               title={`Смена № ${shift.number}`}
+              hint="register.shift-summary"
               actions={
                 <Button size="sm" variant="ghost" icon={<ReceiptText />} onClick={() => setView(shift)}>
                   Чеки смены
@@ -181,9 +182,11 @@ export default function ShiftPage() {
               }}
             >
               <div className="t-13 ink-2">Пересчитайте наличные в кассе вместе с разменом и введите сумму.</div>
-              <Field label="Пересчитано наличных">
-                <MoneyInput value={counted} onChange={setCounted} size="lg" autoFocus={!phone} ariaLabel="Пересчитано наличных, ₽" />
-              </Field>
+              <div data-hint="register.shift-count">
+                <Field label="Пересчитано наличных">
+                  <MoneyInput value={counted} onChange={setCounted} size="lg" autoFocus={!phone} ariaLabel="Пересчитано наличных, ₽" />
+                </Field>
+              </div>
               {counted !== '' ? (
                 <StatList>
                   <StatRow label="Ожидалось" value={fmt.money(sum.expectedCash)} />
@@ -202,17 +205,19 @@ export default function ShiftPage() {
                 </div>
               )}
               {diff !== null && diff !== 0 ? (
-                <Field label="Почему не сошлось">
-                  <Input value={diffReason} onChange={(e) => setDiffReason(e.target.value)} placeholder="Например: сдача покупателю без чека" aria-label="Причина расхождения" />
-                </Field>
+                <div data-hint="register.shift-diff">
+                  <Field label="Почему не сошлось">
+                    <Input value={diffReason} onChange={(e) => setDiffReason(e.target.value)} placeholder="Например: сдача покупателю без чека" aria-label="Причина расхождения" />
+                  </Field>
+                </div>
               ) : null}
               {error ? <Notice tone="bad">{error}</Notice> : null}
               {diff !== null && diff !== 0 ? (
-                <ConfirmButton variant="primary" size="lg" block onConfirm={close} confirmText="Закрыть с расхождением?" yes="Да, закрыть">
+                <ConfirmButton variant="primary" size="lg" block onConfirm={close} confirmText="Закрыть с расхождением?" yes="Да, закрыть" data-hint="register.shift-close">
                   Закрыть смену
                 </ConfirmButton>
               ) : (
-                <Button variant="primary" size="lg" block type="submit" disabled={counted === ''}>
+                <Button variant="primary" size="lg" block type="submit" disabled={counted === ''} data-hint="register.shift-close">
                   Закрыть смену
                 </Button>
               )}
@@ -241,7 +246,7 @@ export default function ShiftPage() {
                   <LockKeyholeOpen />
                 </div>
                 <div className="t-14 ink-2">Сначала сдайте выручку. Новую смену открывают, когда пересчитают размен в кассе.</div>
-                <Button size="lg" block icon={<LockKeyholeOpen />} onClick={() => setOpening(true)}>
+                <Button size="lg" block icon={<LockKeyholeOpen />} onClick={() => setOpening(true)} data-hint="register.shift-new">
                   Открыть новую смену
                 </Button>
               </div>
@@ -306,6 +311,7 @@ function ClosedShiftCard({ shift, justClosed, primary, onPrint, onOpen }: { shif
   return (
     <Card
       title={justClosed ? `Смена № ${shift.number} закрыта` : `Прошлая смена № ${shift.number}`}
+      hint="register.shift-closed"
       actions={
         <>
           {diffChip(sum.difference)}
@@ -336,7 +342,7 @@ function ClosedShiftCard({ shift, justClosed, primary, onPrint, onOpen }: { shif
             <span className={cx('reg-closed-value num', diff < 0 && 'c-bad', diff > 0 && 'c-warn')}>{signed(diff)}</span>
           </div>
         </div>
-        <div className="reg-handover">
+        <div className="reg-handover" data-hint="register.shift-handover">
           <span className="reg-handover-text">
             Сдать <b className="num">{fmt.money(ho.handIn)}</b>, оставить на размен <b className="num">{fmt.money(ho.keep)}</b>
           </span>

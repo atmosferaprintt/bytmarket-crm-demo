@@ -258,7 +258,7 @@ export default function Pricing() {
         counts={{ catalog: catalogTotal, pricing: promoCount }}
         actions={
           can('promos') ? (
-            <Button variant="primary" icon={<Plus />} onClick={() => setCreating(true)}>
+            <Button variant="primary" icon={<Plus />} onClick={() => setCreating(true)} data-hint="products.promo-new">
               Новая акция
             </Button>
           ) : null
@@ -335,6 +335,7 @@ function DiscountRules() {
   return (
     <Card
       className={open ? 'prd-rules-card is-open' : 'prd-rules-card'}
+      hint="products.rules"
       title="Как применяются скидки"
       actions={
         <Button variant="ghost" size="sm" icon={open ? <ChevronUp /> : <ChevronDown />} onClick={() => setOpen((v) => !v)} aria-expanded={open}>

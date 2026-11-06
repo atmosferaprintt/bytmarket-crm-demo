@@ -8,7 +8,7 @@ export const shellHints: HintDef[] = [
     path: '*',
     target: '[data-hint="shell.training"]',
     title: 'Режим обучения',
-    text: 'Номера на экране — подсказки по порядку, нажмите на любой. «По шагам» внизу проведёт по всем. Выключить — эта же кнопка.',
+    text: 'Номера на экране — подсказки по порядку, нажмите на любой. «По шагам» рядом проведёт по всем. Выключить — эта же кнопка.',
   },
   {
     id: 'shell.nav',
@@ -97,7 +97,7 @@ export const shellHints: HintDef[] = [
     generic: true,
     target: '.table-toolbar > .seg',
     title: 'Быстрые фильтры',
-    text: 'Оставьте только нужное одним нажатием. Число рядом — сколько строк попадёт.',
+    text: 'Оставьте только нужное одним нажатием. Если рядом число — столько строк попадёт.',
   },
   {
     id: 'generic.table-views',
@@ -122,7 +122,7 @@ export const shellHints: HintDef[] = [
     path: '*',
     generic: true,
     device: 'desktop',
-    target: '.table thead',
+    target: '.table thead th.is-sortable',
     title: 'Сортировка и итоги',
     text: 'Нажмите на заголовок столбца, чтобы отсортировать, ещё раз — в обратную сторону. Итоги — в последней строке таблицы.',
   },

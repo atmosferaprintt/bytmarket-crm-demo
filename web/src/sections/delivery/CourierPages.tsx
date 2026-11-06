@@ -67,7 +67,7 @@ export function CourierQueue() {
     <div className="dl-phone">
       <PageHeader section="delivery" actions={day > c.today ? <RouteButton day={day} /> : null} />
 
-      <div className="dl-cday">
+      <div className="dl-cday" data-hint="courier.q-day">
         <Segmented
           ariaLabel="День"
           value={seg}
@@ -81,7 +81,7 @@ export function CourierQueue() {
         <input type="date" className={cx('input dl-cday-date', !seg && 'is-set')} value={day} aria-label="Другой день" onChange={(e) => e.target.value && setDay(e.target.value)} />
       </div>
 
-      <div className="card dl-sum">
+      <div className="card dl-sum" data-hint="courier.q-sum">
         <div className="dl-sum-item">
           <span className="dl-sum-label">Точек</span>
           <span className="dl-sum-value">{list.length}</span>
@@ -103,7 +103,7 @@ export function CourierQueue() {
             {day !== c.today && day !== c.tomorrow && day !== yesterday ? `, ${fmt.weekday(day)}` : ''} · {fmt.count(list.length, 'точка', 'точки', 'точек')}
           </h2>
           {day === c.today && list.some((d) => d.state === 'assigned' || d.state === 'on_way') ? (
-            <button type="button" className="link-button dl-board-link" onClick={() => nav('/overview')}>
+            <button type="button" className="link-button dl-board-link" onClick={() => nav('/overview')} data-hint="courier.q-today">
               <Navigation />
               Маршрут на сегодня
             </button>
@@ -121,7 +121,7 @@ export function CourierQueue() {
       <section className="col-3">
         <h2 className="dl-board-title">Вручено по дням</h2>
         {history.length ? (
-          <div className="card dl-hist">
+          <div className="card dl-hist" data-hint="courier.q-history">
             {history.map((h) => (
               <button key={h.date} type="button" className={cx('dl-hist-row', h.date === day && 'is-active')} onClick={() => setDay(h.date)} aria-pressed={h.date === day}>
                 <span className="grow col" style={{ gap: 2, minWidth: 0 }}>
@@ -160,7 +160,7 @@ function DayRow({ d, pos, c, onOpen }: { d: Delivery; pos: number; c: Clock; onO
         : `${ix.clients.get(d.clientId)?.name ?? d.contactName} · ${d.date < c.today ? fmt.dateShort(d.date) + ', ' : ''}${d.interval}`;
   const delivered = d.state === 'delivered';
   return (
-    <button type="button" className="card dl-cc-row dl-day-row" onClick={onOpen}>
+    <button type="button" className="card dl-cc-row dl-day-row" onClick={onOpen} data-hint="courier.q-row">
       <span className={cx('dl-cc-no is-small', delivered && 'is-done', d.state === 'failed' && 'is-bad')}>{pos}</span>
       <span className="grow col" style={{ gap: 4, minWidth: 0 }}>
         <span className="w-700 ellipsis">{d.address}</span>
@@ -204,7 +204,7 @@ export function CourierCash() {
   return (
     <div className="dl-phone">
       <PageHeader section="delivery" />
-      <div className="card dl-cash-hero">
+      <div className="card dl-cash-hero" data-hint="courier.cash-hero">
         <span className="dl-sum-label">На руках</span>
         <span className="dl-cash-hero-value">{fmt.money(cash.onHand)}</span>
         {split.older > 0 ? (
@@ -223,7 +223,7 @@ export function CourierCash() {
 
       <section className="col-3">
         <h2 className="dl-board-title">Получено сегодня · {today.list.length}</h2>
-        <div className="card dl-sum is-wrap">
+        <div className="card dl-sum is-wrap" data-hint="courier.cash-today">
           <div className="dl-sum-item">
             <span className="dl-sum-label">Наличными</span>
             <span className="dl-sum-value">{fmt.money(today.cash)}</span>
@@ -249,9 +249,13 @@ export function CourierCash() {
               <span className="col" style={{ gap: 4, alignItems: 'flex-end' }}>
                 <span className="num w-700 t-16">{fmt.money(d.collected)}</span>
                 {d.collectedMethod === 'cash' ? (
-                  <Chip tone={d.handedIn ? 'ok' : 'warn'}>{d.handedIn ? 'Сдано' : 'На руках'}</Chip>
+                  <span data-hint="courier.cash-state">
+                    <Chip tone={d.handedIn ? 'ok' : 'warn'}>{d.handedIn ? 'Сдано' : 'На руках'}</Chip>
+                  </span>
                 ) : transferPending(db, d) ? (
-                  <Chip tone="warn">Ждёт банка</Chip>
+                  <span data-hint="courier.cash-state">
+                    <Chip tone="warn">Ждёт банка</Chip>
+                  </span>
                 ) : (
                   <Chip tone="info">{d.collectedMethod === 'transfer' ? 'Переводом' : 'Картой'}</Chip>
                 )}
@@ -266,7 +270,7 @@ export function CourierCash() {
       </section>
 
       {older.length ? (
-        <section className="col-3">
+        <section className="col-3" data-hint="courier.cash-older">
           <h2 className="dl-board-title">
             Не сдано с прошлых дней · {older.length}
             <span className="muted w-600"> · {fmt.money(olderSum)}</span>

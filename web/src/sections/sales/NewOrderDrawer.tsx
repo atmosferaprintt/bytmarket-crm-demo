@@ -412,7 +412,7 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
 
   const contact = client?.contacts[0];
   const head = client ? (
-    <div className="sales-client-line">
+    <div className="sales-client-line" data-hint="sales.ord-client">
       <IconTile tone="info">
         <Store />
       </IconTile>
@@ -501,7 +501,7 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
               <span className="t-12 muted w-600">Итого</span>
               <span className="t-16 w-700 num">{fmt.money(calc.total)}</span>
             </span>
-            <Button variant="primary" onClick={submit} disabled={mainDisabled} loading={busy} title={mainTitle} size="lg">
+            <Button variant="primary" onClick={submit} disabled={mainDisabled} loading={busy} title={mainTitle} size="lg" data-hint="sales.ord-submit">
               {mainLabel}
             </Button>
           </div>
@@ -519,10 +519,10 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
             </span>
           )}
           <span className="spacer" />
-          <Button onClick={saveDraft} disabled={!client || busy}>
+          <Button onClick={saveDraft} disabled={!client || busy} data-hint="sales.ord-draft">
             Сохранить черновик
           </Button>
-          <Button variant="primary" icon={confirmsSelf && !toApproval ? <PackageCheck /> : <Send />} onClick={submit} disabled={mainDisabled} loading={busy} title={mainTitle}>
+          <Button variant="primary" icon={confirmsSelf && !toApproval ? <PackageCheck /> : <Send />} onClick={submit} disabled={mainDisabled} loading={busy} title={mainTitle} data-hint="sales.ord-submit">
             {mainLabel}
           </Button>
         </div>
@@ -551,11 +551,13 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
             ) : null}
 
             {fromMessage ? (
+              <div data-hint="sales.ord-from-chat">
               <Notice tone={fromMessage.missed.length || fromMessage.unsure.length ? 'warn' : 'info'} title={`Из сообщения клиента: ${fmt.count(fromMessage.found, 'товар', 'товара', 'товаров')}`}>
                 {fromMessage.unsure.length ? <div>Проверьте: {fromMessage.unsure.map((x) => `«${x}»`).join(', ')} — похожих товаров несколько, выбран привычный клиенту.</div> : null}
                 {fromMessage.missed.length ? <div>Не нашли в каталоге: {fromMessage.missed.map((x) => `«${x}»`).join(', ')} — добавьте вручную или уточните у клиента.</div> : null}
                 {!fromMessage.missed.length && !fromMessage.unsure.length ? <div>Проверьте количество и условия доставки.</div> : null}
               </Notice>
+              </div>
             ) : null}
 
             {preview && repeatSource ? <RepeatChanges preview={preview} source={repeatSource} ack={repeatAck} onAck={setRepeatAck} /> : null}
@@ -563,6 +565,7 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
             {balance ? <ConditionsStrip client={client} balance={balance} dueLabel={dueLabel} /> : null}
 
             {problems.length ? (
+              <div data-hint={hardProblems.length ? 'sales.ord-over' : 'sales.ord-min'}>
               <Notice
                 tone={hardProblems.length ? 'bad' : 'warn'}
                 title={hardProblems.length ? 'Заказ сверх условий клиента' : 'Меньше минимального заказа'}
@@ -583,6 +586,7 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
                       ? 'Подтвердить сверх условий может только владелец — заказ уйдёт ему на согласование, резерв не создаётся.'
                       : `Добавьте товара ещё на ${fmt.money(client.minOrder - calc.total)}.`}
               </Notice>
+              </div>
             ) : null}
 
             {calc.shortRows.length ? (
@@ -594,7 +598,7 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
 
             {calc.rows.length ? (
               phone ? (
-                <div className="sales-line-cards">
+                <div className="sales-line-cards" data-hint="sales.ord-lines">
                   {calc.rows.map((r) => (
                     <div key={r.l.key} className={cx('sales-line-card', flash === r.l.key && 'sales-flash')}>
                       <div className="row" style={{ alignItems: 'flex-start' }}>
@@ -626,7 +630,7 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
                   ))}
                 </div>
               ) : (
-                <div className="sales-lines-wrap">
+                <div className="sales-lines-wrap" data-hint="sales.ord-lines">
                   <table className="table sales-lines">
                     <thead>
                       <tr>
@@ -685,7 +689,7 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
                           </td>
                           <td>
                             {discountLimit > 0 ? (
-                              <button type="button" className="sales-disc-btn" onClick={() => setDiscountFor(r.l.key)} title={r.l.discountReason ? `Основание: ${r.l.discountReason}` : 'Ручная скидка'}>
+                              <button type="button" className="sales-disc-btn" data-hint="sales.ord-discount" onClick={() => setDiscountFor(r.l.key)} title={r.l.discountReason ? `Основание: ${r.l.discountReason}` : 'Ручная скидка'}>
                                 <DiscountChip promoPct={r.promoPct} manualPct={r.l.discountPct} promo={r.promo} today={today} />
                               </button>
                             ) : (
@@ -714,13 +718,13 @@ export function OrderEditor({ clientId: clientProp, pointId: pointProp, repeatOf
 
             <div className={cx('sales-add-line', phone && 'is-phone')}>
               <ProductSearch priceType={client.priceType} onPick={(pid, pack) => addProduct(pid, pack)} autoFocus={!phone && !state.lines.length} />
-              <Button icon={<History />} onClick={() => setHistoryOpen(true)} size={phone ? 'lg' : 'md'}>
+              <Button icon={<History />} onClick={() => setHistoryOpen(true)} size={phone ? 'lg' : 'md'} data-hint="sales.ord-history">
                 Из прошлых заказов
               </Button>
             </div>
 
             <div className={cx('sales-ord-bottom', phone && 'is-phone')}>
-              <div className="sales-form-grid">
+              <div className="sales-form-grid" data-hint="sales.ord-delivery">
                 <Field label="Получение" className="sales-span-2">
                   <Segmented
                     value={state.fulfillment}
@@ -873,6 +877,7 @@ function ClientPicker({ clients, onPick }: { clients: Client[]; onPick: (c: Clie
         placeholder="Название, телефон, ИНН или адрес точки"
         autoFocus
         size="lg"
+        className="sales-pick-search"
         onKeyDown={(e) => {
           // Enter — первый найденный клиент: с клавиатуры без мыши
           if (e.key === 'Enter' && q.trim() && list.length) {
@@ -881,7 +886,7 @@ function ClientPicker({ clients, onPick }: { clients: Client[]; onPick: (c: Clie
           }
         }}
       />
-      <div className="card sales-picker">
+      <div className="card sales-picker" data-hint="sales.ord-pick-list">
         {list.length || foreign.length ? (
           [
             ...list.map(({ c, b }) => (

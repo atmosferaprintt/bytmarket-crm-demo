@@ -208,16 +208,18 @@ export default function Accounts() {
         counts={counts}
         actions={
           <>
-            <MoreMenu items={menu} />
+            <span data-hint="money.ops">
+              <MoreMenu items={menu} />
+            </span>
             {perms.transfer ? (
-              <Button variant="primary" icon={<ArrowLeftRight />} title="Перемещение денег: инкассация из кассы на счёт, выдача размена" onClick={() => setModal({ kind: 'transfer', from: acc })}>
+              <Button variant="primary" icon={<ArrowLeftRight />} title="Перемещение денег: инкассация из кассы на счёт, выдача размена" onClick={() => setModal({ kind: 'transfer', from: acc })} data-hint="money.acc.transfer">
                 Переместить
               </Button>
             ) : null}
           </>
         }
       />
-      <div className="grid-4">
+      <div className="grid-4" data-hint="money.acc.kpis">
         {ACCOUNT_KEYS.map((a) => (
           <KpiLink key={a} label={`Движение: ${ACCOUNT_NAMES[a]}`} onClick={() => setAcc(a)}>
             <Kpi
@@ -228,6 +230,7 @@ export default function Accounts() {
                   drawer ? (
                     <div
                       className="money-kpi-lines"
+                      data-hint="money.acc.drawer"
                       title={`Размен в ящике смены № ${drawer.number} (${drawer.seller}). Кроме того, в ящике наличные по чекам этой смены — ${fmt.money(drawer.sales)}: они войдут в остаток кассы при закрытии смены`}
                     >
                       <span>
@@ -250,7 +253,7 @@ export default function Accounts() {
         <Kpi label="Всего денег" value={fmt.money(total)} />
       </div>
       <div className="grid-2">
-        <Card title="Деньги у курьеров" flush>
+        <Card title="Деньги у курьеров" flush hint="money.acc.couriers">
           <div className="list">
             {couriers.map(({ e, cc, todayCash }) => (
               <MoneyLi
@@ -283,7 +286,7 @@ export default function Accounts() {
             {!couriers.length ? <div className="list-row muted">Курьеров нет</div> : null}
           </div>
         </Card>
-        <Card title="Смены кассы" flush>
+        <Card title="Смены кассы" flush hint="money.acc.shifts">
           <div className="list">
             {shifts.map(({ s, sum, seller }) => (
               <MoneyLi
@@ -323,6 +326,7 @@ export default function Accounts() {
       <DataTable
         key={acc}
         id="money-accounts"
+        hint="money.acc.moves"
         title={`Движение: ${ACCOUNT_NAMES[acc].toLowerCase()}`}
         rows={moves.rows}
         columns={columns}

@@ -123,7 +123,7 @@ export function AcceptPaymentModal({ clientId: initialClient, orderId, onClose, 
       ) : (
         <>
           <ClientSummary clientId={clientId} onChange={initialClient ? undefined : () => setClientId(null)} />
-          <div className="money-form-grid">
+          <div className="money-form-grid" data-hint="money.accept.form">
             <Field label="Сумма">
               <MoneyInput size="lg" value={amount} autoFocus onChange={(x) => setAmount(x)} placeholder="0" />
             </Field>
@@ -138,7 +138,7 @@ export function AcceptPaymentModal({ clientId: initialClient, orderId, onClose, 
             <DateField value={date} onChange={setDate} min={db.meta.startDate} max={today} />
           </div>
           {quick.length ? (
-            <div className="row" style={{ flexWrap: 'wrap', marginTop: -6 }}>
+            <div className="row" style={{ flexWrap: 'wrap', marginTop: -6 }} data-hint="money.accept.quick">
               {quick.map((q) => (
                 <Button key={q.label} size="sm" variant={sum === q.value ? 'dark' : 'secondary'} onClick={() => setAmount(q.value)}>
                   {q.label} · {fmt.money(q.value)}
@@ -156,7 +156,7 @@ export function AcceptPaymentModal({ clientId: initialClient, orderId, onClose, 
             onChange={(id, x) => setManual({ ...split, [id]: x })}
           />
           {method === 'transfer' ? (
-            <div className="col" style={{ gap: 6 }}>
+            <div className="col" style={{ gap: 6 }} data-hint="money.accept.pending">
               <Checkbox checked={pending} onChange={setPending}>
                 Клиент прислал скриншот перевода — ждём подтверждения банка
               </Checkbox>

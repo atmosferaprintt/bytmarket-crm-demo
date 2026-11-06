@@ -96,7 +96,7 @@ export default function Home() {
         </Notice>
       ) : null}
 
-      <div className="grid-4">
+      <div className="grid-4" data-hint="register.home-shift">
         <Kpi label={shift ? `Чеков в смене с ${fmt.time(shift.openedAt)}` : 'Чеков в смене'} value={fmt.num(sum?.receipts ?? 0)} />
         <Kpi label="Выручка смены" value={fmt.money(sum ? sum.total - sum.refunds : 0)} />
         <Kpi label="Средний чек" value={fmt.money(sum && sum.receipts ? Math.round(sum.total / sum.receipts) : 0)} />
@@ -107,6 +107,7 @@ export default function Home() {
         <div className="col-4" style={{ minWidth: 0 }}>
           <Card
             title="Мои продажи за неделю"
+            hint="register.home-week"
             actions={
               <span className="t-13 ink-2 w-600 num">
                 {fmt.money(weekTotal)} · {fmt.count(weekReceipts, 'чек', 'чека', 'чеков')}
@@ -132,7 +133,7 @@ export default function Home() {
             </div>
           </Card>
 
-          <Card className="reg-home-list" title="Акции сегодня" actions={promos.total ? <Chip>{fmt.count(promos.total, 'товар', 'товара', 'товаров')}</Chip> : null} flush>
+          <Card className="reg-home-list" title="Акции сегодня" hint="register.home-promos" actions={promos.total ? <Chip>{fmt.count(promos.total, 'товар', 'товара', 'товаров')}</Chip> : null} flush>
             {promos.list.length ? (
               <div className="list">
                 {promos.list.map((x) => {
@@ -162,6 +163,7 @@ export default function Home() {
           <Card
             className="reg-home-list"
             title="Заканчивается в магазине"
+            hint="register.home-low"
             actions={lowAll.length ? <Chip>{fmt.count(lowAll.length, 'позиция', 'позиции', 'позиций')}</Chip> : null}
             flush
           >
@@ -182,7 +184,7 @@ export default function Home() {
                       {requested.has(x.id) ? (
                         <Chip tone="info">Попросили склад</Chip>
                       ) : (
-                        <Button size="sm" icon={<ArrowRightLeft />} onClick={() => askMove(x.p)} title={`Попросить склад перенести ${fmt.qty(q)}`}>
+                        <Button size="sm" icon={<ArrowRightLeft />} onClick={() => askMove(x.p)} title={`Попросить склад перенести ${fmt.qty(q)}`} data-hint="register.home-move">
                           Перенести {fmt.qty(q)}
                         </Button>
                       )}
@@ -195,7 +197,7 @@ export default function Home() {
             )}
           </Card>
 
-          <Card title="Мои задачи на сегодня" actions={doneToday ? <span className="t-12 muted">сделано {doneToday}</span> : null} flush>
+          <Card title="Мои задачи на сегодня" hint="register.home-tasks" actions={doneToday ? <span className="t-12 muted">сделано {doneToday}</span> : null} flush>
             {tasks.length ? (
               <div className="list">
                 {tasks.map((t) => (

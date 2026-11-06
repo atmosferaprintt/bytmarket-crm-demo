@@ -121,7 +121,7 @@ export function EmployeeDrawer({ employeeId, onClose }: { employeeId: ID; onClos
                 items={e.roles.map((r) => ({ label: ROLES[r].name, icon: <Eye />, onClick: () => lookAs(r) }))}
               />
             ) : (
-              <Button icon={<Eye />} onClick={() => lookAs(e.roles[0])}>
+              <Button icon={<Eye />} onClick={() => lookAs(e.roles[0])} data-hint="settings.emp.look">
                 Посмотреть глазами
               </Button>
             )
@@ -142,7 +142,7 @@ export function EmployeeDrawer({ employeeId, onClose }: { employeeId: ID; onClos
           />
         </StatList>
 
-        <div className="col-3">
+        <div className="col-3" data-hint="settings.emp.roles">
           <div className="set-section-label">Роли</div>
           <RolePicker value={roles} onChange={setRoles} lockOwner={isOwner} hideOwner={!isOwner} />
         </div>
@@ -154,7 +154,7 @@ export function EmployeeDrawer({ employeeId, onClose }: { employeeId: ID; onClos
         {error ? <Notice tone="bad">{error}</Notice> : null}
 
         {!isOwner ? (
-          <div className="col-3">
+          <div className="col-3" data-hint="settings.emp.access">
             <div className="set-section-label">Доступ к программе</div>
             <div className="row-3" style={{ flexWrap: 'wrap' }}>
               {e.active ? (

@@ -132,6 +132,7 @@ export default function StockPage() {
       key: 'shop',
       header: 'Магазин',
       align: 'right',
+      className: 'stock-c-fact',
       hidden: place === 'warehouse',
       sort: (l) => l.info.shop.onHand,
       csv: (l) => l.info.shop.onHand,
@@ -143,7 +144,7 @@ export default function StockPage() {
       header: 'Минимум в\u00a0магазине',
       align: 'right',
       hidden: place === 'warehouse',
-      className: 'stock-th-wrap',
+      className: 'stock-th-wrap stock-c-min',
       sort: (l) => l.shopMin,
       csv: (l) => l.shopMin,
       render: (l) => (
@@ -156,6 +157,7 @@ export default function StockPage() {
       key: 'wh',
       header: 'Склад',
       align: 'right',
+      className: 'stock-c-fact',
       hidden: place === 'shop',
       sort: (l) => l.info.warehouse.onHand,
       csv: (l) => l.info.warehouse.onHand,
@@ -166,6 +168,7 @@ export default function StockPage() {
       key: 'res',
       header: 'Резерв',
       align: 'right',
+      className: 'stock-c-avail',
       sort: (l) => at(l).reserved,
       csv: (l) => at(l).reserved,
       render: (l) => n0(at(l).reserved),
@@ -175,6 +178,7 @@ export default function StockPage() {
       key: 'avail',
       header: place === 'all' ? 'Доступно' : place === 'shop' ? 'Доступно в магазине' : 'Доступно на складе',
       align: 'right',
+      className: 'stock-c-avail',
       sort: (l) => at(l).available,
       csv: (l) => at(l).available,
       render: (l) => {
@@ -187,7 +191,7 @@ export default function StockPage() {
       key: 'min',
       header: 'Минимум всего',
       align: 'right',
-      className: 'stock-th-wrap',
+      className: 'stock-th-wrap stock-c-min',
       sort: (l) => l.p.minStock,
       csv: (l) => l.p.minStock,
       render: (l) => (
@@ -200,6 +204,7 @@ export default function StockPage() {
       key: 'exp',
       header: 'Ожидается',
       align: 'right',
+      className: 'stock-c-exp',
       // на 1280 у владельца места нет из-за «Суммы»: ожидаемое видно по отбору «Ожидается» и в карточке товара
       hidden: narrow && seeCost && flt !== 'expected',
       sort: (l) => l.info.expected,
@@ -255,7 +260,7 @@ export default function StockPage() {
     <>
       <PageHeader section="stock" counts={tabCounts} actions={<StockDocButtons open={docs.open} />} />
 
-      <div className="card stock-strip">
+      <div className="card stock-strip" data-hint="stock.kpi">
         {seeCost ? (
           <Kpi
             label={<span title={kpi.noCost ? `По закупочной цене. Без цены: ${kpi.noCost} товаров` : 'По закупочной цене'}>Стоимость остатков</span>}
@@ -312,6 +317,7 @@ export default function StockPage() {
               value={place}
               onChange={(e) => setPlace(e.target.value as 'all' | LocationKey)}
               aria-label="Место"
+              data-hint="stock.place"
               options={[
                 { value: 'all', label: 'Все места' },
                 { value: 'warehouse', label: 'Склад' },
@@ -319,7 +325,7 @@ export default function StockPage() {
               ]}
             />
             <Select className="stock-select is-wide" value={cat} onChange={(e) => setCat(e.target.value)} aria-label="Категория" options={[{ value: '', label: 'Все категории' }, ...categoryOptions(db)]} />
-            <div className="stock-pills">
+            <div className="stock-pills" data-hint="stock.filters">
               <Segmented ariaLabel="Отбор" value={flt} onChange={(v) => setFlt(v as FilterKey)} options={FILTERS.map((f) => ({ value: f.key, label: f.hint ? <span title={f.hint}>{f.label}</span> : f.label, count: counts[f.key] ?? 0 }))} />
             </div>
           </>

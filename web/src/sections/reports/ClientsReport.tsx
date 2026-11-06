@@ -152,12 +152,13 @@ export default function ClientsReport() {
         <KpiTile label="Продажи клиентам" value={fmt.money(revenue)} extra={<div className="rp-kpi-line">Средний заказ <b>{fmt.money(docs ? revenue / docs : 0)}</b></div>} />
         <KpiTile label="Новые клиенты" value={fmt.num(newCount)} title="Заведены при нас и впервые купили в выбранном периоде. Так же считает отчёт «Сотрудники»" />
         <KpiTile label="Долг покупателей" value={fmt.money(debt.debt)} asOf={`на ${fmt.date(today)}`} extra={<div className="rp-kpi-line">Просрочено <b className={debt.overdue ? 'c-bad' : undefined}>{fmt.money(debt.overdue)}</b></div>} />
-        <KpiTile label="Снизили активность" value={fmt.count(falling.length, 'клиент', 'клиента', 'клиентов')} />
+        <KpiTile label="Снизили активность" hint="reports.clients.falling" value={fmt.count(falling.length, 'клиент', 'клиента', 'клиентов')} />
       </div>
 
       <div className="rp-tight rp-clients">
       <DataTable
         id="rp-clients"
+        hint="reports.clients.table"
         title="Клиенты"
         rows={rows}
         columns={cols}
@@ -174,6 +175,7 @@ export default function ClientsReport() {
       {offer.length ? (
         <DataTable
           title="Можно предложить"
+          hint="reports.clients.offer"
           rows={offer}
           columns={offerCols}
           rowKey={(r) => r.c.id}

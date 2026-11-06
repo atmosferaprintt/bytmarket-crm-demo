@@ -93,7 +93,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
   const history = historyOf(d, name);
   const footer = acts.main ? (
     isCourier ? (
-      <div className={cx('dl-dfoot', secondary.length === 1 && 'is-one')}>
+      <div className={cx('dl-dfoot', secondary.length === 1 && 'is-one')} data-hint="courier.card-main">
         <Button variant="primary" size="lg" block icon={acts.main.icon} onClick={() => flow.act(acts.main!, d)}>
           {acts.main.label}
         </Button>
@@ -111,13 +111,15 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
           </Button>
         ))}
         <span className="spacer" />
-        <Button variant="primary" icon={acts.main.icon} onClick={() => flow.act(acts.main!, d)}>
+        <Button variant="primary" icon={acts.main.icon} data-hint="delivery.card-main" onClick={() => flow.act(acts.main!, d)}>
           {acts.main.label}
         </Button>
       </>
     )
   ) : d.state === 'waiting' && !can('assignDelivery') ? (
-    <span className="t-13 muted">Курьера назначит диспетчер</span>
+    <span className="t-13 muted" data-hint="delivery.card-wait">
+      Курьера назначит диспетчер
+    </span>
   ) : undefined;
 
   return (
@@ -131,7 +133,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
         </>
       }
       head={
-        <div className="col-3 dl-dhead">
+        <div className="col-3 dl-dhead" data-hint="delivery.card-status">
           <div className="chips">
             <StateChip d={d} size="lg" />
             <LateChip d={d} c={c} />
@@ -158,7 +160,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
       ) : null}
       {d.state === 'returned' ? <Notice tone="neutral" title="Товар вернули на склад">Заказ отменён, товар на проверке в карантине</Notice> : null}
 
-      <section className="dl-block">
+      <section className="dl-block" data-hint="delivery.card-address">
         <div className="dl-block-icon">
           <MapPin />
         </div>
@@ -210,7 +212,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
         <Fact label="Вес" value={kgText(d.weightKg)} />
         <Fact label="Доставка для клиента" value={d.fee ? fmt.money(d.fee) : 'Бесплатно'} />
         {showCost ? <Fact label="Расход магазина" value={fmt.money(d.cost)} /> : null}
-        <Fact label="К получению" value={<span className={cx(d.collect > 0 && 'dl-strong')}>{d.collect > 0 ? fmt.money(d.collect) : nothingText}</span>} />
+        <Fact hint="delivery.card-collect" label="К получению" value={<span className={cx(d.collect > 0 && 'dl-strong')}>{d.collect > 0 ? fmt.money(d.collect) : nothingText}</span>} />
         {d.state === 'delivered' ? (
           <Fact
             label="Получено"
@@ -226,7 +228,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
       </div>
 
       {pay && order && order.state !== 'cancelled' && !isCourier ? (
-        <section className="col-3">
+        <section className="col-3" data-hint="delivery.card-pay">
           <h3 className="dl-h3">Оплата заказа</h3>
           <div className="dl-facts is-3">
             <Fact label="Сумма заказа" value={fmt.money(pay.amount)} />
@@ -268,7 +270,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
         </section>
       ) : null}
 
-      <section className="col-3">
+      <section className="col-3" data-hint="delivery.card-history">
         <h3 className="dl-h3">История</h3>
         {history.length ? (
           <div className="dl-attempts">
@@ -293,9 +295,9 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
   );
 }
 
-function Fact({ label, value }: { label: string; value: ReactNode }) {
+function Fact({ label, value, hint }: { label: string; value: ReactNode; /** метка для подсказок режима обучения */ hint?: string }) {
   return (
-    <div className="dl-fact">
+    <div className="dl-fact" data-hint={hint}>
       <span className="dl-fact-label">{label}</span>
       <span className="dl-fact-value">{value}</span>
     </div>

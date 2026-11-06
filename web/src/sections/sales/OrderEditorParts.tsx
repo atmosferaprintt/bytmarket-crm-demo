@@ -74,7 +74,7 @@ export function ProductSearch({ priceType, onPick, autoFocus }: { priceType: Pri
   }, [shown, results.length]);
 
   return (
-    <div className="sales-search">
+    <div className="sales-search" data-hint="sales.ord-search">
       <span className="input-wrap has-icon">
         <input
           ref={inputRef}
@@ -257,7 +257,7 @@ export function HistoryPicker({ clientId, priceType, onClose, onAdd }: { clientI
     >
       {data.items.length && phone ? (
         // телефон: карточки вместо широкой таблицы
-        <div className="sales-hist-cards">
+        <div className="sales-hist-cards" data-hint="sales.hist-list">
           {data.items.map((it) => {
             const p = idx.products.get(it.productId);
             const off = !p || !p.active;
@@ -307,7 +307,7 @@ export function HistoryPicker({ clientId, priceType, onClose, onAdd }: { clientI
           })}
         </div>
       ) : data.items.length ? (
-        <div className="sales-modal-table">
+        <div className="sales-modal-table" data-hint="sales.hist-list">
           <table className="table table-dense">
             <thead>
               <tr>
@@ -378,7 +378,7 @@ export function RepeatChanges({ preview, source, ack, onAck }: { preview: Repeat
     );
   const qtyText = (pack: PackKey, packSize: number, packQty: number, qty: number) => (pack === 'pcs' ? fmt.qty(qty) : `${packQty} × ${packSize} = ${fmt.qty(qty)}`);
   return (
-    <section className="sales-repeat card">
+    <section className="sales-repeat card" data-hint="sales.ord-repeat">
       <div className="sales-repeat-head">
         <div className="grow">
           <div className="t-16 w-700">
@@ -504,7 +504,7 @@ export function DiscountModal({
         </>
       }
     >
-      <div className="grid-2">
+      <div className="grid-2" data-hint="sales.disc-pct">
         <Field label={limit >= 100 ? 'Скидка, %' : `Скидка, %, не больше ${fmt.pct(limit)}`} error={tooMuch ? `Больше вашего лимита ${fmt.pct(limit)}${promoPrice < base ? ' вместе с акцией' : ''}` : undefined}>
           <Input autoFocus className="sales-input-plain" inputMode="decimal" value={pct} onChange={(e) => setPct(e.target.value.replace(/[^\d.,]/g, ''))} suffix="%" invalid={tooMuch} />
         </Field>
@@ -517,7 +517,7 @@ export function DiscountModal({
       <Field label="Основание скидки" error={needReason ? 'Укажите основание — оно сохранится в заказе' : undefined}>
         <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Почему даём скидку" />
       </Field>
-      <div className="chips">
+      <div className="chips" data-hint="sales.disc-reasons">
         {DISCOUNT_REASONS.map((r) => (
           <button key={r} type="button" className={cx('chip', 'sales-chip-btn', reason === r && 'chip-info')} onClick={() => setReason(r)}>
             {r}

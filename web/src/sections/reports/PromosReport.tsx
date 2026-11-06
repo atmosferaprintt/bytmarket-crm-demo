@@ -78,7 +78,12 @@ export default function PromosReport() {
     },
     {
       key: 'growth',
-      header: <WrapHead width={116}>К такому же периоду до акции</WrapHead>,
+      header: (
+        <span data-hint="reports.promos.growth">
+          <WrapHead width={116}>К такому же периоду до акции</WrapHead>
+        </span>
+      ),
+      csvHeader: 'К такому же периоду до акции',
       align: 'right',
       render: (r) =>
         r.growth === null ? (
@@ -116,7 +121,7 @@ export default function PromosReport() {
       <div className="rp-kpis">
         <KpiTile label="Акций за период" value={fmt.num(rows.length)} extra={<div className="rp-kpi-line">Действуют сейчас <b>{fmt.num(rows.filter((r) => r.state === 'active').length)}</b></div>} />
         <KpiTile label="Выручка по акциям" value={fmt.money(revenue)} />
-        <KpiTile label="Скидка покупателям" value={fmt.money(discount)} />
+        <KpiTile label="Скидка покупателям" value={fmt.money(discount)} hint="reports.promos.discount" />
         {seeProfit ? <KpiTile label="Прибыль по акциям" value={fmt.money(profit)} extra={<div className="rp-kpi-line">Маржа <b>{revenue ? fmt.pct((profit / revenue) * 100) : '—'}</b></div>} /> : null}
         <KpiTile label="Остаток акционных товаров" value={fmt.money(stockValue)} />
       </div>
@@ -124,6 +129,7 @@ export default function PromosReport() {
       <div className="rp-tight">
       <DataTable
         id="rp-promos"
+        hint="reports.promos.table"
         title="Акции"
         rows={rows}
         columns={cols}

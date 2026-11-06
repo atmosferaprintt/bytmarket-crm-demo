@@ -106,12 +106,12 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
     canEdit || canPrice ? (
       <>
         {canEdit ? (
-          <Button icon={<Pencil />} onClick={() => setEditing(true)}>
+          <Button icon={<Pencil />} onClick={() => setEditing(true)} data-hint="products.card-edit">
             Изменить
           </Button>
         ) : null}
         {canPrice ? (
-          <Button icon={<Tag />} onClick={() => setPricing(true)}>
+          <Button icon={<Tag />} onClick={() => setPricing(true)} data-hint="products.card-price">
             Изменить цену
           </Button>
         ) : null}
@@ -138,7 +138,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
         head={
           <div className="prd-drawer-head">
             <div className="prd-drawer-hero">
-              <button type="button" className="prd-photo-btn" onClick={canEdit ? pickPhoto : undefined} disabled={!canEdit} title={canEdit ? (p.photo ? 'Заменить фото' : 'Загрузить своё фото') : p.photo ? 'Фото товара' : 'Рисунок упаковки'}>
+              <button type="button" className="prd-photo-btn" data-hint="products.card-photo" onClick={canEdit ? pickPhoto : undefined} disabled={!canEdit} title={canEdit ? (p.photo ? 'Заменить фото' : 'Загрузить своё фото') : p.photo ? 'Фото товара' : 'Рисунок упаковки'}>
                 <ProductPhoto product={p} size={phone ? 88 : 112} />
                 {canEdit && !p.photo ? <span className="prd-photo-hint">Своё фото</span> : null}
               </button>
@@ -154,7 +154,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
               {p.marking ? <Chip tone="outline">Маркировка</Chip> : null}
             </div>
             </div>
-            <div className="prd-drawer-tabs">
+            <div className="prd-drawer-tabs" data-hint="products.card-tabs">
               <Tabs items={tabs} value={tab} onChange={(k) => setTab(k as TabKey)} />
             </div>
           </div>
@@ -264,10 +264,10 @@ function MainTab({ row, mode }: { row: CatalogRow; mode: CatalogMode }) {
 
   return (
     <>
-      <Block title="Цены за штуку">
+      <Block title="Цены за штуку" hint="products.card-prices">
         <PriceTiles row={row} mode={mode} />
       </Block>
-      <Block title="Остатки, шт">
+      <Block title="Остатки, шт" hint="products.card-stock">
         <StockTiles row={row} mode={mode} />
       </Block>
       {variants.length > 1 ? (
@@ -383,7 +383,7 @@ function PricesTab({ row }: { row: CatalogRow }) {
 
   return (
     <>
-      <Block title="Единицы продажи">
+      <Block title="Единицы продажи" hint="products.card-packs">
         <div className="table-scroll prd-inner-table">
           <table className="table table-dense">
             <thead>
@@ -442,7 +442,7 @@ function PricesTab({ row }: { row: CatalogRow }) {
           <div className="muted">Акций на товар нет</div>
         )}
       </Block>
-      <Block title="История цены">
+      <Block title="История цены" hint="products.card-history">
         {history.length ? (
           <div className="table-scroll prd-inner-table">
             <table className="table table-dense">
@@ -521,7 +521,7 @@ function StockTab({ row, mode }: { row: CatalogRow; mode: CatalogMode }) {
 
   return (
     <>
-      <Block title="По местам, шт">
+      <Block title="По местам, шт" hint="products.card-places">
         <div className="table-scroll prd-inner-table">
           <table className="table table-dense">
             <thead>
@@ -591,7 +591,7 @@ function StockTab({ row, mode }: { row: CatalogRow; mode: CatalogMode }) {
           </div>
         </Block>
       ) : null}
-      <Block title="Партии и сроки годности">
+      <Block title="Партии и сроки годности" hint="products.card-batches">
         {!p.expiryTracked ? (
           <div className="muted">Сроки годности по товару не ведутся</div>
         ) : batches.length ? (
@@ -649,6 +649,7 @@ function MovesTab({ product }: { product: Product }) {
   return (
     <Block
       title="Движения"
+      hint="products.card-moves"
       actions={
         <Segmented
           value={place}
@@ -809,6 +810,7 @@ function SalesTab({ product }: { product: Product }) {
       </Block>
       <Block
         title="По неделям"
+        hint="products.card-weeks"
         actions={
           <Segmented
             value={measure}
@@ -828,7 +830,7 @@ function SalesTab({ product }: { product: Product }) {
           </EmptyState>
         )}
       </Block>
-      <Block title={own ? 'Мои клиенты, которые берут товар' : 'Главные покупатели'}>
+      <Block title={own ? 'Мои клиенты, которые берут товар' : 'Главные покупатели'} hint="products.card-buyers">
         {data.top.length || (!own && data.anonQty > 0) ? (
           <div className="table-scroll prd-inner-table">
             <table className="table table-dense">

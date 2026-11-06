@@ -131,7 +131,7 @@ export default function OrdersPage() {
     setParams(params, { replace: true });
   };
   const stageChip = stage ? (
-    <span className="sales-stage-filter">
+    <span className="sales-stage-filter" data-hint="sales.orders-stage">
       <Chip tone="info">
         {stage.label} · {fmt.num(shownRows.length)}
       </Chip>
@@ -226,7 +226,7 @@ export default function OrdersPage() {
         sort: (r) => ['draft', 'request', 'confirmed', 'closed', 'cancelled'].indexOf(r.o.state),
         csv: (r) => stateDef(r).label,
         render: (r) => (
-          <span className="chips">
+          <span className="chips" data-hint={r.approval ? 'sales.orders-approval' : 'sales.orders-stages'}>
             <StatusChip s={stateDef(r)} />
             {queued.includes(r.o.id) ? <StatusChip s={NOT_SENT} /> : null}
           </span>
@@ -261,7 +261,7 @@ export default function OrdersPage() {
         csv: (r) => r.pay.debt,
         render: (r) =>
           r.pay.debt > 0 ? (
-            <span className="sales-debt">
+            <span className="sales-debt" data-hint="sales.orders-debt">
               <span className={cx('w-600', r.overdue > 0 && 'c-bad')}>{fmt.money(r.pay.debt)}</span>
               {r.overdue > 0 ? <StatusChip s={overdueStatus(r.overdue)} /> : r.o.dueDate && !r.failed ? <span className="cell-sub">до {fmt.dateShort(r.o.dueDate)}</span> : null}
             </span>
@@ -285,7 +285,7 @@ export default function OrdersPage() {
   );
 
   const actions = canNew ? (
-    <Button variant="primary" icon={isRep ? <Send /> : <Plus />} onClick={() => setCreating(true)} size={phone ? 'lg' : 'md'}>
+    <Button variant="primary" icon={isRep ? <Send /> : <Plus />} onClick={() => setCreating(true)} size={phone ? 'lg' : 'md'} data-hint="sales.orders-new">
       {newLabel}
     </Button>
   ) : null;
@@ -348,7 +348,7 @@ function PhoneOrders({ rows, queued, onOpen }: { rows: OrderRow[]; queued: strin
   return (
     <div className="col-3">
       <SearchInput value={q} onChange={setQ} placeholder="Номер или клиент" size="lg" />
-      <div className="sales-phone-seg">
+      <div className="sales-phone-seg" data-hint="sales.phone-orders-filter">
         <Segmented
           value={f}
           onChange={setF}
@@ -363,7 +363,7 @@ function PhoneOrders({ rows, queued, onOpen }: { rows: OrderRow[]; queued: strin
       </div>
       {shown.length ? (
         shown.map((r) => (
-          <button key={r.o.id} type="button" className="card sales-order-card" onClick={() => onOpen(r)}>
+          <button key={r.o.id} type="button" className="card sales-order-card" onClick={() => onOpen(r)} data-hint="sales.phone-order-card">
             <div className="row">
               <span className="w-700 t-14">№ {r.o.number}</span>
               <span className="muted t-12">{fmt.dateTime(r.o.createdAt)}</span>

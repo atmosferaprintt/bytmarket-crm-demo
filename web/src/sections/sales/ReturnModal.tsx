@@ -123,7 +123,7 @@ export function ReturnModal({ orderId, onClose, onDone }: ReturnModalProps) {
     >
       {rows.length ? (
         <div className="sales-modal-table">
-          <table className="table table-dense sales-return-table">
+          <table className="table table-dense sales-return-table" data-hint="sales.ret-lines">
             <thead>
               <tr>
                 <th>Товар</th>
@@ -181,7 +181,7 @@ export function ReturnModal({ orderId, onClose, onDone }: ReturnModalProps) {
             Он не попадёт в продажу, пока склад не решит: вернуть на полку или списать.
           </Notice>
           {refundable > 0 ? (
-            <div className="col-3">
+            <div className="col-3" data-hint="sales.ret-money">
               <Field label={`Клиент уже заплатил — переплата после возврата ${fmt.money(refundable)}`}>
                 <Segmented
                   value={money}

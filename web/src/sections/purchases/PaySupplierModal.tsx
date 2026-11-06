@@ -59,7 +59,7 @@ export function PaySupplierModal({ supplierId, purchaseId, onClose }: { supplier
           <Button variant="ghost" onClick={onClose}>
             Отмена
           </Button>
-          <Button variant="primary" onClick={submit} disabled={!amount}>
+          <Button variant="primary" onClick={submit} disabled={!amount} data-hint="purchases.pay-go">
             Оплатить {amount ? fmt.money(amount) : ''}
           </Button>
         </>
@@ -71,7 +71,7 @@ export function PaySupplierModal({ supplierId, purchaseId, onClose }: { supplier
         {bal.overdue ? <StatRow label="Из него просрочено" value={<span className="c-bad">{fmt.money(bal.overdue)}</span>} /> : null}
         {!row && bal.upcoming[0] ? <StatRow label="Ближайший платёж" value={`${fmt.money(bal.upcoming[0].amount)} до ${fmt.date(bal.upcoming[0].dueDate)}`} /> : null}
       </StatList>
-      <div className="grid-2">
+      <div className="grid-2" data-hint="purchases.pay-form">
         <Field label="Сумма" error={amount && amount > limit ? `Больше долга на ${fmt.money(Number(amount) - limit)} — остаток уйдёт авансом` : undefined}>
           <MoneyInput value={amount} onChange={setAmount} autoFocus />
         </Field>

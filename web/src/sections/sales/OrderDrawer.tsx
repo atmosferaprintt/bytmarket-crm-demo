@@ -258,6 +258,7 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
         variant="primary"
         icon={<PackageCheck />}
         disabled={blocked || shortLines.length > 0}
+        data-hint="sales.card-confirm"
         title={shortLines.length ? 'Не хватает товара на складе' : blocked ? 'Отметьте подтверждение сверх условий' : undefined}
         onClick={confirm}
       >
@@ -266,37 +267,37 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
     );
   else if (next === 'ask')
     primary = (
-      <Button variant="primary" icon={<ListTodo />} onClick={askOwner}>
+      <Button variant="primary" icon={<ListTodo />} onClick={askOwner} data-hint="sales.card-ask">
         Запросить согласие владельца
       </Button>
     );
   else if (next === 'send')
     primary = (
-      <Button variant="primary" icon={<Send />} onClick={sendRequest}>
+      <Button variant="primary" icon={<Send />} onClick={sendRequest} data-hint="sales.card-send">
         Отправить заявку
       </Button>
     );
   else if (next === 'delivery')
     primary = (
-      <Button variant="primary" icon={<Truck />} onClick={() => setDialog('delivery')}>
+      <Button variant="primary" icon={<Truck />} onClick={() => setDialog('delivery')} data-hint="sales.card-next">
         Оформить доставку
       </Button>
     );
   else if (next === 'pick')
     primary = (
-      <Button variant="primary" icon={<ClipboardCheck />} onClick={pick}>
+      <Button variant="primary" icon={<ClipboardCheck />} onClick={pick} data-hint="sales.card-next">
         {o.pick === 'none' ? 'Начать сборку' : 'Отметить: собран'}
       </Button>
     );
   else if (next === 'ship')
     primary = (
-      <Button variant="primary" icon={<PackageCheck />} onClick={ship}>
+      <Button variant="primary" icon={<PackageCheck />} onClick={ship} data-hint="sales.card-next">
         Выдать самовывозом
       </Button>
     );
   else if (next === 'pay')
     primary = (
-      <Button variant="primary" icon={<Wallet />} onClick={() => setDialog('pay')}>
+      <Button variant="primary" icon={<Wallet />} onClick={() => setDialog('pay')} data-hint="sales.card-next">
         Принять оплату
       </Button>
     );
@@ -306,7 +307,7 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
   const secondaryKind: 'pay' | 'edit' | 'back' | null = canBack ? 'back' : canPay && next !== 'pay' ? 'pay' : canEdit ? 'edit' : null;
   const secondary =
     secondaryKind === 'back' ? (
-      <Button icon={<Undo2 />} onClick={() => setDialog('backToManager')}>
+      <Button icon={<Undo2 />} onClick={() => setDialog('backToManager')} data-hint="sales.card-back">
         Вернуть менеджеру
       </Button>
     ) : secondaryKind === 'pay' ? (
@@ -314,7 +315,7 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
         Принять оплату
       </Button>
     ) : secondaryKind === 'edit' ? (
-      <Button icon={<Pencil />} onClick={() => setDialog('edit')}>
+      <Button icon={<Pencil />} onClick={() => setDialog('edit')} data-hint="sales.card-edit">
         Изменить
       </Button>
     ) : null;
@@ -367,7 +368,7 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
         </div>
       </div>
       {o.state !== 'cancelled' ? (
-        <div className="sales-steps-row">
+        <div className="sales-steps-row" data-hint="sales.card-steps">
           <Steps items={orderSteps(o, pay, d.delivery)} />
           {waitingCourier ? <span className="muted t-12">Курьера назначит диспетчер</span> : null}
         </div>
@@ -397,7 +398,7 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
       footer={
         <div className="sales-card-foot">
           {canCancel ? (
-            <Button variant="ghost" icon={<Ban />} onClick={() => setDialog('cancel')}>
+            <Button variant="ghost" icon={<Ban />} onClick={() => setDialog('cancel')} data-hint="sales.card-cancel">
               {o.ship === 'partial' ? 'Отменить остаток' : 'Отменить'}
             </Button>
           ) : null}
@@ -418,11 +419,13 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
         </Notice>
       ) : null}
       {approval ? (
+        <div data-hint="sales.card-approval">
         <Notice tone="warn" title={`На согласовании у владельца с ${fmt.dateTime(approval.createdAt)}`}>
           {role === 'owner'
             ? `Запросил ${idx.employees.get(approval.authorId)?.name ?? 'менеджер'}. Подтвердите заказ сверх условий или верните менеджеру с причиной — он получит задачу.`
             : `Товар не зарезервирован, пока владелец не решит. Запросил ${idx.employees.get(approval.authorId)?.short ?? 'менеджер'}`}
         </Notice>
+        </div>
       ) : returned ? (
         <Notice tone="bad" title="Владелец не согласовал заказ">
           {capitalize(returned.title.replace(new RegExp(`^${RETURNED_PREFIX} № \\d+:\\s*`), ''))}. Измените заявку или договоритесь с клиентом и запросите согласие снова.
@@ -483,7 +486,7 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
           </span>
         </div>
         {phone ? (
-          <div className="sales-mini-list is-flat">
+          <div className="sales-mini-list is-flat" data-hint="sales.card-lines">
             {d.lines.map(({ l, p, available, promo }, i) => (
               <div key={l.productId + i} className="sales-mini-row sales-phone-line">
                 <span className="grow">
@@ -507,7 +510,7 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
             ))}
           </div>
         ) : (
-        <div className="sales-lines-wrap">
+        <div className="sales-lines-wrap" data-hint="sales.card-lines">
           <table className="table table-dense sales-lines">
             <thead>
               <tr>
@@ -576,7 +579,7 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
       </section>
 
       <div className="sales-card-grid">
-        <Card title="Оплата" actions={live && pay.amount > 0 ? <StatusChip s={PAY_STATE[pay.state]} /> : undefined}>
+        <Card hint="sales.card-pay" title="Оплата" actions={live && pay.amount > 0 ? <StatusChip s={PAY_STATE[pay.state]} /> : undefined}>
           <StatList>
             <StatRow label="К оплате" value={fmt.money(pay.amount)} />
             <StatRow label="Оплачено" value={<span className={cx(pay.paid > 0 && 'c-ok')}>{fmt.money(pay.paid)}</span>} />
@@ -607,7 +610,7 @@ function OrderCard({ o, onClose }: { o: Order; onClose: () => void }) {
           )}
         </Card>
 
-        <Card title={o.fulfillment === 'pickup' ? 'Самовывоз' : 'Доставка'} actions={d.delivery ? <StatusChip s={DELIVERY_STATE[d.delivery.state]} /> : undefined}>
+        <Card hint="sales.card-delivery" title={o.fulfillment === 'pickup' ? 'Самовывоз' : 'Доставка'} actions={d.delivery ? <StatusChip s={DELIVERY_STATE[d.delivery.state]} /> : undefined}>
           {o.fulfillment === 'pickup' ? (
             <StatList>
               <StatRow label="Откуда" value="Склад" />
@@ -778,7 +781,7 @@ function ReasonModal({
       }
     >
       <Field label="Причина">
-        <div className="sales-reasons" role="radiogroup" aria-label="Причина">
+        <div className="sales-reasons" role="radiogroup" aria-label="Причина" data-hint="sales.reason">
           {reasons.map((r) => (
             <button key={r} type="button" role="radio" aria-checked={reason === r} className={cx('chip', 'sales-chip-btn', 'sales-reason', reason === r && 'chip-info')} onClick={() => setReason(r)}>
               {r}

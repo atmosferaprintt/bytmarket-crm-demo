@@ -32,6 +32,7 @@ export function KpiTile({
   title,
   asOf,
   dTitle = 'К тому же отрезку прошлого периода',
+  hint,
 }: {
   label: ReactNode;
   value: string;
@@ -42,6 +43,8 @@ export function KpiTile({
   title?: string;
   asOf?: string;
   dTitle?: string;
+  /** метка для подсказок режима обучения: data-hint */
+  hint?: string;
 }) {
   const tone = !d || d.dir === 'flat' ? 'flat' : d.dir === good ? 'up' : 'down';
   const deltaEl = d ? (
@@ -67,12 +70,12 @@ export function KpiTile({
   );
   if (onClick)
     return (
-      <button type="button" className="kpi card ov-kpi is-click" onClick={onClick} title={title}>
+      <button type="button" className="kpi card ov-kpi is-click" onClick={onClick} title={title} data-hint={hint}>
         {body}
       </button>
     );
   return (
-    <div className="kpi card ov-kpi" title={title}>
+    <div className="kpi card ov-kpi" title={title} data-hint={hint}>
       {body}
     </div>
   );

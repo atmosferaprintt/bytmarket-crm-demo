@@ -113,7 +113,7 @@ export function PayModal({
           <Button variant="ghost" onClick={onClose} kbd="Esc">
             Отмена
           </Button>
-          <Button variant="primary" size="lg" onClick={submit} disabled={!canPay} loading={busy} kbd="F9">
+          <Button variant="primary" size="lg" onClick={submit} disabled={!canPay} loading={busy} kbd="F9" data-hint="register.pay-submit">
             {method === 'card' ? `Оплачено картой` : 'Провести оплату'}
           </Button>
         </>
@@ -156,7 +156,7 @@ export function PayModal({
           <span className="reg-due-value num">{fmt.money(total)}</span>
         </div>
 
-        <div className="reg-paym" role="radiogroup" aria-label="Способ оплаты">
+        <div className="reg-paym" role="radiogroup" aria-label="Способ оплаты" data-hint="register.pay-method">
           {methods.map((m, i) => (
             <button
               key={m.key}
@@ -177,7 +177,7 @@ export function PayModal({
 
         {method === 'mixed' ? (
           <Field label="Картой" error={cardTooBig ? `Картой можно не больше ${fmt.money(total)}` : undefined}>
-            <span data-f-wrap="card">
+            <span data-f-wrap="card" data-hint="register.pay-mixed">
               <MoneyInput value={card} onChange={setCard} placeholder="0" size="lg" invalid={cardTooBig} />
             </span>
           </Field>
@@ -186,7 +186,7 @@ export function PayModal({
         {method !== 'card' ? (
           <>
             <Field label={method === 'mixed' ? `Наличными получено · нужно ${fmt.money(Math.max(0, cashDue))}` : 'Получено наличными'}>
-              <span data-f-wrap="cash">
+              <span data-f-wrap="cash" data-hint="register.pay-cash">
                 <MoneyInput value={received} onChange={setReceived} placeholder={fmt.num(cashDue)} size="lg" />
               </span>
             </Field>
@@ -201,19 +201,19 @@ export function PayModal({
               ))}
             </div>
             {short > 0 ? (
-              <div className="reg-change is-short">
+              <div className="reg-change is-short" data-hint="register.pay-change">
                 <span className="reg-change-label">Не хватает</span>
                 <span className="reg-change-value num">{fmt.money(short)}</span>
               </div>
             ) : (
-              <div className="reg-change">
+              <div className="reg-change" data-hint="register.pay-change">
                 <span className="reg-change-label">Сдача</span>
                 <span className="reg-change-value num">{fmt.money(change)}</span>
               </div>
             )}
           </>
         ) : (
-          <div className="reg-change is-card" tabIndex={-1}>
+          <div className="reg-change is-card" tabIndex={-1} data-hint="register.pay-change">
             <span className="reg-change-label">Приложите карту к терминалу</span>
             <span className="reg-change-value num">{fmt.money(total)}</span>
           </div>

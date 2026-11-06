@@ -33,7 +33,7 @@ export function RoutesPage() {
         section="delivery"
         actions={
           canAssign && waiting.length ? (
-            <Button variant="primary" icon={<UserPlus />} onClick={() => flow.bulk(waiting.map((d) => d.id), day)}>
+            <Button variant="primary" icon={<UserPlus />} data-hint="delivery.assign-all" onClick={() => flow.bulk(waiting.map((d) => d.id), day)}>
               Назначить ожидающие · {waiting.length}
             </Button>
           ) : null
@@ -63,7 +63,7 @@ function WaitingStrip({ list, flow, canAssign }: { list: Delivery[]; flow: Retur
   const open = useOpenEntity();
   const ix = indexes(db);
   return (
-    <section className="card dl-waiting">
+    <section className="card dl-waiting" data-hint="delivery.routes-waiting">
       <div className="dl-route-head">
         <span className="dl-route-icon">
           <UserPlus />
@@ -132,7 +132,7 @@ function RouteColumn({ load, c, canMove, future }: { load: CourierLoad; c: Clock
   };
 
   return (
-    <section className="card dl-route">
+    <section className="card dl-route" data-hint="delivery.routes-courier">
       <div className="dl-route-head">
         <Avatar name={load.courier.name} />
         <span className="grow col" style={{ gap: 0, minWidth: 0 }}>
@@ -172,7 +172,7 @@ function RouteColumn({ load, c, canMove, future }: { load: CourierLoad; c: Clock
           <div className="dl-route-gap" />
         )
       ) : (
-        <div className="dl-route-progress">
+        <div className="dl-route-progress" data-hint="delivery.routes-money">
           <div className="row">
             <span className="grow t-13">
               Вручено <span className="w-700">{load.done}</span> из {load.points}
@@ -194,7 +194,7 @@ function RouteColumn({ load, c, canMove, future }: { load: CourierLoad; c: Clock
       )}
 
       {routePts.length ? (
-        <a className="dl-route-map" href={routeUrl(routePts)} target="_blank" rel="noreferrer">
+        <a className="dl-route-map" href={routeUrl(routePts)} target="_blank" rel="noreferrer" data-hint="delivery.routes-map">
           <Navigation />
           Маршрут на карте
         </a>
@@ -230,7 +230,7 @@ function RouteColumn({ load, c, canMove, future }: { load: CourierLoad; c: Clock
                 </span>
               </span>
               {canMove && mi >= 0 && movable.length > 1 ? (
-                <span className="dl-stop-move" onClick={(e) => e.stopPropagation()}>
+                <span className="dl-stop-move" onClick={(e) => e.stopPropagation()} data-hint="delivery.routes-order">
                   <button type="button" className="btn btn-ghost btn-icon btn-sm" aria-label="Раньше" title="Раньше" disabled={mi === 0} onClick={() => move(d, -1)}>
                     <ChevronUp />
                   </button>

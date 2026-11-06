@@ -134,7 +134,7 @@ export default function SupplierDebts() {
       render: (r) =>
         perms.supplier && r.b.debt > 0 ? (
           <div className="money-row-actions" onClick={(e) => e.stopPropagation()}>
-            <Button size="sm" onClick={() => setModal({ kind: 'supplier', supplierId: r.s.id })}>
+            <Button size="sm" onClick={() => setModal({ kind: 'supplier', supplierId: r.s.id })} data-hint="money.sup.pay">
               Оплатить
             </Button>
           </div>
@@ -149,7 +149,9 @@ export default function SupplierDebts() {
         counts={counts}
         actions={
           <>
-            <MoreMenu items={menu} />
+            <span data-hint="money.ops">
+              <MoreMenu items={menu} />
+            </span>
             {perms.supplier ? (
               <Button variant="primary" icon={<Truck />} title="Выплата поставщику" onClick={() => setModal({ kind: 'supplier' })}>
                 Оплатить
@@ -158,7 +160,7 @@ export default function SupplierDebts() {
           </>
         }
       />
-      <div className="grid-3">
+      <div className="grid-3" data-hint="money.sup.schedule">
         {buckets.map((b) => {
           const total = b.items.reduce((s, x) => s + x.amount, 0);
           return (
@@ -195,6 +197,7 @@ export default function SupplierDebts() {
       <div className="money-tight">
       <DataTable
         id="money-suppliers"
+        hint="money.sup.table"
         title="По поставщикам"
         rows={rows}
         columns={columns}

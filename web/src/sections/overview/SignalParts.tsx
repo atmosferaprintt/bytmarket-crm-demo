@@ -141,7 +141,7 @@ export function AssignedMark({ task, meId, db, short }: { task: Task; meId: ID; 
   // в узкой строке — без даты, она в подсказке
   const text = mine ? (short ? 'Ваша задача' : `Ваша задача, ${when}`) : short ? `Поручено: ${e?.short ?? '—'}` : `Поручено: ${e?.short ?? '—'}, ${when}`;
   return (
-    <span className="att-assigned" title={`${mine ? 'Ваша задача' : `Поручено ${e?.name ?? ''}`} ${when}: ${task.title}`}>
+    <span className="att-assigned" data-hint="attention.assigned" title={`${mine ? 'Ваша задача' : `Поручено ${e?.name ?? ''}`} ${when}: ${task.title}`}>
       <ListChecks />
       {text}
     </span>
@@ -151,7 +151,7 @@ export function AssignedMark({ task, meId, db, short }: { task: Task; meId: ID; 
 /** «Напомнили сегодня в 14:05» — последнее напоминание клиенту в WhatsApp. */
 export function RemindedMark({ at, today }: { at: string; today: string }) {
   return (
-    <span className="att-assigned is-reminded" title="Последнее напоминание об оплате в WhatsApp">
+    <span className="att-assigned is-reminded" data-hint="attention.reminded" title="Последнее напоминание об оплате в WhatsApp">
       <MessageCircle />
       Напомнили {reminderText(at, today)}
     </span>
@@ -179,9 +179,9 @@ export function RemindButton({ clientId, onClick, compact }: { clientId: ID; onC
   const last = lastReminderAt(db, clientId);
   const title = last ? `Напомнить в WhatsApp. Уже напоминали ${reminderText(last, db.meta.today)}` : 'Напомнить клиенту об оплате в WhatsApp: текст и акт сверки';
   return compact ? (
-    <Button size="sm" variant="ghost" icon={<MessageCircle />} iconOnly onClick={onClick} title={title} aria-label="Напомнить в WhatsApp" />
+    <Button size="sm" variant="ghost" icon={<MessageCircle />} iconOnly onClick={onClick} title={title} aria-label="Напомнить в WhatsApp" data-hint="attention.remind" />
   ) : (
-    <Button size="sm" variant="ghost" icon={<MessageCircle />} onClick={onClick} title={title}>
+    <Button size="sm" variant="ghost" icon={<MessageCircle />} onClick={onClick} title={title} data-hint="attention.remind">
       Напомнить в WhatsApp
     </Button>
   );
@@ -260,7 +260,7 @@ export function SignalCard({
     </Chip>
   ) : null;
   const resolveBtn = (
-    <Button size="sm" variant="ghost" icon={resolved ? <Undo2 /> : <Check />} onClick={onToggleResolved} title={resolved ? 'Вернуть в список' : 'Убрать из списка: уже разобрались'}>
+    <Button size="sm" variant="ghost" icon={resolved ? <Undo2 /> : <Check />} onClick={onToggleResolved} title={resolved ? 'Вернуть в список' : 'Убрать из списка: уже разобрались'} data-hint={resolved ? undefined : 'attention.resolve'}>
       {resolved ? 'Вернуть' : 'Разобрано'}
     </Button>
   );
@@ -277,13 +277,13 @@ export function SignalCard({
           <span className="att-line-who">{assigned ?? <Responsible id={s.responsibleId} />}</span>
           <span className="att-line-act">
             {group ? (
-              <Button size="sm" variant="secondary" icon={<ChevronDown className={cx('att-chev', open && 'is-open')} />} onClick={onAction} aria-expanded={open}>
+              <Button size="sm" variant="secondary" icon={<ChevronDown className={cx('att-chev', open && 'is-open')} />} onClick={onAction} aria-expanded={open} data-hint="attention.group">
                 {open ? 'Свернуть' : 'Показать'}
               </Button>
             ) : (
               <>
                 {onRemind && s.remindClientId ? <RemindButton clientId={s.remindClientId} onClick={onRemind} compact /> : null}
-                <Button size="sm" onClick={onAction}>
+                <Button size="sm" onClick={onAction} data-hint="attention.act">
                   {actionLabel}
                 </Button>
               </>
@@ -296,7 +296,7 @@ export function SignalCard({
     );
   }
   return (
-    <div className={cx('att-card', resolved && 'is-resolved')}>
+    <div className={cx('att-card', resolved && 'is-resolved')} data-hint="attention.card">
       <IconTile tone={TONE[s.severity]}>{SIGNAL_ICON[s.kind]}</IconTile>
       <div className="grow att-main">
         <div className="att-title">
@@ -321,7 +321,7 @@ export function SignalCard({
         <div className="att-btns">
           {resolveBtn}
           {onRemind && s.remindClientId ? <RemindButton clientId={s.remindClientId} onClick={onRemind} /> : null}
-          <Button size="sm" onClick={onAction}>
+          <Button size="sm" onClick={onAction} data-hint="attention.act">
             {actionLabel}
           </Button>
         </div>

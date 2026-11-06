@@ -78,7 +78,7 @@ export function SetupPage() {
     <div className="set-page">
       <PageHeader section="settings" />
 
-      <Card>
+      <Card hint="settings.setup.steps">
         <div className="set-steps" role="tablist" aria-label="Шаги подготовки">
           {STEPS.map((st, i) => {
             const state = stepState(s, st.key);
@@ -215,7 +215,7 @@ export function SetupPage() {
 
       {step === 'check' ? (
         <div className="col-4" style={{ gap: 20 }}>
-          <Card title="Сводка перед запуском" flush>
+          <Card title="Сводка перед запуском" flush hint="settings.setup.checks">
             <div className="list set-checks">
               {s.checks.map((c) => {
                 const ok = c.count === 0;

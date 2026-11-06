@@ -144,16 +144,18 @@ export default function Expenses() {
         counts={counts}
         actions={
           <>
-            <MoreMenu items={menu} />
+            <span data-hint="money.ops">
+              <MoreMenu items={menu} />
+            </span>
             {perms.expense ? (
-              <Button variant="primary" icon={<Receipt />} onClick={() => setModal({ kind: 'expense', category: cat || undefined })}>
+              <Button variant="primary" icon={<Receipt />} onClick={() => setModal({ kind: 'expense', category: cat || undefined })} data-hint="money.exp.add">
                 Записать расход
               </Button>
             ) : null}
           </>
         }
       />
-      <div className="grid-4">
+      <div className="grid-4" data-hint="money.exp.kpis">
         <Kpi label={`Расходы, ${fmt.monthName(thisMonth, false).toLowerCase()} по ${fmt.date(today)}`} value={fmt.money(kpi.cur)} />
         <Kpi label={`Расходы, ${fmt.monthName(prevMonth, false).toLowerCase()}`} value={fmt.money(kpi.prev)} />
         <Kpi label={kpi.span ? `В среднем за ${kpi.span}` : 'В среднем за месяц'} value={fmt.money(kpi.avg)} />
@@ -161,6 +163,7 @@ export default function Expenses() {
       </div>
       <DataTable
         id="money-exp-pivot"
+        hint="money.exp.pivot"
         title="По категориям и месяцам"
         rows={cats}
         columns={pivotCols}
@@ -174,6 +177,7 @@ export default function Expenses() {
       />
       <DataTable
         id="money-exp-list"
+        hint="money.exp.list"
         title="Записи"
         rows={shown}
         columns={listCols}
@@ -188,6 +192,7 @@ export default function Expenses() {
               options={[{ value: '', label: 'Все категории' }, ...cats.map((c) => ({ value: c.cat, label: c.cat }))]}
               aria-label="Категория"
               style={{ width: 210 }}
+              data-hint="money.exp.filter"
             />
             <Select size="sm" value={period} onChange={(e) => setPeriod(e.target.value as PeriodKey)} options={fromUrl.options} aria-label="Период" style={{ width: 170 }} />
           </>

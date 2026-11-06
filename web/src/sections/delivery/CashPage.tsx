@@ -94,7 +94,11 @@ export function CashPage() {
       key: 'older',
       header: 'С прошлых дней',
       align: 'right',
-      render: (r) => <span className={r.older > 0 ? 'w-600 c-warn' : 'faint'}>{fmt.money(r.older)}</span>,
+      render: (r) => (
+        <span className={r.older > 0 ? 'w-600 c-warn' : 'faint'} data-hint={r.older > 0 ? 'delivery.cash-older' : undefined}>
+          {fmt.money(r.older)}
+        </span>
+      ),
       sort: (r) => r.older,
       total: (rs) => fmt.money(rs.reduce((z, r) => z + r.older, 0)),
     },
@@ -114,7 +118,7 @@ export function CashPage() {
       render: (r) =>
         r.day.onHand > 0 ? (
           <span onClick={(e) => e.stopPropagation()}>
-            <Button size="sm" variant="secondary" icon={<HandCoins />} onClick={() => flow.handIn(r.e.id)}>
+            <Button size="sm" variant="secondary" icon={<HandCoins />} data-hint="delivery.cash-take" onClick={() => flow.handIn(r.e.id)}>
               Принять
             </Button>
           </span>
@@ -190,7 +194,11 @@ export function CashPage() {
     {
       key: 'check',
       header: 'Сверка',
-      render: (d) => <CheckChip d={d} />,
+      render: (d) => (
+        <span data-hint="delivery.cash-check">
+          <CheckChip d={d} />
+        </span>
+      ),
       sort: (d) => (d.state === 'failed' ? 0 : d.state === 'assigned' ? 1 : d.state !== 'delivered' ? 2 : d.collected < d.collect ? 3 : d.handedIn ? 5 : 4),
       width: 150,
     },
@@ -219,13 +227,13 @@ export function CashPage() {
             </div>
             <div className="dl-pstat">
               <span className="dl-sum-label">На руках у курьеров</span>
-              <span className={totals.onHand > 0 ? 'dl-pstat-value c-warn' : 'dl-pstat-value'}>{fmt.money(totals.onHand)}</span>
+              <span className={totals.onHand > 0 ? 'dl-pstat-value c-warn' : 'dl-pstat-value'} data-hint="delivery.cash-onhand">{fmt.money(totals.onHand)}</span>
             </div>
           </div>
 
           <section className="col-3">
             <h2 className="dl-board-title">По курьерам</h2>
-            <div className="card dl-hist">
+            <div className="card dl-hist" data-hint="delivery.cash-couriers">
               {rows.map((r) => (
                 <div key={r.e.id} className="dl-hist-row">
                   <Avatar name={r.e.name} size="sm" />
@@ -234,13 +242,13 @@ export function CashPage() {
                     <span className="t-12 muted ellipsis">
                       {fmt.count(r.count, 'доставка', 'доставки', 'доставок')} · наличными {fmt.money(r.day.cash)}
                     </span>
-                    {r.older > 0 ? <span className="t-12 c-warn w-600">с прошлых дней {fmt.money(r.older)}</span> : null}
+                    {r.older > 0 ? <span className="t-12 c-warn w-600" data-hint="delivery.cash-older">с прошлых дней {fmt.money(r.older)}</span> : null}
                   </span>
                   {r.day.onHand > 0 ? (
                     <span className="col" style={{ gap: 4, alignItems: 'flex-end' }}>
                       <span className="num w-700 c-warn nowrap">{fmt.money(r.day.onHand)}</span>
                       {canTake ? (
-                        <Button size="sm" icon={<HandCoins />} onClick={() => flow.handIn(r.e.id)}>
+                        <Button size="sm" icon={<HandCoins />} data-hint="delivery.cash-take" onClick={() => flow.handIn(r.e.id)}>
                           Принять
                         </Button>
                       ) : (
@@ -273,7 +281,7 @@ export function CashPage() {
                           </span>
                         </span>
                         <span className="t-13 w-600 ellipsis">{ix.clients.get(d.clientId)?.name ?? d.contactName}</span>
-                        <span className="chips">
+                        <span className="chips" data-hint="delivery.cash-check">
                           <CheckChip d={d} />
                         </span>
                       </span>
@@ -299,12 +307,13 @@ export function CashPage() {
             <Kpi label={`Наличными · ${dayLabel(day, c).toLowerCase()}`} value={fmt.money(totals.cash)} />
             <Kpi label="Картой и переводом" value={fmt.money(totals.card)} />
             <Kpi label="Сдано в кассу" value={fmt.money(totals.handed)} />
-            <Kpi label="На руках у курьеров" value={<span className={totals.onHand > 0 ? 'c-warn' : undefined}>{fmt.money(totals.onHand)}</span>} />
+            <Kpi label="На руках у курьеров" hint="delivery.cash-onhand" value={<span className={totals.onHand > 0 ? 'c-warn' : undefined}>{fmt.money(totals.onHand)}</span>} />
           </div>
 
           <div className="dl-cash-grid dl-tight">
             <DataTable
               title="По курьерам"
+              hint="delivery.cash-couriers"
               rows={rows}
               columns={courierCols}
               rowKey={(r) => r.e.id}
@@ -351,7 +360,7 @@ function HandIns({ list }: { list: Payment[] }) {
   const db = useDB();
   const ix = indexes(db);
   return (
-    <Card title="Сдачи в кассу" flush>
+    <Card title="Сдачи в кассу" flush hint="delivery.cash-handins">
       {list.length ? (
         <div className="list">
           {list.map((p) => {

@@ -132,13 +132,17 @@ export default function ReturnsPage() {
         csv: (x) => (x.order ? `Заказ № ${x.order.number}` : x.receipt ? `Чек № ${x.receipt.number}` : ''),
         render: (x) =>
           x.order ? (
-            <EntityLink type="order" id={x.order.id} className="entity-link nowrap">
-              Заказ № {x.order.number}
-            </EntityLink>
+            <span data-hint="sales.returns-doc">
+              <EntityLink type="order" id={x.order.id} className="entity-link nowrap">
+                Заказ № {x.order.number}
+              </EntityLink>
+            </span>
           ) : x.receipt ? (
-            <EntityLink type="receipt" id={x.receipt.id} className="entity-link nowrap">
-              Чек № {x.receipt.number}
-            </EntityLink>
+            <span data-hint="sales.returns-doc">
+              <EntityLink type="receipt" id={x.receipt.id} className="entity-link nowrap">
+                Чек № {x.receipt.number}
+              </EntityLink>
+            </span>
           ) : (
             <Dash />
           ),
@@ -176,7 +180,11 @@ export default function ReturnsPage() {
         header: 'Деньги',
         sort: (x) => x.refunded,
         csv: (x) => moneyText(x.refunded),
-        render: (x) => <Chip tone={x.refunded === 'debt' ? 'neutral' : x.refunded === 'advance' ? 'info' : 'ok'}>{moneyText(x.refunded)}</Chip>,
+        render: (x) => (
+          <span data-hint="sales.returns-money">
+            <Chip tone={x.refunded === 'debt' ? 'neutral' : x.refunded === 'advance' ? 'info' : 'ok'}>{moneyText(x.refunded)}</Chip>
+          </span>
+        ),
       },
       { key: 'author', header: 'Оформил', sort: (x) => x.author?.name ?? '', csv: (x) => x.author?.name ?? '', render: (x) => <span className="nowrap ink-2">{x.author?.short ?? '—'}</span> },
       {
@@ -184,7 +192,7 @@ export default function ReturnsPage() {
         header: 'Товар',
         sort: (x) => (x.goods.includes('check') ? 0 : 1),
         csv: (x) => x.goods.map((g) => QUARANTINE_STATE[g].label).join(', '),
-        render: (x) => (x.goods.length ? <span className="chips">{x.goods.map((g) => <StatusChip key={g} s={QUARANTINE_STATE[g]} />)}</span> : <Dash />),
+        render: (x) => (x.goods.length ? <span className="chips" data-hint="sales.returns-goods">{x.goods.map((g) => <StatusChip key={g} s={QUARANTINE_STATE[g]} />)}</span> : <Dash />),
       },
     ],
     [],
@@ -200,7 +208,7 @@ export default function ReturnsPage() {
         counts={counts}
         actions={
           canNew ? (
-            <Button variant="primary" icon={<Undo2 />} onClick={() => setPicking(true)}>
+            <Button variant="primary" icon={<Undo2 />} onClick={() => setPicking(true)} data-hint="sales.returns-new">
               Возврат по заказу
             </Button>
           ) : null
@@ -267,7 +275,7 @@ function PickOrderModal({ onClose, onPick }: { onClose: () => void; onPick: (ord
   return (
     <Modal title="Возврат по заказу" sub="Найдите заказ, который клиент получил: доставлен или выдан" onClose={onClose}>
       <SearchInput value={q} onChange={setQ} placeholder="Номер заказа или клиент" autoFocus />
-      <div className="sales-picker card">
+      <div className="sales-picker card" data-hint="sales.pick-order">
         {list.length ? (
           list.map(({ o, c, d }) => (
             <button key={o.id} type="button" className="list-row" onClick={() => onPick(o.id)}>

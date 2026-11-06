@@ -140,6 +140,7 @@ export default function OwnerHome() {
       <div className="ov-kpis">
         <KpiTile
           label="Продажи"
+          hint="overview.sales"
           value={fmt.money(s.revenue)}
           d={delta(s.revenue, ps?.revenue ?? null)}
           onClick={() => navigate(`/reports?${q}`)}
@@ -165,6 +166,7 @@ export default function OwnerHome() {
               </span>
             }
             value={fmt.money(s.grossProfit)}
+            hint="overview.profit"
             d={delta(s.grossProfit, ps?.grossProfit ?? null)}
             onClick={() => navigate(`/reports?${q}`)}
             extra={
@@ -178,6 +180,7 @@ export default function OwnerHome() {
         ) : null}
         <KpiTile
           label="Поступило денег"
+          hint="overview.cash"
           value={fmt.money(d.cash.total)}
           d={delta(d.cash.total, d.prevCash)}
           onClick={() => navigate(`/money?${q}`)}
@@ -190,6 +193,7 @@ export default function OwnerHome() {
         />
         <KpiTile
           label="Долги покупателей"
+          hint="overview.debts"
           value={fmt.money(d.debt.debt)}
           // долг — остаток на дату; сравнение с одним днём прошлого месяца колеблется от оплат в начале месяца и пугает зря
           asOf={asOf}
@@ -205,6 +209,7 @@ export default function OwnerHome() {
         />
         <KpiTile
           label="Долги поставщикам"
+          hint="overview.suppliers"
           value={fmt.money(d.sup.debt)}
           asOf={asOf}
           dTitle={debtCmpTitle}
@@ -236,6 +241,7 @@ export default function OwnerHome() {
       <div className="ov-main">
         <Card
           className="ov-chart-card"
+          hint="overview.chart"
           title={
             <span className="row-3 ov-chart-head">
               {period.kind === 'today' ? 'Продажи по часам' : 'Продажи по дням'}
@@ -289,6 +295,7 @@ export default function OwnerHome() {
                 />
                 <SplitItem
                   label="После расходов"
+                  hint="overview.net"
                   value={fmt.money(net)}
                   d={delta(net, prevNet)}
                   tone={net < 0 ? 'bad' : undefined}
@@ -301,6 +308,7 @@ export default function OwnerHome() {
 
         <Card
           className="ov-sig-card"
+          hint="overview.signals"
           flush
           title={
             <span className="row">
@@ -466,7 +474,7 @@ function topSignals<T extends { kind: string }>(list: T[], n: number): T[] {
   return out;
 }
 
-function SplitItem({ label, value, d, good = 'up', onClick, title, tone }: { label: string; value: string; d: Delta; good?: 'up' | 'down'; onClick?: () => void; title?: string; tone?: 'bad' }) {
+function SplitItem({ label, value, d, good = 'up', onClick, title, tone, hint }: { label: string; value: string; d: Delta; good?: 'up' | 'down'; onClick?: () => void; title?: string; tone?: 'bad'; hint?: string }) {
   const cls = !d || d.dir === 'flat' ? 'muted' : d.dir === good ? 'c-ok' : 'c-bad';
   const body = (
     <>
@@ -478,11 +486,11 @@ function SplitItem({ label, value, d, good = 'up', onClick, title, tone }: { lab
     </>
   );
   return onClick ? (
-    <button type="button" className="ov-split-item is-click" onClick={onClick} title={title}>
+    <button type="button" className="ov-split-item is-click" onClick={onClick} title={title} data-hint={hint}>
       {body}
     </button>
   ) : (
-    <div className="ov-split-item" title={title}>
+    <div className="ov-split-item" title={title} data-hint={hint}>
       {body}
     </div>
   );

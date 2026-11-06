@@ -73,13 +73,13 @@ export default function PriceModal({ product, onClose, onSaved }: { product: Pro
           <Button variant="ghost" onClick={onClose}>
             Отмена
           </Button>
-          <Button variant="primary" onClick={save} disabled={!changed}>
+          <Button variant="primary" onClick={save} disabled={!changed} data-hint="products.price-save">
             Сохранить цену
           </Button>
         </>
       }
     >
-      <div className="prd-form-grid-2">
+      <div className="prd-form-grid-2" data-hint="products.price-fields">
         <Field label="Розница за штуку">
           <MoneyInput autoFocus value={retail} onChange={setRetail} invalid={!r} />
         </Field>
@@ -87,7 +87,7 @@ export default function PriceModal({ product, onClose, onSaved }: { product: Pro
           <MoneyInput value={wholesale} onChange={setWholesale} invalid={wholesaleHigh || !w} />
         </Field>
       </div>
-      <div className="prd-price-compare">
+      <div className="prd-price-compare" data-hint="products.price-compare">
         <div className="prd-price-row t-12 muted w-600">
           <span />
           <span>Было и стало</span>

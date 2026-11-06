@@ -116,13 +116,13 @@ export default function Home() {
           </>
         }
         actions={
-          <span className="cl-head-actions">
+          <span className="cl-head-actions" data-hint="rep.more">
             <MoreMenu items={menu} label="Ещё" />
           </span>
         }
       />
 
-      <div className="cl-day-stats">
+      <div className="cl-day-stats" data-hint="rep.day-stats">
         <div className="card cl-day-stat" title={missedToday ? `Выполнено ${s.todayDone}, пропущено ${missedToday}, всего на сегодня ${s.todayTotal}` : undefined}>
           <div className="cl-day-label">Визиты сегодня</div>
           <div className="cl-day-value">
@@ -153,6 +153,7 @@ export default function Home() {
       </div>
 
       {offline.on ? (
+        <div data-hint="rep.offline">
         <Notice
           tone="warn"
           title="Нет связи"
@@ -166,6 +167,7 @@ export default function Home() {
             ? `${fmt.count(queued.length, 'заявка отправится', 'заявки отправятся', 'заявок отправятся')}, когда связь появится. Цены и наличие проверим заново.`
             : 'Заявки сохранятся в телефоне и отправятся, когда связь появится. Цены и наличие проверим заново.'}
         </Notice>
+        </div>
       ) : null}
 
       <div className="cl-rep-layout">
@@ -211,6 +213,7 @@ export default function Home() {
 
           {day.done.length ? (
             <Card
+              hint="rep.done"
               title="Сделано сегодня"
               actions={
                 <span className="muted t-13">
@@ -253,6 +256,7 @@ export default function Home() {
         <div className="col-4">
           <TasksCard tasks={day.tasks} today={today} />
           <Card
+            hint="rep.debts"
             title="Долги моих клиентов"
             actions={day.debtTotal ? <span className="w-700 num">{fmt.money(day.debtTotal)}</span> : null}
             flush
@@ -363,7 +367,7 @@ function RouteCard({
   const over = !!b && c.creditLimit > 0 && b.debt > c.creditLimit;
   const pending = b?.pending ?? 0;
   return (
-    <article className={cx('card cl-route-card', primary && 'is-next')}>
+    <article className={cx('card cl-route-card', primary && 'is-next')} data-hint="rep.route">
       <div className="cl-route-top">
         <span className="cl-route-num">{n}</span>
         <span className="cl-route-time" title="Время по плану">
@@ -422,7 +426,7 @@ function RouteCard({
       )}
       {v.comment ? <div className="cl-route-note">{v.comment}</div> : null}
 
-      <div className="cl-route-actions">
+      <div className="cl-route-actions" data-hint="rep.call">
         {tel ? (
           <a className="btn btn-secondary btn-lg" href={tel}>
             <Phone />
@@ -443,10 +447,10 @@ function RouteCard({
       {startedAt ? (
         <>
           {/* визит идёт: главное — заявка; отказ, перезвонить и «без заказа» — второстепенные */}
-          <Button variant="primary" size="lg" block icon={<ShoppingCart />} onClick={onOrder}>
+          <Button variant="primary" size="lg" block icon={<ShoppingCart />} onClick={onOrder} data-hint="rep.order">
             Оформить заявку
           </Button>
-          <div className="cl-route-results">
+          <div className="cl-route-results" data-hint="rep.results">
             <Button size="lg" icon={<XCircle />} onClick={() => onResult('refusal')}>
               Отказ
             </Button>
@@ -459,7 +463,7 @@ function RouteCard({
           </div>
         </>
       ) : (
-        <Button variant={primary ? 'primary' : 'secondary'} size="lg" block icon={<PlayCircle />} onClick={onStart}>
+        <Button variant={primary ? 'primary' : 'secondary'} size="lg" block icon={<PlayCircle />} onClick={onStart} data-hint="rep.start">
           Начать визит
         </Button>
       )}
@@ -485,7 +489,7 @@ function VisitContext({ c }: { c: Client }) {
     return { orders: orders.map((o) => ({ o, pay: orderPayment(db, o), d: o.deliveryId ? dl.get(o.deliveryId) : undefined })), habit };
   }, [db, version, c.id, me.id]);
   return (
-    <div className="cl-visit-ctx">
+    <div className="cl-visit-ctx" data-hint="rep.visit-ctx">
       <div className="cl-visit-ctx-block">
         <div className="cl-visit-ctx-title">Последние заказы</div>
         {data.orders.length ? (
@@ -548,7 +552,7 @@ function TasksCard({ tasks, today }: { tasks: Task[]; today: string }) {
   };
   const openCount = tasks.filter((t) => t.state === 'open').length;
   return (
-    <Card title="Мои задачи на сегодня" actions={<span className="muted t-13">{openCount ? `осталось ${openCount}` : 'всё сделано'}</span>} flush>
+    <Card hint="rep.tasks" title="Мои задачи на сегодня" actions={<span className="muted t-13">{openCount ? `осталось ${openCount}` : 'всё сделано'}</span>} flush>
       {tasks.length ? (
         <div className="cl-list is-flush">
           {tasks.map((t) => {

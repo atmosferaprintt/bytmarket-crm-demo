@@ -27,13 +27,13 @@ export function UnpickedModal({ x, onConfirm, onClose }: { x: PickItem; onConfir
           <Button variant="ghost" onClick={onClose}>
             Вернуться к сборке
           </Button>
-          <Button variant="primary" icon={<PackageCheck />} onClick={onConfirm}>
+          <Button variant="primary" icon={<PackageCheck />} onClick={onConfirm} data-hint="stock.unpicked-go">
             Собрать всё равно
           </Button>
         </>
       }
     >
-      <div className="stock-unpicked">
+      <div className="stock-unpicked" data-hint="stock.unpicked">
         {rest.map((l) => (
           <div key={l.line.productId} className="stock-unpicked-row">
             <span className="grow">
@@ -75,19 +75,22 @@ export function HandOverModal({ x, onDone, onClose }: { x: PickItem; onDone: (pr
       onClose={onClose}
       footer={
         <>
-          <Checkbox checked={print} onChange={setPrint}>
-            Распечатать накладную
-          </Checkbox>
+          <span data-hint="stock.handover-print">
+            <Checkbox checked={print} onChange={setPrint}>
+              Распечатать накладную
+            </Checkbox>
+          </span>
           <span className="spacer" />
           <Button variant="ghost" onClick={onClose}>
             Отмена
           </Button>
-          <Button variant="primary" icon={<PackageCheck />} onClick={() => setError(onDone(print))}>
+          <Button variant="primary" icon={<PackageCheck />} onClick={() => setError(onDone(print))} data-hint="stock.handover-go">
             Выдать клиенту
           </Button>
         </>
       }
     >
+      <div data-hint="stock.handover-sum">
       <StatList>
         <StatRow label="К выдаче" value={`${fmt.count(x.positions, 'позиция', 'позиции', 'позиций')} · ${fmt.qty(x.qty)} · мест ${x.places}`} />
         <StatRow label="Сумма к выдаче" value={<b>{fmt.money(sum)}</b>} />
@@ -113,6 +116,7 @@ export function HandOverModal({ x, onDone, onClose }: { x: PickItem; onDone: (pr
         />
         <StatRow total label="Долг после выдачи" value={fmt.money(debtAfter)} />
       </StatList>
+      </div>
       {unpaid ? (
         defer > 0 ? (
           <Notice tone="info">

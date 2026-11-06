@@ -36,7 +36,7 @@ export function RightsView() {
 
   return (
     <>
-      <Card title="Роли" sub="Посмотреть глазами — открыть программу так, как её видит сотрудник этой роли" flush>
+      <Card hint="settings.team.roles" title="Роли" sub="Посмотреть глазами — открыть программу так, как её видит сотрудник этой роли" flush>
         <div className="list set-roles-list">
           {ROLE_ORDER.map((r) => {
             const list = people.get(r) ?? [];
@@ -71,6 +71,7 @@ export function RightsView() {
       </Card>
 
       <Card
+        hint="settings.team.matrix"
         title="Что может каждая роль"
         flush
         actions={

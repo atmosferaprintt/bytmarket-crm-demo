@@ -55,7 +55,7 @@ export default function Home() {
               Маршруты курьеров
             </Button>
             {canAssign && data.waiting.length ? (
-              <Button variant="primary" icon={<UserPlus />} onClick={() => flow.bulk(data.waiting.map((d) => d.id), c.today)}>
+              <Button variant="primary" icon={<UserPlus />} data-hint="delivery.assign-all" onClick={() => flow.bulk(data.waiting.map((d) => d.id), c.today)}>
                 Назначить ожидающие · {data.waiting.length}
               </Button>
             ) : null}
@@ -63,7 +63,7 @@ export default function Home() {
         }
       />
 
-      <div className="dl-kpis">
+      <div className="dl-kpis" data-hint="delivery.home-kpis">
         <Kpi label="Доставок сегодня" value={fmt.num(data.today.length)} />
         <Kpi
           label="Вручено"
@@ -88,6 +88,7 @@ export default function Home() {
               </span>
             }
             flush
+            hint="delivery.home-waiting"
           >
             {data.waiting.length ? (
               <div className="list">
@@ -125,6 +126,7 @@ export default function Home() {
               </span>
             }
             flush
+            hint="delivery.home-problems"
           >
             {problems ? (
               <div className="list">
@@ -210,6 +212,7 @@ export default function Home() {
               </span>
             }
             flush
+            hint="delivery.home-onway"
             actions={<Button size="sm" variant="ghost" iconRight={<ChevronRight />} onClick={() => navigate('/delivery?state=on_way')}>Все</Button>}
           >
             {data.onWayList.length ? (
@@ -247,7 +250,7 @@ export default function Home() {
         </div>
 
         <div className="col-4">
-          <Card title="Загрузка курьеров" flush actions={<Button size="sm" variant="ghost" iconRight={<ChevronRight />} onClick={() => navigate('/delivery/routes')}>Маршруты</Button>}>
+          <Card title="Загрузка курьеров" flush hint="delivery.home-loads" actions={<Button size="sm" variant="ghost" iconRight={<ChevronRight />} onClick={() => navigate('/delivery/routes')}>Маршруты</Button>}>
             <div className="list">
               {data.loads.map((l) => (
                 <button key={l.courier.id} type="button" className="list-row dl-load" onClick={() => navigate(`/delivery?courier=${l.courier.id}`)}>
@@ -268,7 +271,7 @@ export default function Home() {
             </div>
           </Card>
 
-          <Card title="Деньги на руках" flush actions={<Button size="sm" variant="ghost" iconRight={<ChevronRight />} onClick={() => navigate('/delivery/cash')}>Сверка</Button>}>
+          <Card title="Деньги на руках" flush hint="delivery.home-cash" actions={<Button size="sm" variant="ghost" iconRight={<ChevronRight />} onClick={() => navigate('/delivery/cash')}>Сверка</Button>}>
             <div className="list">
               {data.cash.map((r) => (
                 <div key={r.e.id} className="list-row">
@@ -285,7 +288,7 @@ export default function Home() {
             </div>
           </Card>
 
-          <Card title="Завтра" actions={<Button size="sm" variant="ghost" iconRight={<ChevronRight />} onClick={() => navigate('/delivery?day=tomorrow')}>Открыть</Button>}>
+          <Card title="Завтра" hint="delivery.home-tomorrow" actions={<Button size="sm" variant="ghost" iconRight={<ChevronRight />} onClick={() => navigate('/delivery?day=tomorrow')}>Открыть</Button>}>
             {data.tomorrow.length ? (
               <div className="dl-facts is-3">
                 <div className="dl-fact">

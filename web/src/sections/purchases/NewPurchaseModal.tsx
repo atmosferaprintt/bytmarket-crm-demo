@@ -141,7 +141,7 @@ export function NewPurchaseModal({ supplierId, lines: preset, onClose }: { suppl
         </>
       }
     >
-      <div className="pur-new-head">
+      <div className="pur-new-head" data-hint="purchases.new-head">
         <Field label="Поставщик">
           <Select value={sid} onChange={(e) => changeSupplier(e.target.value)} options={suppliers.map((s) => ({ value: s.id, label: s.name }))} />
         </Field>
@@ -159,7 +159,7 @@ export function NewPurchaseModal({ supplierId, lines: preset, onClose }: { suppl
             {supplier.minOrder ? ` · минимальный заказ ${fmt.money(supplier.minOrder)}` : ''}
           </span>
           <span className="spacer" />
-          <Button size="sm" variant="ghost" icon={<Sparkles />} onClick={fromSuggestion}>
+          <Button size="sm" variant="ghost" icon={<Sparkles />} onClick={fromSuggestion} data-hint="purchases.new-suggest">
             Добавить по предложению
           </Button>
         </div>
@@ -167,6 +167,7 @@ export function NewPurchaseModal({ supplierId, lines: preset, onClose }: { suppl
 
       <ProductPicker
         autoFocus
+        hint="purchases.new-scan"
         filter={filter}
         onPick={(p) => add(p)}
         placeholder="Товар этого поставщика: название, артикул или штрихкод"
@@ -178,7 +179,7 @@ export function NewPurchaseModal({ supplierId, lines: preset, onClose }: { suppl
           <EmptyState title="Строк пока нет">Найдите товар или нажмите «Добавить по предложению» — подставим то, что заканчивается</EmptyState>
         </div>
       ) : (
-        <div className="stock-doc-lines">
+        <div className="stock-doc-lines" data-hint="purchases.new-lines">
           <table className="table table-dense">
             <thead>
               <tr>
@@ -234,9 +235,11 @@ export function NewPurchaseModal({ supplierId, lines: preset, onClose }: { suppl
         <Input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Например: под акцию «Осенняя стирка»" />
       </Field>
       {can('approvePurchase') ? (
-        <Checkbox checked={approve} onChange={setApprove}>
-          Подтверждаю закупку как владелец — сразу отправить поставщику
-        </Checkbox>
+        <span data-hint="purchases.new-approve" style={{ alignSelf: 'flex-start' }}>
+          <Checkbox checked={approve} onChange={setApprove}>
+            Подтверждаю закупку как владелец — сразу отправить поставщику
+          </Checkbox>
+        </span>
       ) : null}
       {belowMin ? <Notice tone="warn">До минимального заказа поставщика не хватает {fmt.money(supplier!.minOrder - total)}</Notice> : null}
       {error ? <Notice tone="bad">{error}</Notice> : null}

@@ -156,6 +156,7 @@ export function AssignDeliveryModal({ orderId, deliveryId, onClose, onDone }: As
           Добавьте точку в карточке клиента — адрес, район и контакт
         </Notice>
       ) : (
+        <div data-hint="delivery.new-point">
         <Field label="Куда">
           <Select
             value={pointId}
@@ -164,12 +165,13 @@ export function AssignDeliveryModal({ orderId, deliveryId, onClose, onDone }: As
             options={client.points.map((p) => ({ value: p.id, label: `${p.name} — ${p.address}, ${shortDistrict(p.district)}` }))}
           />
         </Field>
+        </div>
       )}
 
       <Field label="День">
         <DayChoice value={date} onChange={setDate} c={c} />
       </Field>
-      <div className="grid-2">
+      <div className="grid-2" data-hint="delivery.new-courier">
         <Field label="Интервал">
           <Select
             value={interval}
@@ -207,9 +209,11 @@ export function AssignDeliveryModal({ orderId, deliveryId, onClose, onDone }: As
               <MoneyInput value={fee} onChange={(v) => { setFee(v); }} placeholder="0 — бесплатно" />
             </Field>
           </div>
+          <div data-hint="delivery.new-collect">
           <Field label="К получению при вручении">
             <MoneyInput value={collect} onChange={setCollect} />
           </Field>
+          </div>
           <div className="chips">
             <button type="button" className="dl-quick" onClick={() => setCollect(debt + feeNum)}>
               Долг по заказу и доставка · {fmt.money(debt + feeNum)}
@@ -218,9 +222,11 @@ export function AssignDeliveryModal({ orderId, deliveryId, onClose, onDone }: As
               Ничего — {client.deferDays ? `отсрочка ${client.deferDays} дн.` : 'оплачено'}
             </button>
           </div>
+          <div data-hint="delivery.new-comment">
           <Field label="Комментарий для курьера">
             <Textarea rows={2} value={comment} placeholder="Например: позвонить за час, въезд со двора" onChange={(e) => setComment(e.target.value)} />
           </Field>
+          </div>
         </>
       )}
       {error ? <Notice tone="bad">{error}</Notice> : null}

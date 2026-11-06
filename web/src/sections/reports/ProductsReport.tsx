@@ -143,6 +143,7 @@ export default function ProductsReport() {
         {seeProfit ? (
           <KpiTile
             label="Валовая прибыль"
+            hint="reports.products.profit"
             value={fmt.money(total.profit)}
             d={deltaOf(total.profit, prevTotal?.profit ?? null)}
             title={`Расходы — из журнала денег за ${label}${expenses.byCategory.length ? ': ' + expenses.byCategory.slice(0, 4).map((x) => `${x.category.toLowerCase()} ${fmt.money(x.amount)}`).join(', ') : ''}`}
@@ -177,6 +178,7 @@ export default function ProductsReport() {
       <DataTable
         key={metric + cat}
         id="rp-products-rank"
+        hint="reports.products.rank"
         title="Рейтинг товаров"
         rows={ranked}
         columns={rankCols}
@@ -215,6 +217,7 @@ export default function ProductsReport() {
       <DataTable
         key={'g' + groupBy}
         id="rp-products-groups"
+        hint="reports.products.groups"
         title={seeProfit ? 'Прибыльность' : 'Продажи по группам'}
         rows={groups}
         columns={groupCols}
@@ -238,7 +241,7 @@ export default function ProductsReport() {
       />
 
       <div ref={listsRef} className="rp-anchor" />
-      <Card flush className="rp-lists rp-tight" title="Остатки и спрос" actions={<Segmented ariaLabel="Список" value={list} onChange={setList} options={visibleLists} />}>
+      <Card flush className="rp-lists rp-tight" hint="reports.products.lists" title="Остатки и спрос" actions={<Segmented ariaLabel="Список" value={list} onChange={setList} options={visibleLists} />}>
         {list === 'turnover' || list === 'dead' ? <TurnoverList rows={rows} dead={list === 'dead'} label={label} /> : null}
         {list === 'lowmargin' ? <LowMarginList rows={sold} minMarkup={db.settings.minMarginPct} label={label} /> : null}
         {list === 'deficit' || list === 'low' ? <DeficitList rows={deficitRows(db)} mode={list} /> : null}

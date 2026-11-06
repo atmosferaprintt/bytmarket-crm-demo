@@ -75,7 +75,11 @@ export default function DocsPage() {
           <span className="stock-basis" title={r.basis}>
             {r.basis || '—'}
           </span>
-          {r.diff && (r.kind === 'count' || r.kind === 'receive') ? <Chip tone="warn" title="Строк с расхождением">Расхождение {r.diff}</Chip> : null}
+          {r.diff && (r.kind === 'count' || r.kind === 'receive') ? (
+            <span data-hint="stock.docs-diff">
+              <Chip tone="warn" title="Строк с расхождением">Расхождение {r.diff}</Chip>
+            </span>
+          ) : null}
         </span>
       ),
     },

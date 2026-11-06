@@ -67,18 +67,18 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
         can('createPurchase') || canPay || seeCost ? (
           <>
             {seeCost ? (
-              <Button icon={<FileText />} onClick={() => setActOpen(true)}>
+              <Button icon={<FileText />} onClick={() => setActOpen(true)} data-hint="purchases.supd-act">
                 Акт сверки
               </Button>
             ) : null}
             <span className="spacer" />
             {can('createPurchase') ? (
-              <Button variant={canPay ? 'secondary' : 'primary'} icon={<Plus />} onClick={() => setCreate(true)}>
+              <Button variant={canPay ? 'secondary' : 'primary'} icon={<Plus />} onClick={() => setCreate(true)} data-hint="purchases.supd-new">
                 Новая закупка
               </Button>
             ) : null}
             {canPay ? (
-              <Button variant="primary" icon={<Wallet />} onClick={() => setPay(true)}>
+              <Button variant="primary" icon={<Wallet />} onClick={() => setPay(true)} data-hint="purchases.supd-pay">
                 Оплатить
               </Button>
             ) : null}
@@ -86,7 +86,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
         ) : undefined
       }
     >
-      <div className="grid-2">
+      <div className="grid-2" data-hint="purchases.supd-terms">
         <StatList>
           <StatRow label="Контакт" value={s.contact} />
           <StatRow
@@ -109,7 +109,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
       </div>
 
       {seeCost ? (
-        <div className="grid-3 pur-kpis">
+        <div className="grid-3 pur-kpis" data-hint="purchases.supd-debt">
           <Kpi label="Долг" value={fmt.money(bal.debt)} />
           <Kpi label="Просрочено" value={<span className={bal.overdue ? 'c-bad' : undefined}>{fmt.money(bal.overdue)}</span>} />
           <Kpi label="Аванс у поставщика" value={fmt.money(bal.advance)} />
@@ -117,7 +117,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
       ) : null}
 
       {seeCost ? (
-        <Card flush title="График платежей">
+        <Card flush title="График платежей" hint="purchases.supd-schedule">
           {bal.upcoming.length === 0 ? (
             <EmptyState title="Долгов нет">Все принятые закупки оплачены</EmptyState>
           ) : (
@@ -143,7 +143,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
         </Card>
       ) : null}
 
-      <Card flush title="Закупки">
+      <Card flush title="Закупки" hint="purchases.supd-list">
         {list.length === 0 ? (
           <EmptyState title="Закупок ещё не было" />
         ) : (

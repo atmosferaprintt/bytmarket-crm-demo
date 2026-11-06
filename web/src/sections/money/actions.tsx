@@ -138,7 +138,7 @@ export function ExpenseModal({ category: initial, onClose }: { category?: string
         </>
       }
     >
-      <div className="grid-2">
+      <div className="grid-2" data-hint="money.expense.cat">
         <Field label="Категория">
           <Select value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Выберите" options={EXPENSE_CATEGORIES.map((c) => ({ value: c, label: c }))} />
         </Field>
@@ -146,11 +146,11 @@ export function ExpenseModal({ category: initial, onClose }: { category?: string
           <MoneyInput value={amount} onChange={setAmount} autoFocus placeholder="0" />
         </Field>
       </div>
-      <div className="grid-2">
+      <div className="grid-2" data-hint="money.expense.from">
         <MethodField value={ma.method} onChange={ma.setMethod} />
         <AccountField value={ma.account} onChange={ma.setAccount} label="Откуда" only={PAY_FROM} />
       </div>
-      <div className="grid-2">
+      <div className="grid-2" data-hint="money.expense.date">
         <DateField value={date} onChange={setDate} min={plusDays(today, -62)} max={today} />
         <span />
       </div>
@@ -248,7 +248,7 @@ export function SupplierPayModal({ supplierId: initial, amount: initialAmount, o
         </>
       }
     >
-      <div className="money-client">
+      <div className="money-client" data-hint="money.suppay.supplier">
         <Field label="Поставщик" className="grow">
           <Select
             value={supplierId}
@@ -260,7 +260,7 @@ export function SupplierPayModal({ supplierId: initial, amount: initialAmount, o
         <MiniStat label="Просрочено" value={<span className={bal.overdue > 0 ? 'c-bad' : undefined}>{fmt.money(bal.overdue)}</span>} />
         <MiniStat label="До конца недели" value={fmt.money(thisWeek)} />
       </div>
-      <div className="money-form-grid is-3">
+      <div className="money-form-grid is-3" data-hint="money.suppay.form">
         <Field label="Сумма">
           <MoneyInput size="lg" value={amount} onChange={(x) => setAmount(x)} placeholder="0" />
         </Field>
@@ -272,7 +272,7 @@ export function SupplierPayModal({ supplierId: initial, amount: initialAmount, o
           {ACCOUNT_NAMES[ma.account]}: {fmt.money(balances[ma.account])} — не хватает {fmt.money(sum - balances[ma.account])}
         </Notice>
       ) : null}
-      <div className="money-alloc">
+      <div className="money-alloc" data-hint="money.suppay.alloc">
         <div className="row" style={{ marginBottom: 8 }}>
           <span className="t-14 w-700 grow">Закупки к оплате</span>
           {manual ? (
@@ -410,7 +410,7 @@ export function TransferModal({ from: f, to: t, onClose }: { from?: AccountKey; 
         </>
       }
     >
-      <div className="grid-2">
+      <div className="grid-2" data-hint="money.transfer.accounts">
         <AccountField value={from} onChange={changeFrom} label="Откуда" />
         <AccountField value={to} onChange={setTo} label="Куда" exclude={from} />
       </div>
@@ -427,7 +427,7 @@ export function TransferModal({ from: f, to: t, onClose }: { from?: AccountKey; 
         />
       </Field>
       {bal[from] > 0 ? (
-        <div className="row" style={{ marginTop: -6 }}>
+        <div className="row" style={{ marginTop: -6 }} data-hint="money.transfer.quick">
           <Button size="sm" variant={amount === bal[from] ? 'dark' : 'secondary'} onClick={() => setAmount(bal[from])}>
             Всё · {fmt.money(bal[from])}
           </Button>
@@ -659,7 +659,7 @@ export function IdentifyModal({ paymentId, onClose }: { paymentId: ID; onClose: 
         <MiniStat label="Пришло" value={fmt.dateTime(pay.at)} />
         <MiniStat label="Куда" value={ACCOUNT_NAMES[pay.account]} />
         <div className="grow money-payer">
-          <span className="t-12 muted">Плательщик по выписке банка</span>
+          <span className="t-12 muted" data-hint="money.identify.payer">Плательщик по выписке банка</span>
           {pay.payer ? (
             <span className="t-14 w-700">
               {pay.payer.name}
@@ -674,7 +674,7 @@ export function IdentifyModal({ paymentId, onClose }: { paymentId: ID; onClose: 
       {!clientId ? (
         <>
           {hints.length ? (
-            <div className="money-hints">
+            <div className="money-hints" data-hint="money.identify.hints">
               <span className="money-hints-head">
                 <Lightbulb />
                 Похоже, это
@@ -766,6 +766,7 @@ export function ConfirmTransferModal({ paymentId, onClose }: { paymentId: ID; on
         </>
       }
     >
+      <div data-hint="money.confirm.check">
       <StatList>
         <StatRow label="Дата перевода" value={fmt.dateTime(p.at)} />
         <StatRow label="Сумма" value={<span className="t-16 w-700">{fmt.money(p.amount)}</span>} />
@@ -786,7 +787,8 @@ export function ConfirmTransferModal({ paymentId, onClose }: { paymentId: ID; on
         <StatRow label="Записал" value={author?.name ?? '—'} />
         {clean(p.comment) ? <StatRow label="Комментарий" value={<span className="money-wrap">{clean(p.comment)}</span>} /> : null}
       </StatList>
-      <div className="col" style={{ gap: 8 }}>
+      </div>
+      <div className="col" style={{ gap: 8 }} data-hint="money.confirm.lines">
         <span className="t-14 w-700">К чему относится</span>
         <StatList>
           {lines.map((l) => (
@@ -873,7 +875,7 @@ export function CourierHandInModal({ courierId, onClose }: { courierId: ID; onCl
     >
       {data.list.length ? (
         <>
-          <div className="money-client">
+          <div className="money-client" data-hint="money.handin.sum">
             <MiniStat label="По доставкам" value={fmt.money(sum)} />
             <MiniStat label="Доставок" value={fmt.num(data.list.length)} />
             <MiniStat label="На руках с" value={fmt.relDate(data.list[0].d.date, today)} />
@@ -896,7 +898,7 @@ export function CourierHandInModal({ courierId, onClose }: { courierId: ID; onCl
             ))}
             {data.list.length > 6 ? <StatRow label={`Ещё ${fmt.count(data.list.length - 6, 'доставка', 'доставки', 'доставок')}`} value={fmt.money(data.list.slice(6).reduce((z, x) => z + x.d.collected, 0))} /> : null}
           </StatList>
-          <div className="grid-2">
+          <div className="grid-2" data-hint="money.handin.counted">
             <Field label="Пересчитано">
               <MoneyInput
                 size="lg"

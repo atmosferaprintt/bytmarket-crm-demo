@@ -61,30 +61,32 @@ export function ClientPicker({ current, onPick, onClose }: { current: ID | null;
         </>
       }
     >
-      <SearchInput
-        value={q}
-        onChange={(v) => {
-          setQ(v);
-          setHl(0);
-        }}
-        placeholder="Номер карты, телефон или имя"
-        size="lg"
-        autoFocus
-        onKeyDown={(e) => {
-          if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            setHl((h) => Math.min(list.length - 1, h + 1));
-          } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            setHl((h) => Math.max(0, h - 1));
-          } else if (e.key === 'Enter' && list[hl]) {
-            e.preventDefault();
-            pick(list[hl].c);
-          }
-        }}
-      />
+      <div data-hint="register.picker-search">
+        <SearchInput
+          value={q}
+          onChange={(v) => {
+            setQ(v);
+            setHl(0);
+          }}
+          placeholder="Номер карты, телефон или имя"
+          size="lg"
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              setHl((h) => Math.min(list.length - 1, h + 1));
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              setHl((h) => Math.max(0, h - 1));
+            } else if (e.key === 'Enter' && list[hl]) {
+              e.preventDefault();
+              pick(list[hl].c);
+            }
+          }}
+        />
+      </div>
       {list.length ? (
-        <div className="reg-picker">
+        <div className="reg-picker" data-hint="register.picker-list">
           {list.map((x, i) => (
             <button key={x.c.id} type="button" className={cx('reg-picker-row', i === hl && 'is-hl', x.c.id === current && 'is-current')} onClick={() => pick(x.c)} onMouseEnter={() => setHl(i)}>
               <span className="icon-tile">

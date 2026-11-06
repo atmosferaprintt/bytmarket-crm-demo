@@ -11,11 +11,16 @@ import { handOver } from './Print';
 
 export function ShiftBadge({ shift }: { shift: Shift | undefined }) {
   const db = useDB();
-  if (!shift) return <Chip>Смена закрыта</Chip>;
+  if (!shift)
+    return (
+      <span data-hint="register.shift">
+        <Chip>Смена закрыта</Chip>
+      </span>
+    );
   const seller = indexes(db).employees.get(shift.sellerId);
   const s = shiftSummary(db, shift.id);
   return (
-    <span className="reg-shift-badge">
+    <span className="reg-shift-badge" data-hint="register.shift">
       <Chip tone="ok">Смена открыта</Chip>
       <span>
         {seller?.name ?? '—'} · с {fmt.time(shift.openedAt)} · {fmt.count(s.receipts, 'чек', 'чека', 'чеков')}
@@ -48,7 +53,7 @@ export function OpenShiftCard({ onOpened, className, hideLast, title = 'Смен
     onOpened?.();
   };
   return (
-    <Card title={title} className={className}>
+    <Card title={title} className={className} hint="register.open-shift">
       <form
         className="col-4"
         onSubmit={(e) => {

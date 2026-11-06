@@ -39,7 +39,7 @@ export function useDayParam(c: Clock): [ISODate, (d: ISODate) => void] {
 export function DayPicker({ day, onChange, c, counts, compact }: { day: ISODate; onChange: (d: ISODate) => void; c: Clock; counts?: { today?: number; tomorrow?: number }; compact?: boolean }) {
   const seg = day === c.today ? 'today' : day === c.tomorrow ? 'tomorrow' : '';
   return (
-    <div className={cx('dl-day', compact && 'is-compact')}>
+    <div className={cx('dl-day', compact && 'is-compact')} data-hint="delivery.day">
       <Segmented
         ariaLabel="День"
         value={seg}
@@ -95,7 +95,7 @@ export function StatePills({ value, onChange, counts, late, returned }: { value:
   if (returned) items.push({ key: 'returned', label: DELIVERY_STATE.returned.label, n: returned, tone: 'outline' });
   items.push({ key: 'late', label: 'Опаздывают', n: late, tone: 'bad' });
   return (
-    <div className="dl-states" role="radiogroup" aria-label="Состояние доставки">
+    <div className="dl-states" role="radiogroup" aria-label="Состояние доставки" data-hint="delivery.states">
       {items.map((it) => (
         <button
           key={it.key}
@@ -160,9 +160,10 @@ export function MapLink({ d, children, className }: { d: Pick<Delivery, 'lat' | 
   );
 }
 
-export function CallButton({ phone, label = 'Позвонить', size = 'md', block }: { phone: string; label?: string; size?: 'sm' | 'md' | 'lg'; block?: boolean }) {
+export function CallButton({ phone, label = 'Позвонить', size = 'md', block, hint }: { phone: string; label?: string; size?: 'sm' | 'md' | 'lg'; block?: boolean; /** метка для подсказок режима обучения */ hint?: string }) {
   return (
     <a
+      data-hint={hint}
       className={cx('btn btn-secondary', size === 'sm' && 'btn-sm', size === 'lg' && 'btn-lg', block && 'btn-block')}
       href={telUrl(phone)}
       onClick={(e) => e.stopPropagation()}

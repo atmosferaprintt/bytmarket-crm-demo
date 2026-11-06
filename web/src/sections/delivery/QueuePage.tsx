@@ -108,7 +108,7 @@ export function QueuePage() {
       key: 'client',
       header: 'Клиент и адрес',
       render: (d) => (
-        <div className="dl-cell-client">
+        <div className="dl-cell-client" data-hint="delivery.row">
           <div className="cell-title ellipsis">{ix.clients.get(d.clientId)?.name ?? d.contactName}</div>
           <div className="cell-sub ellipsis">
             {d.address} · {shortDistrict(d.district)}
@@ -176,13 +176,15 @@ export function QueuePage() {
       header: 'Статус',
       render: (d) =>
         (compact && lateOf(d, c)) || delayOf(d) ? (
-          <div className="col" style={{ gap: 4, alignItems: 'flex-start' }}>
+          <div className="col" style={{ gap: 4, alignItems: 'flex-start' }} data-hint={d.state === 'on_way' ? 'delivery.onway' : undefined}>
             <StateChip d={d} />
             {compact ? <LateChip d={d} c={c} /> : null}
             <DelayChip d={d} />
           </div>
         ) : (
-          <StateChip d={d} />
+          <span data-hint={d.state === 'on_way' ? 'delivery.onway' : undefined}>
+            <StateChip d={d} />
+          </span>
         ),
       sort: (d) => STATE_RANK[d.state],
       csv: (d) => d.state,
@@ -218,7 +220,7 @@ export function QueuePage() {
         return (
           <span className="row dl-row-acts" onClick={(e) => e.stopPropagation()}>
             {showMain && acts.main ? (
-              <Button size="sm" variant="secondary" onClick={() => flow.act(acts.main!, d)}>
+              <Button size="sm" variant="secondary" data-hint="delivery.row-main" onClick={() => flow.act(acts.main!, d)}>
                 {acts.main.key === 'retry' ? 'Повторить' : acts.main.label}
               </Button>
             ) : null}
@@ -248,7 +250,7 @@ export function QueuePage() {
         section="delivery"
         actions={
           canAssign && waiting.length ? (
-            <Button variant="primary" icon={<UserPlus />} onClick={() => flow.bulk(waiting.map((d) => d.id), day)}>
+            <Button variant="primary" icon={<UserPlus />} data-hint="delivery.assign-all" onClick={() => flow.bulk(waiting.map((d) => d.id), day)}>
               Назначить ожидающие · {waiting.length}
             </Button>
           ) : null
@@ -354,7 +356,7 @@ function PhoneQueue({
           const main = acts?.main && (acts.main.key === 'assign' || acts.main.key === 'retry' || acts.main.key === 'return') ? acts.main : null;
           const more = acts ? (main ? acts.more : acts.all) : [];
           return (
-            <div key={d.id} role="button" tabIndex={0} className="card dl-pcard" onClick={() => onOpen(d)} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onOpen(d))}>
+            <div key={d.id} role="button" tabIndex={0} className="card dl-pcard" data-hint="delivery.row" onClick={() => onOpen(d)} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onOpen(d))}>
               <div className="dl-pcard-top">
                 <span className="w-700 t-14 nowrap">№ {d.number}</span>
                 {o ? <span className="t-12 muted nowrap">заказ № {o.number}</span> : null}
@@ -379,7 +381,7 @@ function PhoneQueue({
                 </span>
               </div>
               <div className="dl-pcard-chips">
-                <span className="chips grow">
+                <span className="chips grow" data-hint={d.state === 'on_way' ? 'delivery.onway' : undefined}>
                   <StateChip d={d} />
                   <LateChip d={d} c={c} />
                   <DelayChip d={d} />
@@ -392,7 +394,7 @@ function PhoneQueue({
               </div>
               {main ? (
                 <div onClick={(e) => e.stopPropagation()}>
-                  <Button size="lg" block icon={main.icon} onClick={() => flow.act(main, d)}>
+                  <Button size="lg" block icon={main.icon} data-hint="delivery.row-main" onClick={() => flow.act(main, d)}>
                     {main.key === 'retry' ? 'Повторить доставку' : main.label}
                   </Button>
                 </div>
@@ -425,7 +427,7 @@ function HandoffCard({ list }: { list: Delivery[] }) {
   }
   if (!groups.size) return null;
   return (
-    <Card title="Передать курьерам">
+    <Card title="Передать курьерам" hint="delivery.handoff">
       <div className="dl-handoff">
         {[...groups.entries()].map(([cid, ds]) => {
           const e = ix.employees.get(cid);

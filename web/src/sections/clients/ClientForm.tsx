@@ -211,7 +211,7 @@ export function ClientFormModal({ client, onClose, onSaved }: { client?: Client;
     >
       {error ? <Notice tone="bad">{error}</Notice> : null}
 
-      <div className="cl-form-grid">
+      <div className="cl-form-grid" data-hint="clients.form-kind">
         <Field label="Тип лица">
           <Segmented value={kind} onChange={setKind} options={KINDS.map((k) => ({ value: k, label: CLIENT_KIND_NAMES[k] }))} />
         </Field>
@@ -253,6 +253,7 @@ export function ClientFormModal({ client, onClose, onSaved }: { client?: Client;
             }}
             inputMode="numeric"
             placeholder={kind === 'person' ? 'Не обязательно' : '10 или 12 цифр'}
+            data-hint="clients.form-inn"
           />
         </Field>
         <Field label="Телефон">
@@ -262,6 +263,7 @@ export function ClientFormModal({ client, onClose, onSaved }: { client?: Client;
           <Select
             value={ownerId}
             disabled={ownerLocked}
+            data-hint="clients.form-owner"
             onChange={(e) => setOwnerId(e.target.value)}
             options={owners}
             placeholder={segment === 'retail' ? 'Без ответственного' : 'Выберите сотрудника'}
@@ -270,7 +272,7 @@ export function ClientFormModal({ client, onClose, onSaved }: { client?: Client;
       </div>
 
       <h3 className="cl-form-title">Условия</h3>
-      <div className="cl-form-grid cl-form-grid-4">
+      <div className="cl-form-grid cl-form-grid-4" data-hint="clients.form-terms">
         <Field label="Отсрочка, дней">
           <Input
             value={deferDays}
@@ -290,11 +292,11 @@ export function ClientFormModal({ client, onClose, onSaved }: { client?: Client;
           <MoneyInput value={minOrder} onChange={setMinOrder} placeholder="0 — без минимума" />
         </Field>
         <Field label="Обычно заказывает раз в, дней">
-          <Input value={every} onChange={(e) => setEvery(e.target.value.replace(/[^\d]/g, '').slice(0, 3))} inputMode="numeric" className="num" placeholder="Не знаем" />
+          <Input value={every} onChange={(e) => setEvery(e.target.value.replace(/[^\d]/g, '').slice(0, 3))} inputMode="numeric" className="num" placeholder="Не знаем" data-hint="clients.form-every" />
         </Field>
       </div>
 
-      <div className="cl-form-section">
+      <div className="cl-form-section" data-hint="clients.form-points">
         <div className="row">
           <h3 className="cl-form-title grow">Торговые точки</h3>
           <Button size="sm" variant="ghost" icon={<Plus />} onClick={() => setPoints((a) => [...a, { key: rowKey(), name: '', address: '', district: DISTRICTS[0].name }])}>

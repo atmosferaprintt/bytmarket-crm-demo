@@ -193,17 +193,21 @@ export function CountModal({ onClose, preset }: { onClose: () => void; preset?: 
             ) : null}
           </span>
           <span className="spacer" />
-          {sheet.length ? <MoreMenu items={[{ label: 'Заполнить остальные по учёту', icon: <ClipboardCheck />, onClick: fillRest }]} /> : null}
+          {sheet.length ? (
+            <span data-hint="stock.count-fill">
+              <MoreMenu items={[{ label: 'Заполнить остальные по учёту', icon: <ClipboardCheck />, onClick: fillRest }]} />
+            </span>
+          ) : null}
           <Button variant="ghost" onClick={onClose}>
             Отмена
           </Button>
-          <Button variant="primary" onClick={() => submit()} disabled={!counted.length}>
+          <Button variant="primary" onClick={() => submit()} disabled={!counted.length} data-hint="stock.count-post">
             Провести пересчёт
           </Button>
         </>
       }
     >
-      <div className="stock-doc-head is-count">
+      <div className="stock-doc-head is-count" data-hint="stock.count-head">
         <Field label="Место">
           <Select value={location} onChange={(e) => setLocation(e.target.value as LocationKey)} options={LOCATION_OPTIONS} />
         </Field>
@@ -217,7 +221,7 @@ export function CountModal({ onClose, preset }: { onClose: () => void; preset?: 
         </div>
       </div>
 
-      {categoryId ? <ProductPicker autoFocus location={location} onPick={(p, pk) => scan(p, pk.qty)} placeholder="Сканируйте товар — прибавим к факту" /> : null}
+      {categoryId ? <ProductPicker autoFocus location={location} onPick={(p, pk) => scan(p, pk.qty)} placeholder="Сканируйте товар — прибавим к факту" hint="stock.count-scan" /> : null}
 
       {!categoryId ? (
         <div className="stock-doc-empty">
@@ -235,7 +239,7 @@ export function CountModal({ onClose, preset }: { onClose: () => void; preset?: 
             <thead>
               <tr>
                 <th>Товар</th>
-                <th className="num" style={{ width: 96 }}>
+                <th className="num" style={{ width: 96 }} data-hint="stock.count-expected">
                   По учёту
                 </th>
                 <th className="num" style={{ width: 84 }}>
@@ -265,7 +269,7 @@ export function CountModal({ onClose, preset }: { onClose: () => void; preset?: 
                     <td className="num">{fmt.num(r.expected)}</td>
                     <td className="num muted">{r.reserved ? fmt.num(r.reserved) : '—'}</td>
                     <td className="num">
-                      <div className="stock-fact-cell">
+                      <div className="stock-fact-cell" data-hint="stock.count-fact">
                         {bx ? (
                           <>
                             <Input size="sm" className="num stock-fact" inputMode="numeric" value={v.b} placeholder="—" title={`Коробок по ${bx.qty} шт`} aria-label={`Коробок: ${r.p.name}`} onChange={(e) => setPart(r.p.id, 'b', e.target.value)} />
@@ -279,7 +283,7 @@ export function CountModal({ onClose, preset }: { onClose: () => void; preset?: 
                       </div>
                       {bx && f !== null && v.b !== '' ? <div className="t-12 w-600 ink-2 stock-fact-eq">= {fmt.qty(f)}</div> : null}
                     </td>
-                    <td className={cx('num w-700', d !== null && d > 0 && 'c-ok', d !== null && d < 0 && 'c-bad')}>{d === null ? <span className="faint">—</span> : d === 0 ? '0' : `${d > 0 ? '+' : '−'}${fmt.num(Math.abs(d))}`}</td>
+                    <td className={cx('num w-700', d !== null && d > 0 && 'c-ok', d !== null && d < 0 && 'c-bad')} data-hint="stock.count-diff">{d === null ? <span className="faint">—</span> : d === 0 ? '0' : `${d > 0 ? '+' : '−'}${fmt.num(Math.abs(d))}`}</td>
                     <td>{f !== null && f < r.reserved ? <Chip tone="bad">Меньше резерва</Chip> : d === 0 ? <Chip tone="ok">Сходится</Chip> : null}</td>
                   </tr>
                 );
@@ -310,13 +314,13 @@ export function CountModal({ onClose, preset }: { onClose: () => void; preset?: 
               <Button variant="ghost" onClick={() => setAskBig(false)}>
                 Пересчитать
               </Button>
-              <Button variant="primary" disabled={big.some((x) => !bigReason[x.r.p.id])} onClick={() => submit(true)}>
+              <Button variant="primary" disabled={big.some((x) => !bigReason[x.r.p.id])} onClick={() => submit(true)} data-hint="stock.count-big-go">
                 Провести с недостачей
               </Button>
             </>
           }
         >
-          <div className="stock-big-list">
+          <div className="stock-big-list" data-hint="stock.count-big">
             {big.map((x) => (
               <div key={x.r.p.id} className="stock-big-row">
                 <div style={{ minWidth: 0 }}>

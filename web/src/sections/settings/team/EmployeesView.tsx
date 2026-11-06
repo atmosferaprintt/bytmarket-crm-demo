@@ -108,6 +108,7 @@ export function EmployeesView({ onOpen, selectedId }: { onOpen: (id: ID) => void
   return (
     <DataTable
       id="settings-team"
+      hint="settings.team.table"
       rows={rows}
       columns={columns}
       rowKey={(e) => e.id}

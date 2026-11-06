@@ -70,7 +70,7 @@ export function WhatsAppCard() {
       </div>
       <div className="wa-set-grid">
         <div className="col" style={{ gap: 10 }}>
-          <span className="set-int-label">Переписка</span>
+          <span className="set-int-label" data-hint="settings.wa.stats">Переписка</span>
           <StatList>
             <StatRow label="Номер магазина" value={fmt.phone(wa.phone)} />
             <StatRow label="Подключён" value={wa.since ? `с ${fmt.date(wa.since)}` : 'нет'} />
@@ -86,7 +86,7 @@ export function WhatsAppCard() {
             <span className="set-int-label grow">Автосообщения</span>
             <span className="set-int-label">За 7 дней</span>
           </span>
-          <div className="wa-auto-list" role="list">
+          <div className="wa-auto-list" role="list" data-hint="settings.wa.auto">
             {WA_AUTO_KEYS.map((k) => (
               <div key={k} role="listitem" className={cx('wa-auto-row', sel === k && 'is-active')} onClick={() => setSel(k)}>
                 <span onClick={(e) => e.stopPropagation()}>
@@ -104,7 +104,7 @@ export function WhatsAppCard() {
 
         <div className="col" style={{ gap: 10 }}>
           <span className="set-int-label">Так видит клиент · {WA_AUTO_META[sel].label}</span>
-          <div className="set-chat wa-preview">
+          <div className="set-chat wa-preview" data-hint="settings.wa.preview">
             {sample ? (
               <>
                 <span className="t-11 muted" style={{ alignSelf: 'center' }}>
@@ -128,7 +128,7 @@ export function WhatsAppCard() {
           {!wa.auto[sel] ? <span className="t-12 muted">Сейчас выключено — клиенты его не получают</span> : null}
         </div>
       </div>
-      <div className="set-int-foot">
+      <div className="set-int-foot" data-hint="settings.wa.foot">
         <Button onClick={() => navigate('/chats')}>Открыть чаты</Button>
         {isOwner ? (
           wa.connected ? (

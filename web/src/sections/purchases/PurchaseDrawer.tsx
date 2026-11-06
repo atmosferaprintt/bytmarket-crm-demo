@@ -167,14 +167,16 @@ export default function EntityDrawer({ id, onClose, initialMode = 'view' }: Enti
   const footer =
     mode === 'receive' ? (
       <>
-        <Checkbox checked={final} onChange={setFinal}>
-          Больше не ждём — закрыть закупку
-        </Checkbox>
+        <span data-hint="purchases.recv-final">
+          <Checkbox checked={final} onChange={setFinal}>
+            Больше не ждём — закрыть закупку
+          </Checkbox>
+        </span>
         <span className="spacer" />
         <Button variant="ghost" onClick={() => setMode('view')}>
           Отмена
         </Button>
-        <Button variant="primary" icon={<PackageCheck />} onClick={submitReceive}>
+        <Button variant="primary" icon={<PackageCheck />} onClick={submitReceive} data-hint="purchases.recv-post">
           Провести приёмку
         </Button>
       </>
@@ -188,17 +190,17 @@ export default function EntityDrawer({ id, onClose, initialMode = 'view' }: Enti
         <span className="spacer" />
         <MoreMenu items={[{ label: 'Печать', icon: <Printer />, onClick: () => printer.print(sheet) }]} />
         {canPay ? (
-          <Button variant={canApprove || canReceive ? 'secondary' : 'primary'} icon={<Wallet />} onClick={() => setPay(true)}>
+          <Button variant={canApprove || canReceive ? 'secondary' : 'primary'} icon={<Wallet />} onClick={() => setPay(true)} data-hint="purchases.pay">
             Оплатить
           </Button>
         ) : null}
         {canApprove ? (
-          <Button variant="primary" icon={<CheckCircle2 />} onClick={approve}>
+          <Button variant="primary" icon={<CheckCircle2 />} onClick={approve} data-hint="purchases.approve">
             Подтвердить закупку
           </Button>
         ) : null}
         {canReceive ? (
-          <Button variant="primary" icon={<PackageCheck />} onClick={startReceive}>
+          <Button variant="primary" icon={<PackageCheck />} onClick={startReceive} data-hint="purchases.receive-start">
             {pu.state === 'partial' ? 'Принять остаток' : 'Принять товар'}
           </Button>
         ) : null}
@@ -222,10 +224,14 @@ export default function EntityDrawer({ id, onClose, initialMode = 'view' }: Enti
       }
       footer={footer}
     >
-      {mode === 'view' ? <Steps items={steps} /> : null}
+      {mode === 'view' ? (
+        <div data-hint="purchases.steps" style={{ alignSelf: 'flex-start' }}>
+          <Steps items={steps} />
+        </div>
+      ) : null}
 
       {mode === 'view' ? (
-        <div className="grid-2">
+        <div className="grid-2" data-hint="purchases.info">
           <StatList>
             <StatRow label="Поставщик" value={s ? <EntityLink type="supplier" id={s.id}>{s.name}</EntityLink> : '—'} />
             <StatRow label="Ожидаем" value={<span className={row.lateDays ? 'c-bad' : undefined}>{fmt.relDate(pu.expectedAt, today)}</span>} />
@@ -245,7 +251,7 @@ export default function EntityDrawer({ id, onClose, initialMode = 'view' }: Enti
       {pu.comment && mode === 'view' ? <div className="t-13 ink-2">{pu.comment}</div> : null}
 
       {mode === 'view' ? (
-      <section className="card is-flush">
+      <section className="card is-flush" data-hint="purchases.lines">
         <div className="table-scroll">
           <table className="table table-dense pur-lines stock-tight-table">
             <thead>
@@ -320,7 +326,7 @@ export default function EntityDrawer({ id, onClose, initialMode = 'view' }: Enti
       ) : null}
 
       {seeCost && mode === 'view' && (pu.state === 'partial' || pu.state === 'received') ? (
-        <Card title="Оплаты" flush>
+        <Card title="Оплаты" flush hint="purchases.pays">
           <div className="pur-pay-sum">
             <StatList>
               <StatRow label="Принято на сумму" value={fmt.money(row.accepted)} />

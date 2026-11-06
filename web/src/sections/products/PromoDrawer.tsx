@@ -48,11 +48,13 @@ export default function PromoDrawer({ id, onClose }: { id: string; onClose: () =
         can('promos') ? (
           <>
             {pr.active ? (
-              <ConfirmButton onConfirm={() => toggle(false)} confirmText="Выключить акцию?">
+              <ConfirmButton onConfirm={() => toggle(false)} confirmText="Выключить акцию?" data-hint="products.promo-toggle">
                 Выключить акцию
               </ConfirmButton>
             ) : (
-              <Button onClick={() => toggle(true)}>Включить акцию</Button>
+              <Button onClick={() => toggle(true)} data-hint="products.promo-toggle">
+                Включить акцию
+              </Button>
             )}
             <span className="spacer" />
             <span className="muted t-12">Создал {author}</span>
@@ -70,7 +72,7 @@ export default function PromoDrawer({ id, onClose }: { id: string; onClose: () =
           ]}
         />
       </Block>
-      <Block title={`Товары, цена ${pr.audience === 'wholesale' ? 'опт' : 'розница'}`}>
+      <Block title={`Товары, цена ${pr.audience === 'wholesale' ? 'опт' : 'розница'}`} hint="products.promo-goods">
         {products.length ? (
           <div className="table-scroll prd-inner-table">
             <table className="table table-dense">

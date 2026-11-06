@@ -25,7 +25,7 @@ export function PeriodBar({
   const cmp = hasCompare(value, today, start);
   return (
     <div className="ovp-bar">
-      <div className="ovp-group" role="group" aria-label="Период">
+      <div className="ovp-group" role="group" aria-label="Период" data-hint="period.nav">
         <button type="button" className="btn btn-ghost btn-icon btn-sm" disabled={!back} onClick={() => onChange(shiftPeriod(value, -1))} aria-label="Предыдущий период" title="Предыдущий период">
           <ChevronLeft />
         </button>
@@ -39,7 +39,7 @@ export function PeriodBar({
       </div>
       <Segmented ariaLabel="Вид периода" value={periodPick(value, today)} onChange={(v) => onChange(fromPick(v, today))} options={PERIOD_KINDS} />
       {compare ? (
-        <span className="ovp-compare" title={cmp ? 'Изменения в процентах считаются к тому же отрезку прошлого периода' : 'История в базе начинается позже — сравнивать не с чем'}>
+        <span className="ovp-compare" data-hint="period.compare" title={cmp ? 'Изменения в процентах считаются к тому же отрезку прошлого периода' : 'История в базе начинается позже — сравнивать не с чем'}>
           {cmp ? compareText(value, today) : 'Сравнивать не с чем'}
         </span>
       ) : null}

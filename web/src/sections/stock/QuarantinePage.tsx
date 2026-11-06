@@ -132,6 +132,7 @@ function DecisionModal({ q, kind, onClose }: { q: QuarantineItem; kind: Decision
         </>
       }
     >
+      <div data-hint="stock.q-info">
       <StatList>
         <StatRow label="На проверке" value={<b>{fmt.qty(q.qty)}</b>} />
         <StatRow label="Откуда" value={<span className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>{Q_SOURCE[q.source]} · <QSourceLink db={db} q={q} /></span>} />
@@ -140,10 +141,12 @@ function DecisionModal({ q, kind, onClose }: { q: QuarantineItem; kind: Decision
         {kind === 'supplier' && supplier ? <StatRow label="Поставщик" value={supplier.name} /> : null}
         {kind === 'supplier' && can('seeCost') ? <StatRow total label="По закупочной цене" value={fmt.money(sum)} /> : null}
       </StatList>
+      </div>
       {kind === 'writeoff' ? (
         <Field label="Причина списания">
           <Select
             value={reason}
+            data-hint="stock.q-reason"
             onChange={(e) => setReason(e.target.value as WriteoffReason)}
             options={(Object.keys(WRITEOFF_REASONS) as WriteoffReason[]).filter((k) => k !== 'supplier_return').map((k) => ({ value: k, label: WRITEOFF_REASONS[k] }))}
           />
@@ -152,6 +155,7 @@ function DecisionModal({ q, kind, onClose }: { q: QuarantineItem; kind: Decision
       <Field label="Комментарий">
         <Input
           value={comment}
+          data-hint="stock.q-comment"
           onChange={(e) => setComment(e.target.value)}
           placeholder={kind === 'supplier' ? `Например: забрал водитель, накладная на возврат № …` : kind === 'release' ? 'Например: упаковка целая, проверил' : q.reason}
         />
@@ -270,11 +274,11 @@ export default function QuarantinePage() {
       render: (q) => (
         <span className="stock-qactions" onClick={(e) => e.stopPropagation()}>
           {q.source === 'purchase_defect' ? (
-            <Button size="sm" icon={<Undo2 />} onClick={() => setDecide({ q, kind: 'supplier' })} title="Брак поставщика: списать как возврат и передать бухгалтеру">
+            <Button size="sm" icon={<Undo2 />} onClick={() => setDecide({ q, kind: 'supplier' })} title="Брак поставщика: списать как возврат и передать бухгалтеру" data-hint="stock.q-supplier">
               Вернуть поставщику
             </Button>
           ) : quarantineCanRelease(q) ? (
-            <Button size="sm" icon={<RotateCcw />} onClick={() => setDecide({ q, kind: 'release' })} title="Проверено, товар целый — вернуть в продажу">
+            <Button size="sm" icon={<RotateCcw />} onClick={() => setDecide({ q, kind: 'release' })} title="Проверено, товар целый — вернуть в продажу" data-hint="stock.q-release">
               В продажу
             </Button>
           ) : (
@@ -282,7 +286,7 @@ export default function QuarantinePage() {
               Только списание
             </span>
           )}
-          <Button size="sm" variant="ghost" icon={<Trash2 />} onClick={() => setDecide({ q, kind: 'writeoff' })}>
+          <Button size="sm" variant="ghost" icon={<Trash2 />} onClick={() => setDecide({ q, kind: 'writeoff' })} data-hint="stock.q-writeoff">
             Списать
           </Button>
         </span>
@@ -306,7 +310,7 @@ export default function QuarantinePage() {
       <div className="stock-tight col-4">
       <DataTable
         id="stock-quarantine"
-        title="На проверке"
+        title={<span data-hint="stock.q-title">На проверке</span>}
         rows={pending}
         columns={columns}
         rowKey={(q) => q.id}
@@ -325,7 +329,7 @@ export default function QuarantinePage() {
       {decided.length ? (
         <DataTable
           id="stock-quarantine-history"
-          title="История решений"
+          title={<span data-hint="stock.q-history">История решений</span>}
           rows={decided}
           columns={histColumns}
           rowKey={(q) => q.id}

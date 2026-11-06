@@ -108,7 +108,7 @@ export default function Home() {
       <PageHeader
         section="overview"
         actions={
-          <Button variant="primary" icon={<Plus />} onClick={() => setCreating({})}>
+          <Button variant="primary" icon={<Plus />} onClick={() => setCreating({})} data-hint="sales.home-new">
             Новый заказ
           </Button>
         }
@@ -124,6 +124,7 @@ export default function Home() {
       <div className="sales-home">
         <div className="col-4">
           <Card
+            hint="sales.home-requests"
             title="Заявки ждут подтверждения"
             actions={
               data.requests.length ? (
@@ -152,7 +153,7 @@ export default function Home() {
                         </div>
                         <div className="muted t-12 ellipsis">{[whose, by, fmt.dateTime(o.createdAt)].filter(Boolean).join(' · ')}</div>
                         {flags ? (
-                          <span className="chips sales-req-chips">
+                          <span className="chips sales-req-chips" data-hint="sales.home-req-flags">
                             {info?.approval ? (
                               <StatusChip s={APPROVAL_STATUS} />
                             ) : info?.problems.length ? (
@@ -175,7 +176,7 @@ export default function Home() {
             )}
           </Card>
 
-          <Card title="Мои заказы в работе" actions={<Link to="/sales" className="sales-more-link">Все заказы<ChevronRight size={14} /></Link>} flush>
+          <Card hint="sales.home-stages" title="Мои заказы в работе" actions={<Link to="/sales" className="sales-more-link">Все заказы<ChevronRight size={14} /></Link>} flush>
             <div className="list">
               {data.stages
                 .filter((s) => s.n > 0 || (s.key !== 'failed' && s.key !== 'nodelivery'))
@@ -194,7 +195,7 @@ export default function Home() {
           </Card>
 
           {data.missed.length ? (
-            <Card title="Пропустили привычный заказ" flush>
+            <Card hint="sales.home-missed" title="Пропустили привычный заказ" flush>
               <div className="list">
                 {data.missed.map(({ c, last, lastAt, late }) => (
                   <div key={c.id} className="list-row">
@@ -229,7 +230,7 @@ export default function Home() {
         </div>
 
         <div className="col-4">
-          <Card title={`План на ${fmt.monthName(today.slice(0, 7), false).toLowerCase()}`}>
+          <Card hint="sales.home-plan" title={`План на ${fmt.monthName(today.slice(0, 7), false).toLowerCase()}`}>
             {data.plan ? (
               <div className="col-3">
                 <div className="row" style={{ alignItems: 'baseline' }}>
@@ -255,7 +256,7 @@ export default function Home() {
             )}
           </Card>
 
-          <Card title="Задачи на сегодня" flush>
+          <Card hint="sales.home-tasks" title="Задачи на сегодня" flush>
             {data.tasks.length ? (
               <div className="list">
                 {data.tasks.slice(0, 7).map((t) => {
@@ -286,7 +287,7 @@ export default function Home() {
             )}
           </Card>
 
-          <Card title="Долги и просрочка" actions={<Link to="/money/debts" className="sales-more-link">Все долги<ChevronRight size={14} /></Link>} flush>
+          <Card hint="sales.home-debts" title="Долги и просрочка" actions={<Link to="/money/debts" className="sales-more-link">Все долги<ChevronRight size={14} /></Link>} flush>
             {data.debts.length ? (
               <div className="list">
                 {data.debts.slice(0, 6).map(({ c, b }) => (

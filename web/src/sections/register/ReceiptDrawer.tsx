@@ -108,12 +108,12 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
       }
       footer={
         <>
-          <Button icon={<Printer />} onClick={() => print(r.id)}>
+          <Button icon={<Printer />} onClick={() => print(r.id)} data-hint="register.rcpt-print">
             Печать
           </Button>
           <span className="spacer" />
           {canRefund ? (
-            <Button variant="primary" icon={<Undo2 />} onClick={() => setRefunding(true)}>
+            <Button variant="primary" icon={<Undo2 />} onClick={() => setRefunding(true)} data-hint="register.rcpt-refund">
               Вернуть по чеку
             </Button>
           ) : null}
@@ -132,7 +132,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
         </Notice>
       ) : null}
 
-      <section className="card reg-dr-lines reg-noshrink">
+      <section className="card reg-dr-lines reg-noshrink" data-hint="register.rcpt-lines">
         <table className="table table-dense">
           <thead>
             <tr>
@@ -194,7 +194,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
             {info.profit !== null && can('seeProfit') && r.kind === 'sale' ? <StatRow label="Валовая прибыль" value={fmt.money(info.profit)} /> : null}
           </StatList>
         </section>
-        <section className="card card-pad">
+        <section className="card card-pad" data-hint="register.rcpt-pay">
           <div className="card-title" style={{ marginBottom: 8 }}>
             {r.kind === 'refund' ? 'Деньги вернули' : 'Оплата'}
           </div>
@@ -339,7 +339,7 @@ function RefundForm({ receiptId, onCancel, onClose, meId }: { receiptId: ID; onC
             Назад к чеку
           </Button>
           <span className="spacer" />
-          <Button variant="primary" icon={<Undo2 />} onClick={submit} disabled={!shift || !count || !!methodError} loading={busy}>
+          <Button variant="primary" icon={<Undo2 />} onClick={submit} disabled={!shift || !count || !!methodError} loading={busy} data-hint="register.refund-submit">
             {amount > 0 ? `Вернуть ${fmt.money(amount)}` : 'Вернуть'}
           </Button>
         </>
@@ -347,7 +347,7 @@ function RefundForm({ receiptId, onCancel, onClose, meId }: { receiptId: ID; onC
     >
       {!shift ? <Notice tone="warn">Откройте смену — деньги возвращаются из кассы</Notice> : null}
 
-      <section className="card reg-dr-lines reg-noshrink">
+      <section className="card reg-dr-lines reg-noshrink" data-hint="register.refund-lines">
         <table className="table table-dense">
           <thead>
             <tr>
@@ -403,16 +403,18 @@ function RefundForm({ receiptId, onCancel, onClose, meId }: { receiptId: ID; onC
             options={SHOP_RETURN_REASONS.map((k) => ({ value: k, label: RETURN_REASONS[k] }))}
           />
         </Field>
-        <Field label="Деньги вернуть" error={methodError ?? undefined}>
-          <Segmented<'cash' | 'card'>
-            value={method}
-            onChange={setMethod}
-            options={[
-              { value: 'cash', label: 'Наличными' },
-              ...(r.card > 0 ? [{ value: 'card' as const, label: 'На карту' }] : []),
-            ]}
-          />
-        </Field>
+        <div data-hint="register.refund-method">
+          <Field label="Деньги вернуть" error={methodError ?? undefined}>
+            <Segmented<'cash' | 'card'>
+              value={method}
+              onChange={setMethod}
+              options={[
+                { value: 'cash', label: 'Наличными' },
+                ...(r.card > 0 ? [{ value: 'card' as const, label: 'На карту' }] : []),
+              ]}
+            />
+          </Field>
+        </div>
       </div>
       <Field label="Комментарий" className="reg-noshrink">
         <Textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Например: протекла крышка" rows={2} />

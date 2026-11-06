@@ -14,6 +14,7 @@ function IntCard({
   children,
   foot,
   wide,
+  hint,
 }: {
   icon: ReactNode;
   title: string;
@@ -22,9 +23,11 @@ function IntCard({
   children?: ReactNode;
   foot?: ReactNode;
   wide?: boolean;
+  /** метка для подсказок режима обучения: data-hint */
+  hint?: string;
 }) {
   return (
-    <section className={cx('card', 'set-int', wide && 'is-wide')}>
+    <section className={cx('card', 'set-int', wide && 'is-wide')} data-hint={hint}>
       <div className="set-int-head">
         <IconTile>{icon}</IconTile>
         <span className="set-int-title grow">{title}</span>
@@ -94,6 +97,7 @@ export function IntegrationsPage() {
           <IntCard
             icon={<ScanBarcode />}
             title="Касса и ККТ"
+            hint="settings.kkt"
             chip={{ label: 'Не подключена', tone: 'warn' }}
             what="Чеки печатаются из программы, но не фискальные: в налоговую они не уходят."
             foot={<Button onClick={() => navigate('/register')}>Открыть кассу</Button>}
@@ -113,6 +117,7 @@ export function IntegrationsPage() {
           <IntCard
             icon={<Landmark />}
             title="Банк"
+            hint="settings.bank"
             chip={{ label: 'Вручную', tone: 'neutral' }}
             what="Переводы бухгалтер подтверждает по выписке банка. Пока перевод не подтверждён, долг клиента не закрыт."
             foot={<Button onClick={() => navigate('/money')}>Открыть журнал денег</Button>}
@@ -124,7 +129,7 @@ export function IntegrationsPage() {
             <Points label="Можно добавить" icon={<Clock />} items={['Загрузку выписки файлом: программа сама найдёт оплату по сумме и ИНН плательщика']} />
           </IntCard>
 
-          <IntCard icon={<Layers />} title="1С" chip={{ label: 'Не используется', tone: 'neutral' }} what="У магазина нет 1С: товары, остатки, заказы и деньги учитываются здесь.">
+          <IntCard hint="settings.1c" icon={<Layers />} title="1С" chip={{ label: 'Не используется', tone: 'neutral' }} what="У магазина нет 1С: товары, остатки, заказы и деньги учитываются здесь.">
             <StatList>
               <StatRow label="Где ведётся учёт" value="В этой программе" />
               <StatRow label="Обмен с 1С" value="Не настроен" />
@@ -144,10 +149,12 @@ export function IntegrationsPage() {
           wide
           icon={<HardDrive />}
           title="Резервная копия"
+          hint="settings.backup"
           chip={{ label: 'В этом браузере', tone: 'info' }}
           what="Все записи хранятся в этом браузере на этом компьютере. Если очистить данные браузера, изменения пропадут."
           foot={
             <ConfirmButton
+              data-hint="settings.reset"
               icon={<RotateCcw />}
               confirmText="Стереть все изменения и вернуть исходные данные?"
               onConfirm={() => {

@@ -75,7 +75,7 @@ export function ClientsPage() {
       key: 'name',
       header: 'Клиент',
       render: (r) => (
-        <div className="cl-cell-client" title={r.c.name}>
+        <div className="cl-cell-client" title={r.c.name} data-hint="clients.row">
           <div className="cell-title ellipsis">{r.c.name}</div>
           <div className="cell-sub ellipsis">
             {kindName(r.c)} · {segmentName(r.c)}
@@ -112,7 +112,7 @@ export function ClientsPage() {
       align: 'right',
       render: (r) =>
         r.b.debt > 0 ? (
-          <span className="cl-cell-stack is-right">
+          <span className="cl-cell-stack is-right" data-hint="clients.debt">
             <span className="w-600">{fmt.money(r.b.debt)}</span>
             {r.b.maxOverdueDays > 0 ? (
               <span title={`Просрочено ${fmt.money(r.b.overdue)}`}>
@@ -134,7 +134,7 @@ export function ClientsPage() {
       align: 'right',
       render: (r) =>
         r.c.creditLimit > 0 ? (
-          <span className={cx(r.overLimit && 'c-bad w-600')} title={`Лимит ${fmt.money(r.c.creditLimit)}`}>
+          <span className={cx(r.overLimit && 'c-bad w-600')} title={`Лимит ${fmt.money(r.c.creditLimit)}`} data-hint="clients.limit">
             {fmt.money(r.b.creditLeft)}
           </span>
         ) : (
@@ -151,7 +151,7 @@ export function ClientsPage() {
         <span className="cl-cell-stack">
           <span className="nowrap">{r.b.lastOrderAt ? fmt.relDate(r.b.lastOrderAt, today) : <span className="faint">ещё не покупал</span>}</span>
           {r.missed ? (
-            <span title={`Пропустил привычный заказ: обычно заказывает раз в ${fmt.count(r.c.orderEveryDays ?? 0, 'день', 'дня', 'дней')}, с последней покупки прошло ${fmt.count(r.daysSince ?? 0, 'день', 'дня', 'дней')}`}>
+            <span data-hint="clients.missed" title={`Пропустил привычный заказ: обычно заказывает раз в ${fmt.count(r.c.orderEveryDays ?? 0, 'день', 'дня', 'дней')}, с последней покупки прошло ${fmt.count(r.daysSince ?? 0, 'день', 'дня', 'дней')}`}>
               <Chip tone="warn">Пропустил привычный заказ</Chip>
             </span>
           ) : null}
@@ -175,6 +175,7 @@ export function ClientsPage() {
     <Select
       size="sm"
       className="cl-owner-select"
+      data-hint="clients.owner-filter"
       value={ownerFilter}
       onChange={(e) => setOwnerFilter(e.target.value)}
       aria-label="Ответственный"
@@ -188,7 +189,7 @@ export function ClientsPage() {
         section="clients"
         actions={
           can('editClients') ? (
-            <Button variant="primary" icon={<UserPlus />} onClick={() => setCreating(true)}>
+            <Button variant="primary" icon={<UserPlus />} onClick={() => setCreating(true)} data-hint="clients.add">
               Добавить клиента
             </Button>
           ) : null
@@ -199,7 +200,7 @@ export function ClientsPage() {
           <Kpi label={role === 'rep' || role === 'manager' ? 'Мои клиенты' : 'Клиентов'} value={fmt.num(rows.length)} />
           <Kpi label="Должны нам" value={fmt.money(kpi.debt)} />
           <Kpi label={`Просрочено у ${fmt.count(kpi.overdueN, 'клиента', 'клиентов', 'клиентов')}`} value={<span className={cx(kpi.overdue > 0 && 'c-bad')}>{fmt.money(kpi.overdue)}</span>} />
-          <Kpi label="Пропустили привычный заказ" value={fmt.num(kpi.missed)} />
+          <Kpi hint="clients.missed-kpi" label="Пропустили привычный заказ" value={fmt.num(kpi.missed)} />
         </div>
       ) : null}
       {phone ? (
@@ -248,7 +249,7 @@ function ClientCards({ rows, onOpen }: { rows: ClientRow[]; onOpen: (id: string)
   return (
     <>
       <SearchInput value={q} onChange={setQ} placeholder="Клиент, адрес или телефон" size="lg" />
-      <div className="cl-seg-scroll">
+      <div className="cl-seg-scroll" data-hint="clients.phone-filter">
         <Segmented value={f} onChange={setF} options={FILTER.options.map((o) => ({ value: o.value, label: o.label, count: counts[o.value] }))} />
       </div>
       <div className="row t-13">
@@ -263,7 +264,7 @@ function ClientCards({ rows, onOpen }: { rows: ClientRow[]; onOpen: (id: string)
       {list.length ? (
         <div className="col-3">
           {list.map((r) => (
-            <button key={r.c.id} type="button" className="card cl-client-card" onClick={() => onOpen(r.c.id)}>
+            <button key={r.c.id} type="button" className="card cl-client-card" onClick={() => onOpen(r.c.id)} data-hint="clients.phone-card">
               <span className="row" style={{ alignItems: 'flex-start' }}>
                 <span className="grow">
                   <span className="cl-client-card-name">{r.c.name}</span>

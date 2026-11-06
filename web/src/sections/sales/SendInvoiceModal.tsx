@@ -97,9 +97,11 @@ export function SendWhatsAppModal({ clientId, title, initialText, file, orderId,
           <FileChip file={file} />
         </Field>
       ) : null}
-      <Field label="Сообщение">
-        <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={7} />
-      </Field>
+      <div data-hint="chats.send-text">
+        <Field label="Сообщение">
+          <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={7} />
+        </Field>
+      </div>
       {blocked ? <Notice tone="warn">{blocked}</Notice> : null}
       {error ? <Notice tone="bad">{error}</Notice> : null}
     </Modal>

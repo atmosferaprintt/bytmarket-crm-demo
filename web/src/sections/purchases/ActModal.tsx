@@ -192,22 +192,26 @@ export function ActModal({ s, onClose }: { s: Supplier; onClose: () => void }) {
       footer={
         <>
           {task ? (
-            <Checkbox checked={closeTask} onChange={setCloseTask}>
-              Закрыть задачу «{task.title}»
-            </Checkbox>
+            <span data-hint="purchases.act-task">
+              <Checkbox checked={closeTask} onChange={setCloseTask}>
+                Закрыть задачу «{task.title}»
+              </Checkbox>
+            </span>
           ) : null}
           <span className="spacer" />
           <Button variant="ghost" onClick={onClose}>
             Закрыть
           </Button>
-          <Button variant="primary" icon={<Printer />} onClick={doPrint}>
+          <Button variant="primary" icon={<Printer />} onClick={doPrint} data-hint="purchases.act-print">
             Печать акта
           </Button>
         </>
       }
     >
-      <Segmented ariaLabel="Период" value={key} onChange={setKey} options={[...list.map((p) => ({ value: p.key, label: p.label })), { value: 'all', label: all.label }]} />
-      <div className="pur-act-sum">
+      <div className="col" data-hint="purchases.act-period">
+        <Segmented ariaLabel="Период" value={key} onChange={setKey} options={[...list.map((p) => ({ value: p.key, label: p.label })), { value: 'all', label: all.label }]} />
+      </div>
+      <div className="pur-act-sum" data-hint="purchases.act-sum">
         <div>
           <div className="t-12 muted">Сальдо на {fmt.date(period.from)}</div>
           <div className="w-700 t-16">{fmt.money(opening)}</div>
@@ -228,7 +232,7 @@ export function ActModal({ s, onClose }: { s: Supplier; onClose: () => void }) {
       {inside.length === 0 ? (
         <EmptyState title="За этот период движений нет">Сальдо не менялось: {saldoText(opening)}</EmptyState>
       ) : (
-        <div className="stock-doc-lines pur-act-table">
+        <div className="stock-doc-lines pur-act-table" data-hint="purchases.act-table">
           <table className="table table-dense">
             <thead>
               <tr>

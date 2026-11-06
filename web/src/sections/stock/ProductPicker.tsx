@@ -24,6 +24,7 @@ export function ProductPicker({
   placeholder = 'Сканируйте штрихкод или найдите товар',
   autoFocus,
   extra,
+  hint,
 }: {
   onPick: (p: Product, pack: Pack) => void;
   location?: LocationKey | null;
@@ -32,6 +33,8 @@ export function ProductPicker({
   autoFocus?: boolean;
   /** дополнительный текст справа в подсказке */
   extra?: (p: Product) => string | null;
+  /** метка для подсказок режима обучения: data-hint */
+  hint?: string;
 }) {
   const db = useDB();
   const version = useDBVersion();
@@ -151,7 +154,7 @@ export function ProductPicker({
       : null;
 
   return (
-    <div className="stock-picker">
+    <div className="stock-picker" data-hint={hint}>
       <Input
         ref={ref}
         size="lg"

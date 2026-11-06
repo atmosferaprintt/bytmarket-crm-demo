@@ -133,7 +133,7 @@ export function VisitResultSheet({
       onClose={onClose}
       footer={
         <>
-          <ConfirmButton variant="ghost" size="lg" onConfirm={missed} confirmText="Не состоялся?">
+          <ConfirmButton variant="ghost" size="lg" onConfirm={missed} confirmText="Не состоялся?" data-hint="rep.result-missed">
             Визит не состоялся
           </ConfirmButton>
           <span className="spacer" />
@@ -146,7 +146,7 @@ export function VisitResultSheet({
       {error ? <Notice tone="bad">{error}</Notice> : null}
 
       {noOrder ? null : (
-      <div className="cl-result-opts" role="radiogroup" aria-label="Чем закончился визит">
+      <div className="cl-result-opts" role="radiogroup" aria-label="Чем закончился визит" data-hint="rep.result-opts">
         {OPTIONS.map((o) => (
           <button
             key={o.key}
@@ -193,7 +193,7 @@ export function VisitResultSheet({
       {result === 'refusal' ? (
         <div className="col" style={{ gap: 8 }}>
           <div className="field-label">{noOrder ? 'Почему без заказа' : 'Причина отказа'}</div>
-          <div className="cl-reasons" role="radiogroup" aria-label="Причина отказа">
+          <div className="cl-reasons" role="radiogroup" aria-label="Причина отказа" data-hint="rep.result-reasons">
             {REFUSAL_REASONS.map((r) => (
               <button
                 key={r}
@@ -214,7 +214,7 @@ export function VisitResultSheet({
       ) : null}
 
       {result === 'callback' ? (
-        <div className="cl-callback">
+        <div className="cl-callback" data-hint="rep.result-callback">
           <Checkbox checked={callbackTask} onChange={setCallbackTask}>
             Поставить себе задачу перезвонить
           </Checkbox>

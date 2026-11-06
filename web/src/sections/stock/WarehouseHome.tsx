@@ -102,6 +102,7 @@ export default function Home() {
   const pickCard = (
     <Card
       flush
+      hint="stock.home-pick"
       title="К сборке сегодня"
       sub={data.todayPick.length ? [notStarted ? `не начато ${notStarted}` : '', inWork ? `собирается ${inWork}` : ''].filter(Boolean).join(' · ') : undefined}
       actions={
@@ -174,6 +175,7 @@ export default function Home() {
   const handCard = (
     <Card
       flush
+      hint="stock.home-couriers"
       title="Передать курьерам"
       actions={
         <Button variant="ghost" size="sm" iconRight={<ChevronRight />} onClick={() => navigate('/delivery')}>
@@ -215,7 +217,7 @@ export default function Home() {
   );
 
   const pickupCard = data.toPickup.length ? (
-    <Card flush title="Ждут самовывоза">
+    <Card flush title="Ждут самовывоза" hint="stock.home-pickup">
       <div>
         {data.toPickup.slice(0, 4).map((x) => (
           <button key={x.id} type="button" className="stock-list-row" onClick={() => navigate(`/stock/picking?order=${x.id}`)}>
@@ -246,6 +248,7 @@ export default function Home() {
   const incomingCard = (
     <Card
       flush
+      hint="stock.home-incoming"
       title="Ожидаются поставки"
       actions={
         <Button variant="ghost" size="sm" iconRight={<ChevronRight />} onClick={() => navigate('/purchases')}>
@@ -283,7 +286,7 @@ export default function Home() {
   );
 
   const requestsBlock = data.requests.length ? (
-    <div className="stock-requests">
+    <div className="stock-requests" data-hint="stock.home-requests">
       <div className="stock-requests-head">Просьбы продавцов · {fmt.num(data.requests.length)}</div>
       {data.requests.map((r) => (
         <div key={r.task.id} className="stock-request-row">
@@ -318,6 +321,7 @@ export default function Home() {
   const moveCard = (
     <Card
       flush
+      hint="stock.home-shoplow"
       title="Мало в магазине"
       actions={
         moveLines.length && can('transfer') ? (
@@ -372,6 +376,7 @@ export default function Home() {
   const quarantineCard = (
     <Card
       flush
+      hint="stock.home-quarantine"
       title="Карантин на проверке"
       actions={
         <Button variant="ghost" size="sm" iconRight={<ChevronRight />} onClick={() => navigate('/stock/quarantine')}>

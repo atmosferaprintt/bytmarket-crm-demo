@@ -38,7 +38,7 @@ export function ReportTop({ menu = [] }: { menu?: MenuItem[] }) {
 export function HowCalc({ rows }: { rows: [string, ReactNode][] }) {
   const [open, setOpen] = useState(false);
   return (
-    <section className="card rp-how">
+    <section className="card rp-how" data-hint="reports.how">
       <button type="button" className="rp-how-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         <Info />
         <span className="grow">Как считается</span>
@@ -121,6 +121,7 @@ export function DocsDrawer({ title, sub, rows, onClose, amountLabel = 'Сумм�
   return (
     <Drawer title={title} sub={sub} onClose={onClose} wide>
       {extra}
+      <div data-hint="reports.docs">
       <DataTable
         card={false}
         rows={rows}
@@ -133,6 +134,7 @@ export function DocsDrawer({ title, sub, rows, onClose, amountLabel = 'Сумм�
         dense
         pageSize={40}
       />
+      </div>
     </Drawer>
   );
 }

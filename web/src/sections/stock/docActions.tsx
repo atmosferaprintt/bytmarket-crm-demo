@@ -46,14 +46,16 @@ export function StockDocButtons({ open, extraMenu = [], primary = true }: { open
   ];
   return (
     <>
-      {can('transfer') ? (
-        <Button icon={<ArrowLeftRight />} onClick={() => open('transfer')}>
-          Перемещение
-        </Button>
-      ) : null}
-      <MoreMenu items={menu} />
+      <span className="row" data-hint="stock.docs">
+        {can('transfer') ? (
+          <Button icon={<ArrowLeftRight />} onClick={() => open('transfer')}>
+            Перемещение
+          </Button>
+        ) : null}
+        <MoreMenu items={menu} />
+      </span>
       {receive ? (
-        <Button variant={primary ? 'primary' : 'secondary'} icon={<Truck />} onClick={() => open('receive')}>
+        <Button variant={primary ? 'primary' : 'secondary'} icon={<Truck />} onClick={() => open('receive')} data-hint="stock.receive">
           Принять поставку
         </Button>
       ) : can('income') ? (
@@ -80,7 +82,7 @@ function ReceiveListModal({ onPick, onManual, onClose }: { onPick: (id: string) 
       footer={
         <>
           {can('income') ? (
-            <Button variant="ghost" icon={<PackagePlus />} onClick={onManual}>
+            <Button variant="ghost" icon={<PackagePlus />} onClick={onManual} data-hint="stock.recv-manual">
               Приход без закупки
             </Button>
           ) : null}
@@ -94,7 +96,7 @@ function ReceiveListModal({ onPick, onManual, onClose }: { onPick: (id: string) 
           Все заказы поставщикам приняты
         </EmptyState>
       ) : (
-        <div className="stock-recv-list">
+        <div className="stock-recv-list" data-hint="stock.recv-list">
           {list.map((pu) => {
             const late = pu.expectedAt < today ? fmt.daysBetween(pu.expectedAt, today) : 0;
             const rest = pu.lines.reduce((s, l) => s + Math.max(0, l.qty - (l.received ?? 0)), 0);

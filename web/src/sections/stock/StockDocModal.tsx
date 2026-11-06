@@ -153,7 +153,7 @@ export function StockDocModal({ kind, preset, onClose, onReceive }: { kind: DocK
           <Button variant="ghost" onClick={onClose}>
             Отмена
           </Button>
-          <Button variant="primary" onClick={submit} disabled={!lines.length}>
+          <Button variant="primary" onClick={submit} disabled={!lines.length} data-hint={`stock.doc-post-${kind}`}>
             {POST[kind]}
           </Button>
         </>
@@ -171,7 +171,7 @@ export function StockDocModal({ kind, preset, onClose, onReceive }: { kind: DocK
           </div>
         </Notice>
       ) : null}
-      <div className={kind === 'transfer' ? 'stock-doc-head is-transfer' : 'stock-doc-head'}>
+      <div className={kind === 'transfer' ? 'stock-doc-head is-transfer' : 'stock-doc-head'} data-hint={`stock.doc-head-${kind}`}>
         {kind === 'transfer' ? (
           <>
             <Field label="Откуда">{placeSelect(from, (v) => { setFrom(v); if (v === to) setTo(from); })}</Field>
@@ -209,7 +209,7 @@ export function StockDocModal({ kind, preset, onClose, onReceive }: { kind: DocK
         )}
       </div>
 
-      <ProductPicker autoFocus onPick={(p, pk) => add(p, pk.key)} location={source ?? target} />
+      <ProductPicker autoFocus onPick={(p, pk) => add(p, pk.key)} location={source ?? target} hint="stock.doc-scan" />
 
       {rows.length === 0 ? (
         <div className="stock-doc-empty">
@@ -218,7 +218,7 @@ export function StockDocModal({ kind, preset, onClose, onReceive }: { kind: DocK
           </EmptyState>
         </div>
       ) : (
-        <div className="stock-doc-lines">
+        <div className="stock-doc-lines" data-hint={`stock.doc-lines-${kind}`}>
           <table className="table table-dense">
             <thead>
               <tr>
@@ -267,6 +267,7 @@ export function StockDocModal({ kind, preset, onClose, onReceive }: { kind: DocK
                         size="sm"
                         value={l.reason}
                         placeholder="Причина"
+                        data-hint="stock.doc-reason"
                         className={tried && !l.reason ? 'is-invalid' : undefined}
                         onChange={(e) => patch(l.key, { reason: e.target.value as WriteoffReason })}
                         options={(Object.keys(WRITEOFF_REASONS) as WriteoffReason[]).map((k) => ({ value: k, label: WRITEOFF_REASONS[k] }))}

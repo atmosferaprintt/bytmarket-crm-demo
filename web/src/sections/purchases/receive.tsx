@@ -141,10 +141,11 @@ export function ReceiveBody({
       </Notice>
       <div className="pur-recv-tools">
         <div className="grow" style={{ minWidth: 0 }}>
-          <ProductPicker autoFocus onPick={(p, pk) => scan(p, pk.qty)} placeholder="Сканируйте коробку или штуку — прибавим к «Пришло»" extra={(p) => (pu.lines.some((l) => l.productId === p.id) ? 'в закупке' : 'нет в закупке')} />
+          <ProductPicker autoFocus hint="purchases.recv-scan" onPick={(p, pk) => scan(p, pk.qty)} placeholder="Сканируйте коробку или штуку — прибавим к «Пришло»" extra={(p) => (pu.lines.some((l) => l.productId === p.id) ? 'в закупке' : 'нет в закупке')} />
         </div>
         <Button
           icon={<CheckCheck />}
+          data-hint="purchases.recv-all"
           onClick={() => {
             setScanError(null);
             setRecv(() => fillAll(pu));
@@ -162,9 +163,15 @@ export function ReceiveBody({
               <tr>
                 <th>Товар</th>
                 <th className="num">Ждём</th>
-                <th>Пришло</th>
-                <th>Брак, шт</th>
-                <th>Причина</th>
+                <th>
+                  <span data-hint="purchases.recv-qty">Пришло</span>
+                </th>
+                <th>
+                  <span data-hint="purchases.recv-defect">Брак, шт</span>
+                </th>
+                <th>
+                  <span data-hint="purchases.recv-reason">Причина</span>
+                </th>
               </tr>
             </thead>
             <tbody>

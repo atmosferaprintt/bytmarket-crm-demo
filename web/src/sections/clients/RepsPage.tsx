@@ -89,7 +89,7 @@ export function RepsPage() {
       sort: (r) => r.client,
       csv: (r) => `${r.client} · ${r.point} · ${r.address}`,
     },
-    { key: 'status', header: 'Результат', render: (r) => <StatusChip s={r.status} />, sort: (r) => r.status.label, csv: (r) => r.status.label },
+    { key: 'status', header: 'Результат', render: (r) => <span data-hint="clients.reps-status"><StatusChip s={r.status} /></span>, sort: (r) => r.status.label, csv: (r) => r.status.label },
     {
       key: 'note',
       header: 'Причина или комментарий',
@@ -138,7 +138,7 @@ export function RepsPage() {
 
   const toolbar = (
     <>
-      <span className="row" style={{ gap: 4 }}>
+      <span className="row" style={{ gap: 4 }} data-hint="clients.reps-day">
         <Button size="sm" variant="ghost" iconOnly aria-label="Предыдущий день" onClick={() => shiftDate(-1)}>
           <ChevronLeft />
         </Button>
@@ -178,7 +178,7 @@ export function RepsPage() {
         section="clients"
         actions={
           can('planVisits') ? (
-            <Button variant="primary" icon={<CalendarPlus />} onClick={() => setPlanning(true)}>
+            <Button variant="primary" icon={<CalendarPlus />} onClick={() => setPlanning(true)} data-hint="clients.reps-plan">
               Запланировать визит
             </Button>
           ) : null
@@ -197,7 +197,7 @@ export function RepsPage() {
       </div>
 
       <div className="grid-2">
-        <Card title={`Результаты визитов за ${monthNom}`} actions={<span className="muted t-13">{visitsHead}</span>}>
+        <Card hint="clients.reps-results" title={`Результаты визитов за ${monthNom}`} actions={<span className="muted t-13">{visitsHead}</span>}>
           <div className="cl-bars">
             {(
               [
@@ -222,7 +222,7 @@ export function RepsPage() {
             })}
           </div>
         </Card>
-        <Card title={`Причины отказов за ${monthNom}`} actions={<span className="muted t-13">{fmt.count(summary.results.refusal, 'отказ', 'отказа', 'отказов')}</span>}>
+        <Card hint="clients.reps-reasons" title={`Причины отказов за ${monthNom}`} actions={<span className="muted t-13">{fmt.count(summary.results.refusal, 'отказ', 'отказа', 'отказов')}</span>}>
           {summary.reasons.length ? (
             <div className="cl-bars">
               {summary.reasons.map(([reason, n]) => (
@@ -243,7 +243,7 @@ export function RepsPage() {
 
       {phone ? (
         <Card title={dateTitle} flush>
-          <div className="cl-phone-visits-tools">
+          <div className="cl-phone-visits-tools" data-hint="clients.reps-day">
             <span className="row" style={{ gap: 4 }}>
               <Button size="sm" variant="ghost" iconOnly aria-label="Предыдущий день" onClick={() => shiftDate(-1)}>
                 <ChevronLeft />
@@ -351,9 +351,9 @@ function RepCard({ s, active, onClick }: { s: RepStats; active: boolean; onClick
       </div>
     </>
   );
-  if (!onClick) return <div className="card cl-rep-card">{body}</div>;
+  if (!onClick) return <div className="card cl-rep-card" data-hint="clients.reps-card-own">{body}</div>;
   return (
-    <button type="button" className={cx('card cl-rep-card is-clickable', active && 'is-active')} onClick={onClick} aria-pressed={active} title={active ? 'Показать всех' : 'Показать визиты этого представителя'}>
+    <button type="button" className={cx('card cl-rep-card is-clickable', active && 'is-active')} data-hint="clients.reps-card" onClick={onClick} aria-pressed={active} title={active ? 'Показать всех' : 'Показать визиты этого представителя'}>
       {body}
     </button>
   );

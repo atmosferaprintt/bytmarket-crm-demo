@@ -39,7 +39,7 @@ export function CourierSummary({ day }: { day: ISODate }) {
   const since = onHandSince(db, me.id);
   const split = onHandSplit(db, me.id, c.today);
   return (
-    <div className="card dl-sum is-courier">
+    <div className="card dl-sum is-courier" data-hint="courier.summary">
       <div className="dl-sum-item">
         <span className="dl-sum-label">Осталось</span>
         <span className="dl-sum-value">
@@ -70,7 +70,7 @@ export function RouteButton({ day }: { day: ISODate }) {
   const pts = active.length ? active : day > c.today ? list : [];
   if (!pts.length) return null;
   return (
-    <a className="btn btn-secondary btn-lg" href={routeUrl(pts)} target="_blank" rel="noreferrer">
+    <a className="btn btn-secondary btn-lg" href={routeUrl(pts)} target="_blank" rel="noreferrer" data-hint="courier.route">
       <Navigation />
       Маршрут на карте
     </a>
@@ -104,7 +104,7 @@ function CourierCard({ d, pos, primary, c, flow, today }: { d: Delivery; pos: nu
         {d.state === 'on_way' ? <StateChip d={d} /> : null}
       </div>
 
-      <a className="dl-cc-addr" href={mapUrl(d)} target="_blank" rel="noreferrer">
+      <a className="dl-cc-addr" href={mapUrl(d)} target="_blank" rel="noreferrer" data-hint="courier.point">
         <span className="grow col" style={{ gap: 2 }}>
           <span className="dl-cc-street">{d.address}</span>
           <span className="dl-cc-district">{d.district}</span>
@@ -120,7 +120,7 @@ function CourierCard({ d, pos, primary, c, flow, today }: { d: Delivery; pos: nu
           <span className="t-13 muted ellipsis">{d.contactName}</span>
           <span className="t-13 muted nowrap">{fmt.phone(d.contactPhone)}</span>
         </span>
-        <CallButton phone={d.contactPhone} size="lg" />
+        <CallButton phone={d.contactPhone} size="lg" hint="courier.call" />
       </div>
 
       <div className="dl-cc-meta">
@@ -129,7 +129,7 @@ function CourierCard({ d, pos, primary, c, flow, today }: { d: Delivery; pos: nu
           {placesText(d.places)} · {kgText(d.weightKg)}
         </span>
       </div>
-      <div className={cx('dl-cc-tools', delayAct && 'is-two')}>
+      <div className={cx('dl-cc-tools', delayAct && 'is-two')} data-hint="courier.tools">
         <Button variant="secondary" size="lg" block icon={<ListOrdered />} onClick={() => flow.lines(d)}>
           Состав заказа
         </Button>
@@ -146,14 +146,14 @@ function CourierCard({ d, pos, primary, c, flow, today }: { d: Delivery; pos: nu
         </div>
       ) : null}
 
-      <div className={cx('dl-cc-money', d.collect === 0 && 'is-zero')}>
+      <div className={cx('dl-cc-money', d.collect === 0 && 'is-zero')} data-hint="courier.collect">
         <span className="dl-cc-money-label">К получению</span>
         <span className="dl-cc-money-value">{d.collect > 0 ? fmt.money(d.collect) : 'Денег не брать'}</span>
       </div>
 
       {main ? (
-        <div className={cx('dl-cc-actions', failAct && 'is-two')}>
-          <Button variant={primary ? 'primary' : 'secondary'} size="lg" block icon={main.icon} onClick={() => flow.act(main, d)}>
+        <div className={cx('dl-cc-actions', failAct && 'is-two')} data-hint={main.key === 'deliver' ? 'courier.finish' : undefined}>
+          <Button variant={primary ? 'primary' : 'secondary'} size="lg" block icon={main.icon} data-hint={main.key === 'start' ? 'courier.start' : undefined} onClick={() => flow.act(main, d)}>
             {main.label}
           </Button>
           {failAct ? (
@@ -195,7 +195,7 @@ export function CourierBoard({ day }: { day: ISODate }) {
           </EmptyState>
           {list.length && onHand > 0 ? (
             <div className="dl-empty-act">
-              <Button variant="primary" size="lg" block icon={<HandCoins />} onClick={() => nav('/delivery/cash')}>
+              <Button variant="primary" size="lg" block icon={<HandCoins />} data-hint="courier.handin" onClick={() => nav('/delivery/cash')}>
                 Сколько сдать
               </Button>
             </div>
@@ -204,7 +204,7 @@ export function CourierBoard({ day }: { day: ISODate }) {
       ) : null}
 
       {failed.length ? (
-        <section className="col-3">
+        <section className="col-3" data-hint="courier.failed">
           <h2 className="dl-board-title">Не удалось · {failed.length}</h2>
           {failed.map((d) => {
             const f = lastFail(d);
@@ -224,7 +224,7 @@ export function CourierBoard({ day }: { day: ISODate }) {
 
       {done.length ? (
         <section className="col-3">
-          <button type="button" className="dl-board-toggle" onClick={() => setShowDone((v) => !v)} aria-expanded={showDone}>
+          <button type="button" className="dl-board-toggle" onClick={() => setShowDone((v) => !v)} aria-expanded={showDone} data-hint="courier.done">
             <span className="grow col" style={{ gap: 2 }}>
               <span>Вручено · {done.length}</span>
               {gotCash || gotBank ? (

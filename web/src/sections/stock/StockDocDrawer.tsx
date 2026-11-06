@@ -95,7 +95,7 @@ export function StockDocDrawer({ id, onClose }: { id: string; onClose: () => voi
             {seeCost && isWo && loss ? <span className="muted"> · по себестоимости {fmt.money(loss)}</span> : null}
           </span>
           <span className="spacer" />
-          <Button icon={<Printer />} onClick={() => printer.print(sheet)}>
+          <Button icon={<Printer />} onClick={() => printer.print(sheet)} data-hint="stock.docd-print">
             Печать
           </Button>
         </>
@@ -103,7 +103,7 @@ export function StockDocDrawer({ id, onClose }: { id: string; onClose: () => voi
     >
       <div className="row-3" style={{ alignItems: 'flex-start' }}>
         <DocIcon kind={d.kind} />
-        <div className="grow">
+        <div className="grow" data-hint="stock.docd-info">
         <StatList>
           <StatRow label="Место" value={<Route kind={d.kind} from={d.from} to={d.to} />} />
           <StatRow label="Провёл" value={author} />
@@ -113,7 +113,7 @@ export function StockDocDrawer({ id, onClose }: { id: string; onClose: () => voi
         </div>
       </div>
 
-      <section className="card is-flush">
+      <section className="card is-flush" data-hint={isCount ? 'stock.docd-lines-count' : isWo ? 'stock.docd-lines-writeoff' : 'stock.docd-lines'}>
         <div className="table-scroll">
           <table className="table table-dense">
             <thead>

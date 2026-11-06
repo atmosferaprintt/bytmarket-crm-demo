@@ -1,4 +1,399 @@
-/* Подсказки режима обучения для раздела. Описание полей — web/src/shell/training/types.ts. */
+/* Подсказки режима обучения для раздела. Описание полей — web/src/shell/training/types.ts.
+   Здесь же рабочий стол бухгалтера (путь /overview) и окна денег — они открываются поверх любого экрана. */
 import type { HintDef } from '../../shell/training/types';
 
-export const hints: HintDef[] = [];
+const ALL = ['/money', '/money/debts', '/money/suppliers', '/money/expenses', '/money/accounts'];
+
+export const hints: HintDef[] = [
+  /* ---------- общее для экранов денег ---------- */
+  {
+    id: 'money.accept-btn',
+    path: ['/overview', '/money', '/money/debts'],
+    order: 1004, // после того, что на экране; главное действие — перед редкими операциями
+    target: '[data-hint="money.accept-btn"]',
+    title: 'Принять оплату',
+    text: 'Оплата от покупателя наличными, картой или переводом. Выберите клиента и сумму — программа сама разнесёт её на самые старые долги.',
+  },
+  {
+    id: 'money.ops',
+    path: ['/overview', ...ALL],
+    roles: ['owner', 'accountant'],
+    order: 1005, // последней из подсказок экрана: редкие операции
+    target: '[data-hint="money.ops"]',
+    title: 'Другие операции',
+    text: 'Записать расход, выплатить поставщику, переместить деньги между кассами, вернуть деньги покупателю.',
+  },
+
+  /* ---------- рабочий стол бухгалтера ---------- */
+  {
+    id: 'money.home.kpis',
+    path: '/overview',
+    roles: ['accountant'],
+    target: '[data-hint="money.home.kpis"]',
+    title: 'Главное на сегодня',
+    text: 'Переводы на подтверждение, неопознанные деньги, просрочка покупателей и платежи поставщикам до воскресенья. Нажмите плитку — откроется нужный список.',
+  },
+  {
+    id: 'money.home.tasks',
+    path: '/overview',
+    roles: ['accountant'],
+    target: '[data-hint="money.home.tasks"]',
+    title: 'Мои задачи на сегодня',
+    text: 'На сегодня и просроченные, срочные первыми. Нажмите строку — откроется документ задачи, галочка слева — задача сделана.',
+  },
+  {
+    id: 'money.home.pending',
+    path: '/overview',
+    roles: ['accountant'],
+    target: '[data-hint="money.home.pending"]',
+    title: 'Ждут подтверждения',
+    text: 'Клиент прислал скриншот перевода. Найдите перевод в выписке банка и нажмите «Подтвердить» — только тогда долг клиента уменьшится.',
+  },
+  {
+    id: 'money.home.unknown',
+    path: '/overview',
+    roles: ['accountant'],
+    target: '[data-hint="money.home.unknown"]',
+    title: 'Неопознанные',
+    text: 'Деньги пришли на счёт, но неясно от кого. «Опознать» — найти клиента по ИНН из выписки и разнести платёж по его заказам.',
+  },
+  {
+    id: 'money.home.suppliers',
+    path: '/overview',
+    roles: ['accountant'],
+    target: '[data-hint="money.home.suppliers"]',
+    title: 'Долги поставщикам',
+    text: 'Просроченные платежи и сроки до воскресенья. Нажмите строку — закупка, «Оплатить» — выплата с разбивкой по закупкам.',
+  },
+  {
+    id: 'money.home.couriers',
+    path: '/overview',
+    roles: ['accountant'],
+    target: '[data-hint="money.home.couriers"]',
+    title: 'Деньги курьеров',
+    text: 'Наличные, которые курьеры получили на доставках и ещё не сдали. «Принять» — пересчитать и положить в кассу магазина.',
+  },
+
+  /* ---------- журнал ---------- */
+  {
+    id: 'money.journal.kpis',
+    path: '/money',
+    target: '[data-hint="money.journal.kpis"]',
+    title: 'Итоги периода',
+    text: 'Поступило и выплачено за период, без перемещений между своими кассами. Ждут подтверждения и не опознаны — все на сегодня, без учёта периода.',
+  },
+  {
+    id: 'money.journal.period',
+    path: '/money',
+    target: '[data-hint="money.journal.period"]',
+    title: 'Период и касса',
+    text: 'Выберите период, а рядом — кассу или счёт. Таблица, итоги внизу и выгрузка покажут только их.',
+  },
+  {
+    id: 'money.journal.status-act',
+    path: '/money',
+    target: '[data-hint="money.journal.status-act"]',
+    title: 'Подтвердить и опознать',
+    text: '«Подтвердить» — перевод нашёлся в выписке банка. «Опознать» — найти, чей платёж, и разнести. Нажмите строку — карточка платежа.',
+  },
+  {
+    id: 'money.journal.export',
+    path: '/money',
+    device: 'desktop',
+    target: '[data-hint="money.journal"] .table-toolbar-right > button[aria-label="Ещё действия"]',
+    title: 'Выгрузка для бухгалтерии',
+    text: 'Скачает журнал для Excel с текущим периодом, кассой и фильтрами. Дата, время и номер — отдельными колонками.',
+  },
+
+  /* ---------- долги покупателей ---------- */
+  {
+    id: 'money.debts.kpis',
+    path: '/money/debts',
+    target: '[data-hint="money.debts.kpis"]',
+    title: 'Долги на сегодня',
+    text: 'Сколько должны покупатели, сколько просрочено, кто вышел за кредитный лимит и у кого аванс. Список ниже — по просрочке, самые большие сверху.',
+  },
+  {
+    id: 'money.debts.limit',
+    path: '/money/debts',
+    target: '[data-hint="money.debts.limit"]',
+    title: 'Лимит и остаток',
+    text: 'Сколько клиенту можно отгрузить в долг и сколько осталось. Красным — долг уже выше лимита: заказ сверх него подтвердит только владелец.',
+  },
+  {
+    id: 'money.debts.reminded',
+    path: '/money/debts',
+    target: '[data-hint="money.debts.reminded"]',
+    title: 'Напомнили',
+    text: 'Когда клиенту последний раз отправили напоминание об оплате в WhatsApp — чтобы не писать дважды за день.',
+  },
+  {
+    id: 'money.debts.row',
+    path: '/money/debts',
+    target: '[data-hint="money.debts.row"]',
+    title: 'Принять и напомнить',
+    text: '«Принять» — оплата от этого клиента. В «⋯»: напомнить в WhatsApp, акт сверки, поручить напомнить ответственному. Строка — карточка клиента.',
+  },
+
+  /* ---------- долги поставщикам ---------- */
+  {
+    id: 'money.sup.schedule',
+    path: '/money/suppliers',
+    target: '[data-hint="money.sup.schedule"]',
+    title: 'График платежей',
+    text: 'Когда и сколько платить: эта неделя вместе с просроченным, следующая и позже. Нажмите строку — откроется закупка.',
+  },
+  {
+    id: 'money.sup.table',
+    path: '/money/suppliers',
+    target: '[data-hint="money.sup.table"]',
+    title: 'По поставщикам',
+    text: 'Долг, просрочка и ближайший платёж каждого. Нажмите строку — карточка поставщика с закупками и оплатами.',
+  },
+  {
+    id: 'money.sup.pay',
+    path: '/money/suppliers',
+    target: '[data-hint="money.sup.pay"]',
+    title: 'Оплатить',
+    text: 'Откроет выплату этому поставщику: сумма к оплате до воскресенья подставится сама, деньги лягут на закупки с ранним сроком.',
+  },
+
+  /* ---------- расходы ---------- */
+  {
+    id: 'money.exp.kpis',
+    path: '/money/expenses',
+    target: '[data-hint="money.exp.kpis"]',
+    title: 'Сводка расходов',
+    text: 'Этот месяц по сегодня, прошлый целиком и в среднем за месяц — сразу видно, если расходы выросли.',
+  },
+  {
+    id: 'money.exp.pivot',
+    path: '/money/expenses',
+    target: '[data-hint="money.exp.pivot"]',
+    title: 'По категориям и месяцам',
+    text: 'Нажмите категорию — в записях ниже останется только она. Нажмите ещё раз, чтобы снять.',
+  },
+  {
+    id: 'money.exp.filter',
+    path: '/money/expenses',
+    target: '[data-hint="money.exp.filter"]',
+    title: 'Категория и период',
+    text: 'Отберите записи по категории и периоду. Итог внизу — сумма того, что видно.',
+  },
+  {
+    id: 'money.exp.add',
+    path: '/money/expenses',
+    order: 1004,
+    target: '[data-hint="money.exp.add"]',
+    title: 'Записать расход',
+    text: 'Аренда, зарплата, топливо, связь. Если в таблице выбрана категория, она подставится в окно. Дату можно поставить прошлую.',
+  },
+
+  /* ---------- кассы и счета ---------- */
+  {
+    id: 'money.acc.kpis',
+    path: '/money/accounts',
+    target: '[data-hint="money.acc.kpis"]',
+    title: 'Кассы и счета',
+    text: 'Сколько денег сейчас в кассе, у курьеров и на расчётном счёте. Нажмите плитку — ниже покажется движение по ней.',
+  },
+  {
+    id: 'money.acc.drawer',
+    path: '/money/accounts',
+    target: '[data-hint="money.acc.drawer"]',
+    title: 'В ящике смены',
+    text: 'Размен в кассовом ящике идущей смены, остальное — в сейфе. Наличные по чекам смены войдут в остаток кассы при её закрытии.',
+  },
+  {
+    id: 'money.acc.couriers',
+    path: '/money/accounts',
+    target: '[data-hint="money.acc.couriers"]',
+    title: 'Деньги у курьеров',
+    text: 'Сколько наличных на руках у каждого курьера и сколько получено сегодня. «Принять» — пересчитать и сдать в кассу магазина.',
+  },
+  {
+    id: 'money.acc.shifts',
+    path: '/money/accounts',
+    target: '[data-hint="money.acc.shifts"]',
+    title: 'Смены кассы',
+    text: 'Последние смены: сошлась ли касса при закрытии, недостача или излишек и сколько было в ящике вместе с разменом.',
+  },
+  {
+    id: 'money.acc.transfer',
+    path: '/money/accounts',
+    order: 1004,
+    target: '[data-hint="money.acc.transfer"]',
+    title: 'Перевод между счетами',
+    text: 'Инкассация из кассы на расчётный счёт, выдача размена, сдача денег. Общая сумма не меняется: в одном месте убыло, в другом прибыло.',
+  },
+  {
+    id: 'money.acc.moves',
+    path: '/money/accounts',
+    target: '[data-hint="money.acc.moves"]',
+    title: 'Движение',
+    text: 'Приход, расход и остаток после каждой операции по выбранной кассе. Переключайте кассу кнопками над таблицей.',
+  },
+
+  /* ---------- окна денег: открываются поверх любого экрана ---------- */
+  {
+    id: 'money.picker',
+    path: '*',
+    target: '[data-hint="money.picker"]',
+    title: 'Выберите покупателя',
+    text: 'Начните печатать название, ИНН или телефон. Сверху — те, у кого долг больше.',
+  },
+  {
+    id: 'money.client',
+    path: '*',
+    target: '[data-hint="money.client"]',
+    title: 'Покупатель',
+    text: 'Долг, просрочка и аванс клиента на сейчас. Ошиблись — «Другой покупатель».',
+  },
+  {
+    id: 'money.accept.form',
+    path: '*',
+    target: '[data-hint="money.accept.form"]',
+    title: 'Сумма и способ',
+    text: 'Введите сумму или нажмите кнопку под полями. Способ сам выберет кассу или счёт. Деньги пришли раньше — поставьте их дату.',
+  },
+  {
+    id: 'money.accept.quick',
+    path: '*',
+    target: '[data-hint="money.accept.quick"]',
+    title: 'Быстрые суммы',
+    text: 'Одним нажатием: по этому заказу, только просроченное или весь долг клиента.',
+  },
+  {
+    id: 'money.alloc',
+    path: '*',
+    target: '[data-hint="money.alloc"]',
+    title: 'Распределение',
+    text: 'Сумма ложится на самые старые долги первыми. Поправьте строку вручную или галочкой — весь заказ. Остаток станет авансом клиента.',
+  },
+  {
+    id: 'money.accept.pending',
+    path: '*',
+    target: '[data-hint="money.accept.pending"]',
+    title: 'Перевод по скриншоту',
+    text: 'Отметьте, если денег на счёте ещё не видно. Долг уменьшится, когда бухгалтер подтвердит перевод по выписке банка.',
+  },
+  {
+    id: 'money.identify.payer',
+    path: '*',
+    target: '[data-hint="money.identify.payer"]',
+    title: 'Плательщик и ИНН',
+    text: 'Так плательщик записан в выписке банка, с назначением платежа. По ИНН проще всего найти клиента.',
+  },
+  {
+    id: 'money.identify.hints',
+    path: '*',
+    target: '[data-hint="money.identify.hints"]',
+    title: 'Похоже, это',
+    text: 'Клиенты с тем же ИНН и заказы, где к оплате ровно эта сумма. Нажмите подходящий — останется проверить распределение и разнести.',
+  },
+  {
+    id: 'money.confirm.check',
+    path: '*',
+    target: '[data-hint="money.confirm.check"]',
+    title: 'Сверьте с выпиской',
+    text: 'Найдите в выписке банка перевод с той же датой, суммой и плательщиком. Не нашли — не подтверждайте: перевод останется в ожидании.',
+  },
+  {
+    id: 'money.confirm.lines',
+    path: '*',
+    target: '[data-hint="money.confirm.lines"]',
+    title: 'К чему относится',
+    text: 'Какие заказы закроет перевод и сколько уйдёт в аванс. Долг клиента уменьшится сразу после подтверждения.',
+  },
+  {
+    id: 'money.suppay.supplier',
+    path: '*',
+    target: '[data-hint="money.suppay.supplier"]',
+    title: 'Поставщик',
+    text: 'Рядом — его долг, просрочка и сколько платить до конца недели. При смене поставщика сумма подставится заново.',
+  },
+  {
+    id: 'money.suppay.form',
+    path: '*',
+    target: '[data-hint="money.suppay.form"]',
+    title: 'Сумма и откуда',
+    text: 'Платите из кассы магазина или с расчётного счёта. Если там не хватает денег, программа предупредит.',
+  },
+  {
+    id: 'money.suppay.alloc',
+    path: '*',
+    target: '[data-hint="money.suppay.alloc"]',
+    title: 'Закупки к оплате',
+    text: 'Деньги ложатся на закупки с ранним сроком первыми. Суммы можно поправить, галочка — оплатить закупку целиком. Сверх закупок — аванс поставщику.',
+  },
+  {
+    id: 'money.expense.cat',
+    path: '*',
+    target: '[data-hint="money.expense.cat"]',
+    title: 'Категория и сумма',
+    text: 'По категориям строится отчёт расходов, а сумма уменьшит прибыль после расходов на обзоре.',
+  },
+  {
+    id: 'money.expense.from',
+    path: '*',
+    target: '[data-hint="money.expense.from"]',
+    title: 'Откуда',
+    text: 'Наличными — из кассы магазина, картой или переводом — с расчётного счёта. Касса подставится сама по способу.',
+  },
+  {
+    id: 'money.expense.date',
+    path: '*',
+    target: '[data-hint="money.expense.date"]',
+    title: 'Дата',
+    text: 'Забыли записать вовремя — поставьте прошлую дату, до двух месяцев назад. В отчёты расход попадёт этим днём.',
+  },
+  {
+    id: 'money.transfer.accounts',
+    path: '*',
+    target: '[data-hint="money.transfer.accounts"]',
+    title: 'Откуда и куда',
+    text: 'В списке — остаток каждой кассы и счёта. Больше, чем есть, переместить нельзя: программа подскажет.',
+  },
+  {
+    id: 'money.transfer.quick',
+    path: '*',
+    target: '[data-hint="money.transfer.quick"]',
+    title: 'Быстрые суммы',
+    text: '«Всё» — весь остаток. «Оставить размен» — сдать всё, кроме 5 000 ₽ на сдачу в кассе.',
+  },
+  {
+    id: 'money.act.period',
+    path: '*',
+    target: '[data-hint="money.act.period"]',
+    title: 'Период акта',
+    text: 'По умолчанию — с начала учёта по сегодня. Сальдо на начало и конец пересчитается сразу.',
+  },
+  {
+    id: 'money.act.sheet',
+    path: '*',
+    target: '[data-hint="money.act.sheet"]',
+    title: 'Акт сверки',
+    text: 'Отгрузки — в дебете, оплаты и возвраты — в кредите. Внизу — кто кому должен на конец периода. «Печать» распечатает только акт.',
+  },
+  {
+    id: 'money.act.wa',
+    path: '*',
+    target: '[data-hint="money.act.wa"]',
+    title: 'Отправить в WhatsApp',
+    text: 'Акт уйдёт клиенту файлом с готовым текстом: период и итог по нашим данным. Текст можно поправить перед отправкой.',
+  },
+  {
+    id: 'money.handin.sum',
+    path: '*',
+    target: '[data-hint="money.handin.sum"]',
+    title: 'Что сдаёт курьер',
+    text: 'Сколько курьер получил наличными по доставкам и с какого дня деньги у него. Ниже — по каждой доставке.',
+  },
+  {
+    id: 'money.handin.counted',
+    path: '*',
+    target: '[data-hint="money.handin.counted"]',
+    title: 'Пересчитано',
+    text: 'Пересчитайте деньги и введите сумму. Меньше, чем по доставкам, — напишите, что сказал курьер: недостача запишется на него расходом.',
+  },
+];

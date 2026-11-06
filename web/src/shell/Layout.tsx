@@ -183,6 +183,7 @@ export function Layout({ children }: { children: ReactNode }) {
             </>
           )}
           <span className="demo-chip" title="Данные выдуманы, внешние сервисы не подключены">Демо</span>
+          <span className="hint-slot" data-hint-slot />
           <TrainingToggle />
           <button type="button" className="btn btn-ghost btn-icon topbar-tasks" onClick={() => setTasksOpen(true)} aria-label="Мои задачи" title="Мои задачи" data-hint="shell.tasks">
             <ListChecks />

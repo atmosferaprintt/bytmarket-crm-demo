@@ -265,7 +265,7 @@ export function ReconciliationModal({ clientId, onClose }: { clientId: ID; onClo
               Закрыть
             </Button>
             {waOn ? (
-              <Button icon={<MessageCircle />} onClick={() => setSending(true)}>
+              <Button icon={<MessageCircle />} onClick={() => setSending(true)} data-hint="money.act.wa">
                 Отправить в WhatsApp
               </Button>
             ) : null}
@@ -275,11 +275,11 @@ export function ReconciliationModal({ clientId, onClose }: { clientId: ID; onClo
           </>
         }
       >
-        <div className="row-3">
+        <div className="row-3" data-hint="money.act.period">
           <DateField label="С" value={from} onChange={setFrom} min={db.meta.startDate} max={to} />
           <DateField label="По" value={to} onChange={setTo} min={from} max={today} />
         </div>
-        <div className="money-act-frame">
+        <div className="money-act-frame" data-hint="money.act.sheet">
           <ActSheet db={db} clientId={clientId} act={act} />
         </div>
       </Modal>

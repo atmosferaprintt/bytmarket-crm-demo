@@ -601,7 +601,7 @@ export default function SalePage() {
           <>
             <ShiftBadge shift={shift} />
             {can('refundReceipt') ? (
-              <Button icon={<Undo2 />} onClick={() => setLookup(true)}>
+              <Button icon={<Undo2 />} onClick={() => setLookup(true)} data-hint="register.return">
                 Возврат
               </Button>
             ) : null}
@@ -619,7 +619,7 @@ export default function SalePage() {
       <div className={cx('reg-pos', phone && shift && 'has-sheet')}>
         <div className="col-4" style={{ minWidth: 0 }}>
           <Card className="reg-search-card">
-            <div className="input-wrap has-icon reg-search">
+            <div className="input-wrap has-icon reg-search" data-hint="register.search">
               <input
                 ref={searchRef}
                 className="input input-lg"
@@ -654,7 +654,7 @@ export default function SalePage() {
               <span className="reg-hint-item">
                 <span className="kbd">Enter</span>в чек
               </span>
-              <span className="reg-hint-item" title="«3*» перед сканом — добавить 3 штуки; «*» после поиска — ввести количество">
+              <span className="reg-hint-item" title="«3*» перед сканом — добавить 3 штуки; «*» после поиска — ввести количество" data-hint="register.qty-star">
                 <span className="kbd">*</span>количество
               </span>
               <span className="spacer" />
@@ -683,7 +683,7 @@ export default function SalePage() {
               </div>
             ) : null}
             {list.length ? (
-              <div className="reg-sugg-list" role="listbox" aria-label="Найденные товары">
+              <div className="reg-sugg-list" role="listbox" aria-label="Найденные товары" data-hint="register.list">
                 {list.map((it, i) => (
                   <SuggRow
                     key={it.p.id}
@@ -711,6 +711,7 @@ export default function SalePage() {
             title="Последние чеки смены"
             flush
             className="reg-recent"
+            hint="register.recent"
             actions={
               <Link to="/register/receipts" className="btn btn-ghost btn-sm">
                 Все чеки
@@ -782,7 +783,7 @@ export default function SalePage() {
               <h2 className="card-title nowrap">Чек № {nextNumber}</h2>
               {priced.lines.length ? <Chip>{fmt.count(priced.lines.length, 'позиция', 'позиции', 'позиций')}</Chip> : null}
               <span className="spacer" />
-              <Button size="sm" icon={<UserRound />} onClick={() => setPicker(true)} title={client ? `Карта ${cardNumber(db, client)}` : 'Карта постоянного покупателя'}>
+              <Button size="sm" icon={<UserRound />} onClick={() => setPicker(true)} title={client ? `Карта ${cardNumber(db, client)}` : 'Карта постоянного покупателя'} data-hint="register.client">
                 <span className="reg-client-name">{client ? client.name : 'Покупатель'}</span>
               </Button>
               <MoreMenu
@@ -804,7 +805,7 @@ export default function SalePage() {
                 </span>
               </div>
             ) : null}
-            <div className="reg-lines" ref={linesRef}>
+            <div className="reg-lines" ref={linesRef} data-hint={done && !priced.lines.length ? undefined : 'register.lines'}>
               {priced.lines.length ? (
                 priced.lines.map((l) => (
                   <ReceiptLineRow
@@ -821,7 +822,7 @@ export default function SalePage() {
                   />
                 ))
               ) : done ? (
-                <div className="reg-done">
+                <div className="reg-done" data-hint="register.done">
                   <CircleCheck />
                   <div className="t-16 w-700">Оплачено · чек № {done.number}</div>
                   <div className="reg-done-sum num">{fmt.money(done.total)}</div>
@@ -902,7 +903,7 @@ export default function SalePage() {
               </div>
             </div>
             <div className="reg-pay">
-              <Button variant="primary" block className="reg-pay-btn" icon={<Wallet />} kbd="F9" disabled={!canPay} onClick={startPay}>
+              <Button variant="primary" block className="reg-pay-btn" icon={<Wallet />} kbd="F9" disabled={!canPay} onClick={startPay} data-hint="register.pay">
                 Оплатить
               </Button>
             </div>
@@ -1054,7 +1055,7 @@ function ReceiptLineRow({
           <QtyInput value={l.packQty} min={1} onChange={onQty} ariaLabel={`Количество: ${l.p.name}`} />
         </span>
         {l.p.packs.length > 1 ? (
-          <span className="reg-seg-xs">
+          <span className="reg-seg-xs" data-hint="register.pack">
             <Segmented<PackKey>
               ariaLabel="Единица"
               value={l.pack}
@@ -1097,7 +1098,7 @@ function DiscountRow({
   const [text, setText] = useState(cart.discountPct ? String(cart.discountPct) : '');
   useEffect(() => setText(cart.discountPct ? String(cart.discountPct) : ''), [cart.discountPct]);
   return (
-    <div className="reg-disc-wrap">
+    <div className="reg-disc-wrap" data-hint="register.discount">
       <div className="reg-disc">
         <Percent />
         <Select

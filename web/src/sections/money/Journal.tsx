@@ -344,7 +344,7 @@ export default function Journal() {
       csv: (r) => (r.virtual ? 'Смена идёт' : PAYMENT_STATUS[r.p.status].label),
       width: 150,
       render: (r) => (
-        <div className="col money-jr-status">
+        <div className="col money-jr-status" data-hint={(r.p.status === 'pending' || r.p.status === 'unidentified') && perms.confirm ? 'money.journal.status-act' : undefined}>
           <StatusChip s={r.virtual ? { label: 'Смена идёт', tone: 'info' } : PAYMENT_STATUS[r.p.status]} />
           {r.p.status === 'pending' && perms.confirm ? (
             <button
@@ -414,16 +414,18 @@ export default function Journal() {
         counts={counts}
         actions={
           <>
-            <MoreMenu items={menu} />
+            <span data-hint="money.ops">
+              <MoreMenu items={menu} />
+            </span>
             {perms.accept ? (
-              <Button variant="primary" icon={<HandCoins />} onClick={() => setModal({ kind: 'accept' })}>
+              <Button variant="primary" icon={<HandCoins />} onClick={() => setModal({ kind: 'accept' })} data-hint="money.accept-btn">
                 Принять оплату
               </Button>
             ) : null}
           </>
         }
       />
-      <div className="grid-4">
+      <div className="grid-4" data-hint="money.journal.kpis">
         <Kpi label="Поступило за период" value={fmt.money(kpi.inSum)} />
         <Kpi label="Выплачено за период" value={fmt.money(kpi.outSum)} />
         <Kpi label={`Ждут подтверждения · ${kpi.pendN}`} value={fmt.money(kpi.pend)} />
@@ -432,6 +434,7 @@ export default function Journal() {
       <div className="money-tight">
       <DataTable
         id="money-journal"
+        hint="money.journal"
         rows={rows}
         columns={columns}
         rowKey={(r) => r.p.id}
@@ -441,7 +444,7 @@ export default function Journal() {
         onRowClick={(r) => (r.virtual ? undefined : setModal({ kind: 'payment', paymentId: r.p.id }))}
         toolbar={
           <>
-            <Select size="sm" value={period} onChange={(e) => setPeriod(e.target.value as PeriodKey)} options={fromUrl.options} aria-label="Период" style={{ width: 170 }} />
+            <Select size="sm" value={period} onChange={(e) => setPeriod(e.target.value as PeriodKey)} options={fromUrl.options} aria-label="Период" style={{ width: 170 }} data-hint="money.journal.period" />
             <Select
               size="sm"
               value={acc}

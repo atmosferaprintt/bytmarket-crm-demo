@@ -30,7 +30,7 @@ export function ClientPicker({ clients, onPick, autoFocus = true, placeholder = 
       .slice(0, 6);
   }, [db, v, clients, q]);
   return (
-    <div className="col-3">
+    <div className="col-3" data-hint="money.picker">
       <SearchInput value={q} onChange={setQ} placeholder={placeholder} autoFocus={autoFocus} />
       <div className="money-pick">
         {list.length ? (
@@ -72,7 +72,7 @@ export function ClientSummary({ clientId, onChange }: { clientId: ID; onChange?:
   if (!info.c) return null;
   const { c, b, owner } = info;
   return (
-    <div className="money-client">
+    <div className="money-client" data-hint="money.client">
       <div className="grow" style={{ minWidth: 0 }}>
         <div className="row" style={{ gap: 10 }}>
           <span className="t-16 w-700 ellipsis">{c.name}</span>
@@ -187,7 +187,7 @@ export function AllocationTable({
   const allocated = rows.reduce((s, r) => s + (values[r.order.id] ?? 0), 0);
   const left = amount - allocated;
   return (
-    <div className="money-alloc">
+    <div className="money-alloc" data-hint="money.alloc">
       <div className="row" style={{ marginBottom: 8 }}>
         <span className="t-14 w-700 grow">Распределение по заказам</span>
         {onReset && manual ? (

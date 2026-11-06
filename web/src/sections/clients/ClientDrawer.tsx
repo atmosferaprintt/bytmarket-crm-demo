@@ -124,7 +124,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
   const menuItems = buttons.length ? rest : [];
 
   const primary = canOrder ? (
-    <Button variant="primary" icon={<ShoppingCart />} onClick={() => setModal('order')} className="cl-foot-primary">
+    <Button variant="primary" icon={<ShoppingCart />} onClick={() => setModal('order')} className="cl-foot-primary" data-hint="clients.card-order">
       {orderLabel}
     </Button>
   ) : canPay ? (
@@ -138,7 +138,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
     <div className="cl-drawer-foot">
       {menuItems.length ? <TopMenu items={menuItems} align="start" /> : null}
       {secondary.map((x) => (
-        <Button key={x.key} icon={x.icon} onClick={x.onClick}>
+        <Button key={x.key} icon={x.icon} onClick={x.onClick} data-hint={`clients.card-${x.key}`}>
           {x.label}
         </Button>
       ))}
@@ -154,7 +154,11 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
         <Chip>{segmentName(c)}</Chip>
         <Chip tone={c.priceType === 'wholesale' ? 'info' : 'neutral'}>Цены: {priceTypeName(c.priceType).toLowerCase()}</Chip>
         {!c.active ? <Chip tone="outline">Отключён</Chip> : null}
-        {row?.missed ? <Chip tone="warn">Пропустил привычный заказ</Chip> : null}
+        {row?.missed ? (
+          <span data-hint="clients.card-missed">
+            <Chip tone="warn">Пропустил привычный заказ</Chip>
+          </span>
+        ) : null}
       </div>
       <div className="cl-head-meta">
         <span className="row" style={{ gap: 6 }}>
@@ -169,7 +173,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
           </a>
         ) : null}
         {canChat ? (
-          <button type="button" className="row cl-tel cl-wa" style={{ gap: 6 }} onClick={() => navigate(`/chats?client=${c.id}`)}>
+          <button type="button" className="row cl-tel cl-wa" style={{ gap: 6 }} onClick={() => navigate(`/chats?client=${c.id}`)} data-hint="clients.card-wa">
             <MessageCircle size={15} />
             {hasChat ? 'Переписка в WhatsApp' : 'Написать в WhatsApp'}
           </button>
@@ -201,7 +205,7 @@ export default function EntityDrawer({ id, onClose }: EntityDrawerProps) {
     <>
       <Drawer wide title={c.name} head={head} onClose={onClose} footer={footer}>
         <MoneyStrip c={c} debt={b.debt} overdue={b.overdue} overdueDays={b.maxOverdueDays} advance={b.advance} pending={b.pending} />
-        <div className="cl-tabs-scroll">
+        <div className="cl-tabs-scroll" data-hint="clients.card-tabs">
           <Tabs items={tabs.map((t) => ({ key: t.key, label: t.label, count: counts[t.key] }))} value={tab} onChange={(k) => setTab(k as TabKey)} />
         </div>
         {tab === 'overview' ? <OverviewTab c={c} orders={data.orders} visits={data.visits} canPlan={canPlan} onPlan={() => setModal('visit')} /> : null}
@@ -248,7 +252,7 @@ function MoneyStrip({ c, debt, overdue, overdueDays, advance, pending }: { c: Cl
   const overduePart = (Math.min(overdue, debt) / base) * 100;
   const debtPart = (Math.max(0, debt - overdue) / base) * 100;
   return (
-    <div className="cl-money">
+    <div className="cl-money" data-hint="clients.card-money">
       <div className="cl-money-cells">
         <Cell label="Долг" value={fmt.money(debt)} />
         <Cell label="Просрочено" value={overdue > 0 ? fmt.money(overdue) : '—'} tone={overdue > 0 ? 'bad' : undefined} title={overdue > 0 ? `Самая старая просрочка — ${overdueDays} дн.` : undefined} />
@@ -334,7 +338,7 @@ function OverviewTab({ c, orders, visits, canPlan, onPlan }: { c: Client; orders
 
   return (
     <div className="cl-overview">
-      <section className="cl-block">
+      <section className="cl-block" data-hint="clients.card-terms">
         <h3 className="cl-block-title">Условия</h3>
         <StatList>
           <StatRow label="Тип цены" value={priceTypeName(c.priceType)} />

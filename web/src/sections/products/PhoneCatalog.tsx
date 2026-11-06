@@ -54,7 +54,7 @@ export default function PhoneCatalog() {
           }}
           placeholder="Товар, бренд или штрихкод"
         />
-        <div className="prd-m-pills" role="radiogroup" aria-label="Категория">
+        <div className="prd-m-pills" role="radiogroup" aria-label="Категория" data-hint="products.m-pills">
           {pills.map((p) => (
             <button
               key={p.id}
@@ -99,7 +99,7 @@ function ProductCard({ row, mode, promo, onOpen }: { row: CatalogRow; mode: Retu
   const info = priceOf(row, mode);
   const discounted = !!promo && info.price < info.base;
   return (
-    <button type="button" className="card prd-m-card" onClick={onOpen}>
+    <button type="button" className="card prd-m-card" onClick={onOpen} data-hint="products.m-card">
       <div className="prd-m-head">
         <ProductPhoto product={p} size={64} />
         <div className="col" style={{ gap: 6, minWidth: 0 }}>

@@ -123,11 +123,11 @@ export default function SuggestPage() {
       actions={
         g ? (
           <>
-            <Button variant="ghost" icon={<Info />} onClick={() => setExplain(true)}>
+            <Button variant="ghost" icon={<Info />} onClick={() => setExplain(true)} data-hint="purchases.sug-how">
               Как считается
             </Button>
             {canCreate ? (
-              <Button variant="primary" icon={<CheckCircle2 />} disabled={!on.length} onClick={() => setConfirm(true)}>
+              <Button variant="primary" icon={<CheckCircle2 />} disabled={!on.length} onClick={() => setConfirm(true)} data-hint="purchases.sug-create">
                 Создать закупку
               </Button>
             ) : role === 'warehouse' ? (
@@ -140,7 +140,7 @@ export default function SuggestPage() {
                     Передано владельцу
                   </Chip>
                 ) : (
-                  <Button variant="primary" icon={<Send />} disabled={!on.length} onClick={() => setSend('one')}>
+                  <Button variant="primary" icon={<Send />} disabled={!on.length} onClick={() => setSend('one')} data-hint="purchases.sug-send">
                     Передать владельцу
                   </Button>
                 )}
@@ -168,7 +168,7 @@ export default function SuggestPage() {
     <>
       {header}
       <div className="pur-suggest">
-        <Card flush title="Поставщики" className="pur-suggest-side">
+        <Card flush title="Поставщики" className="pur-suggest-side" hint="purchases.sug-suppliers">
           <div className="list">
             {groups.map((x) => (
               <button key={x.sid} type="button" className={cx('pur-sup-row', x.sid === g.sid && 'is-active')} onClick={() => setSel(x.sid)}>
@@ -194,6 +194,7 @@ export default function SuggestPage() {
         <div className="col-4 stock-tight" style={{ minWidth: 0 }}>
           <Card
             flush
+            hint="purchases.sug-card"
             title={s.name}
             actions={
               <span className="t-13 ink-2 nowrap">
@@ -248,11 +249,13 @@ export default function SuggestPage() {
                       </th>
                     ) : null}
                     <th className="num" title={`Доступное ÷ продажи в день. Поставка от ${s.name} — ${fmt.count(s.leadDays, 'день', 'дня', 'дней')}`}>
-                      Хватит на
+                      <span data-hint="purchases.sug-why">Хватит на</span>
                     </th>
                     {anyExpected ? <th className="num">Ожидается</th> : null}
                     <th>Причина</th>
-                    <th style={{ width: 120 }}>Коробок</th>
+                    <th style={{ width: 120 }}>
+                      <span data-hint="purchases.sug-boxes">Коробок</span>
+                    </th>
                     <th className="num" title="Коробок × штук в коробке">Штук</th>
                     {seeCost ? <th className="num">Сумма</th> : null}
                   </tr>
@@ -268,6 +271,7 @@ export default function SuggestPage() {
                           <input
                             type="checkbox"
                             className="task-check"
+                            data-hint="purchases.sug-check"
                             checked={!isOff}
                             onChange={() => setOff((o) => ({ ...o, [l.productId]: !isOff }))}
                             aria-label="В закупку"
@@ -412,7 +416,7 @@ function ConfirmModal({
       onClose={onClose}
       footer={
         <>
-          <Button variant="ghost" icon={<PencilLine />} onClick={onEdit}>
+          <Button variant="ghost" icon={<PencilLine />} onClick={onEdit} data-hint="purchases.sug-edit">
             Поправить строки
           </Button>
           <span className="spacer" />
@@ -432,14 +436,16 @@ function ConfirmModal({
         {seeCost ? <StatRow total label="Сумма закупки" value={fmt.money(total)} /> : null}
       </StatList>
       <Field label="Ожидаем поставку">
-        <Input type="date" value={expected} onChange={(e) => setExpected(e.target.value)} />
+        <Input type="date" value={expected} onChange={(e) => setExpected(e.target.value)} data-hint="purchases.sug-date" />
       </Field>
       {can('approvePurchase') ? (
         <Notice tone="info" title="Подтверждает владелец">
           <div style={{ marginTop: 6 }}>
-            <Checkbox checked={approve} onChange={setApprove}>
-              Я, {me.name}, подтверждаю закупку — отправить поставщику
-            </Checkbox>
+            <span data-hint="purchases.sug-approve">
+              <Checkbox checked={approve} onChange={setApprove}>
+                Я, {me.name}, подтверждаю закупку — отправить поставщику
+              </Checkbox>
+            </span>
           </div>
         </Notice>
       ) : null}
@@ -492,6 +498,7 @@ function SendModal({
       }
     >
       {canAll ? (
+        <div className="col" data-hint="purchases.send-scope">
         <Segmented
           ariaLabel="Что передать"
           value={scope}
@@ -501,8 +508,9 @@ function SendModal({
             { value: 'all', label: 'Все поставщики', count: all.length },
           ]}
         />
+        </div>
       ) : null}
-      <div className="stock-unpicked">
+      <div className="stock-unpicked" data-hint="purchases.send-list">
         {list.map((x) => {
           const { ls, boxes } = pick(x);
           return (

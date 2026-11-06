@@ -156,7 +156,7 @@ export default function StaffReport() {
     },
     {
       key: 'left',
-      header: <span title={`Сколько осталось продать до плана на ${planMonth}: план минус продано с 1 числа`}>Осталось</span>,
+      header: <span data-hint="reports.staff.left" title={`Сколько осталось продать до плана на ${planMonth}: план минус продано с 1 числа`}>Осталось</span>,
       csvHeader: 'Осталось до плана, ₽',
       align: 'right',
       render: (r) => {
@@ -234,6 +234,7 @@ export default function StaffReport() {
         <KpiTile label="Продажи сотрудников" value={fmt.money(revenue)} />
         <KpiTile
           label={`План магазина на ${planMonth}`}
+          hint="reports.staff.plan"
           value={storePlan.pct !== null ? fmt.pct(storePlan.pct, 0) : 'не задан'}
           title={storePlan.plan ? `Продано ${fmt.money(storePlan.fact)} из ${fmt.money(storePlan.plan)}` : undefined}
           extra={storePlan.plan ? <div className="rp-kpi-line">По графику <b>{fmt.pct(storePlan.expectedPct, 0)}</b></div> : undefined}
@@ -250,6 +251,7 @@ export default function StaffReport() {
       <div className="rp-tight">
       <DataTable
         id="rp-staff"
+        hint="reports.staff.table"
         title="Сотрудники"
         rows={rows}
         columns={cols}
@@ -277,6 +279,7 @@ export default function StaffReport() {
         <div className="rp-tight">
         <DataTable
           title="Визиты представителей"
+          hint="reports.staff.visits"
           rows={reps as V[]}
           columns={vcols}
           rowKey={(r) => r.e.id}
@@ -312,7 +315,7 @@ export default function StaffReport() {
           rows={docsFor(pick)}
           extra={
             <>
-              <Card title={`Итоги · ${label}`}>
+              <Card title={`Итоги · ${label}`} hint="reports.staff.pick">
                 <StatList>
                   <StatRow label="Продажи" value={fmt.money(pick.agg.revenue)} />
                   <StatRow label="Чеков и заказов" value={`${fmt.num(docsOf(pick))}${avgOf(pick) ? ` · средний ${fmt.money(avgOf(pick))}` : ''}`} />

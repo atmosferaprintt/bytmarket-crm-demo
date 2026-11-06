@@ -138,16 +138,18 @@ export default function Home() {
         counts={{ attention }}
         actions={
           <>
-            <MoreMenu items={menu} />
+            <span data-hint="money.ops">
+              <MoreMenu items={menu} />
+            </span>
             {perms.accept ? (
-              <Button variant="primary" icon={<HandCoins />} onClick={() => setModal({ kind: 'accept' })}>
+              <Button variant="primary" icon={<HandCoins />} onClick={() => setModal({ kind: 'accept' })} data-hint="money.accept-btn">
                 Принять оплату
               </Button>
             ) : null}
           </>
         }
       />
-      <div className="grid-4">
+      <div className="grid-4" data-hint="money.home.kpis">
         <KpiLink label="Открыть журнал денег" onClick={() => nav('/money')}>
           <Kpi label={`Ждут подтверждения · ${d.pending.length}`} value={fmt.money(sum(d.pending))} />
         </KpiLink>
@@ -165,6 +167,7 @@ export default function Home() {
       <div className="money-home">
         <div className="col-4">
           <Card
+            hint="money.home.chart"
             title="Поступления за 7 дней"
             actions={
               <div className="money-legend">
@@ -201,6 +204,7 @@ export default function Home() {
             </div>
           </Card>
           <Card
+            hint="money.home.tasks"
             title={
               <span className="row">
                 Мои задачи на сегодня
@@ -244,7 +248,7 @@ export default function Home() {
               {tasks.length > 6 ? <div className="list-row t-12 muted money-more-note">Ещё {fmt.count(tasks.length - 6, 'задача', 'задачи', 'задач')} — в «Моих задачах» вверху справа</div> : null}
             </div>
           </Card>
-          <Card title="Поставщикам на этой неделе" actions={<span className="t-16 w-700 num">{fmt.money(suppliersSum)}</span>} flush>
+          <Card hint="money.home.suppliers" title="Поставщикам на этой неделе" actions={<span className="t-16 w-700 num">{fmt.money(suppliersSum)}</span>} flush>
             <div className="list money-home-list">
               {d.supplierDues.length ? (
                 d.supplierDues.slice(0, 6).map(({ s, u, number }) => (
@@ -273,7 +277,7 @@ export default function Home() {
           </Card>
         </div>
         <div className="col-4">
-          <Card title="Переводы ждут подтверждения" actions={<span className="t-16 w-700 num">{fmt.money(sum(d.pending))}</span>} flush>
+          <Card hint="money.home.pending" title="Переводы ждут подтверждения" actions={<span className="t-16 w-700 num">{fmt.money(sum(d.pending))}</span>} flush>
             <div className="list money-home-list">
               {d.pending.length ? (
                 d.pending.slice(0, 6).map((p) => {
@@ -301,7 +305,7 @@ export default function Home() {
               {d.pending.length > 6 ? <MoreLink onClick={() => nav('/money')} text={`Ещё ${d.pending.length - 6} в журнале`} /> : null}
             </div>
           </Card>
-          <Card title="Неопознанные поступления" actions={<span className="t-16 w-700 num">{fmt.money(sum(d.unidentified))}</span>} flush>
+          <Card hint="money.home.unknown" title="Неопознанные поступления" actions={<span className="t-16 w-700 num">{fmt.money(sum(d.unidentified))}</span>} flush>
             <div className="list money-home-list">
               {d.unidentified.length ? (
                 d.unidentified.map((p) => (
@@ -325,7 +329,7 @@ export default function Home() {
               )}
             </div>
           </Card>
-          <Card title="Несданные деньги курьеров" actions={<span className="t-16 w-700 num">{fmt.money(d.couriers.reduce((s, x) => s + x.cc.onHand, 0))}</span>} flush>
+          <Card hint="money.home.couriers" title="Несданные деньги курьеров" actions={<span className="t-16 w-700 num">{fmt.money(d.couriers.reduce((s, x) => s + x.cc.onHand, 0))}</span>} flush>
             <div className="list money-home-list">
               {d.couriers.length ? (
                 d.couriers.map(({ e, cc }) => (
@@ -351,7 +355,7 @@ export default function Home() {
               )}
             </div>
           </Card>
-          <Card title="Просроченные долги" actions={<span className="t-16 w-700 num c-bad">{fmt.money(overdueSum)}</span>} flush>
+          <Card hint="money.home.overdue" title="Просроченные долги" actions={<span className="t-16 w-700 num c-bad">{fmt.money(overdueSum)}</span>} flush>
             <div className="list money-home-list">
               {d.overdue.length ? (
                 d.overdue.slice(0, 5).map(({ c, b }) => (
@@ -374,7 +378,7 @@ export default function Home() {
               {d.overdue.length > 5 ? <MoreLink onClick={() => nav('/money/debts')} text={`Все должники · ${d.overdue.length}`} /> : null}
             </div>
           </Card>
-          <Card title="Расхождения смен кассы за две недели" flush>
+          <Card hint="money.home.shifts" title="Расхождения смен кассы за две недели" flush>
             <div className="list money-home-list">
               {d.shiftIssues.length ? (
                 d.shiftIssues.slice(0, 5).map(({ s, sum: ss, seller }) => (

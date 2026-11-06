@@ -7,7 +7,7 @@ import { Chip, DELIVERY_STATE, PAY_STATE, PICK_STATE, PROMO_STATE, ORDER_STATE, 
 /** Полоса условий клиента: цены, отсрочка, лимит, долг, просрочка и срок оплаты. */
 export function ConditionsStrip({ client, balance, dueLabel }: { client: Client; balance: ClientBalance; dueLabel: ReactNode }) {
   return (
-    <div className="sales-cond">
+    <div className="sales-cond" data-hint="sales.conditions">
       <div>
         <span className="sales-cond-label">Цены</span>
         <span className="sales-cond-value">{client.priceType === 'wholesale' ? 'Опт' : 'Розница'}</span>
@@ -42,7 +42,7 @@ export function LimitBar({ limit, used, current, label = 'Остаток лим�
   const pUsed = Math.min(100, (used / limit) * 100);
   const pCur = Math.max(0, Math.min(100 - pUsed, (current / limit) * 100));
   return (
-    <div className="sales-limit">
+    <div className="sales-limit" data-hint="sales.limit">
       <div className="row">
         <span className="t-13 w-600 ink-2 grow">{label}</span>
         <span className={cx('t-13 w-700 num', left < 0 && 'c-bad')}>{fmt.money(left)}</span>

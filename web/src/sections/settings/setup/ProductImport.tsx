@@ -267,7 +267,7 @@ export function ProductImport() {
             Похожие названия проверил — это разные товары
           </Checkbox>
         ) : null}
-        <Button variant="primary" icon={<FileUp />} disabled={!ready} onClick={runImport} style={{ marginLeft: 'auto' }}>
+        <Button variant="primary" icon={<FileUp />} disabled={!ready} onClick={runImport} style={{ marginLeft: 'auto' }} data-hint="settings.setup.load">
           {plan.length ? `Загрузить ${fmt.count(plan.length, 'строку', 'строки', 'строк')}` : 'Загрузить'}
         </Button>
       </div>
@@ -275,10 +275,11 @@ export function ProductImport() {
 
   return (
     <Card
+      hint="settings.setup.import"
       title="Загрузка товаров из таблицы"
       actions={
         <>
-          <Button variant="ghost" icon={<Wand2 />} onClick={pasteSample}>
+          <Button variant="ghost" icon={<Wand2 />} onClick={pasteSample} data-hint="settings.setup.sample">
             Вставить пример
           </Button>
           <Button icon={<Download />} onClick={downloadTemplate}>
@@ -368,7 +369,7 @@ export function ProductImport() {
 
         {dataRows > 0 ? (
           <>
-            <div className="col-3">
+            <div className="col-3" data-hint="settings.setup.map">
               <div className="set-section-label">Колонки таблицы</div>
               <div className="set-map">
                 {fullMapping.map((f, i) => (
@@ -395,7 +396,7 @@ export function ProductImport() {
               ) : null}
             </div>
 
-            <div className="row-3" style={{ flexWrap: 'wrap' }}>
+            <div className="row-3" style={{ flexWrap: 'wrap' }} data-hint="settings.setup.mode">
               <span className="set-section-label">Режим</span>
               <Segmented
                 ariaLabel="Режим загрузки"
@@ -413,7 +414,7 @@ export function ProductImport() {
                 Загрузка идёт целиком: пока есть ошибка, не загрузится ни одна строка. Нажмите на строку, чтобы исправить, или уберите её через «⋯».
               </Notice>
             ) : null}
-            <div className="set-preview">
+            <div className="set-preview" data-hint="settings.setup.preview">
               <DataTable
                 card={false}
                 rows={rows}

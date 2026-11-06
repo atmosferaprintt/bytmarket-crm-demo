@@ -275,6 +275,7 @@ export default function PickingPage() {
       return (
         <Card
           className="stock-pick-side"
+          hint="stock.pick-order"
           title={
             <EntityLink type="order" id={x.o.id}>
               Заказ № {x.o.number}
@@ -293,19 +294,19 @@ export default function PickingPage() {
             canWork ? (
               <div className="stock-pick-actions" style={{ width: '100%' }}>
                 {x.o.pick === 'none' ? (
-                  <Button variant="primary" icon={<Play />} onClick={() => run('order.pick', { orderId: x.o.id, stage: 'picking' }, `Сборка заказа № ${x.o.number} начата`)}>
+                  <Button variant="primary" icon={<Play />} onClick={() => run('order.pick', { orderId: x.o.id, stage: 'picking' }, `Сборка заказа № ${x.o.number} начата`)} data-hint="stock.pick-start">
                     Начать сборку
                   </Button>
                 ) : x.o.pick === 'picking' ? (
-                  <Button variant="primary" icon={<PackageCheck />} onClick={() => (allDone ? markPicked(x) : setAskPicked(x))}>
+                  <Button variant="primary" icon={<PackageCheck />} onClick={() => (allDone ? markPicked(x) : setAskPicked(x))} data-hint="stock.pick-done">
                     Собрано
                   </Button>
                 ) : x.o.fulfillment === 'pickup' ? (
-                  <Button variant="primary" icon={<PackageCheck />} onClick={() => setHandOver(x)}>
+                  <Button variant="primary" icon={<PackageCheck />} onClick={() => setHandOver(x)} data-hint="stock.pick-handover">
                     Выдать самовывозом
                   </Button>
                 ) : null}
-                <Button icon={<Printer />} onClick={() => printer.print(<PickSheet x={x} today={today} client={clientName(x)} />)}>
+                <Button icon={<Printer />} onClick={() => printer.print(<PickSheet x={x} today={today} client={clientName(x)} />)} data-hint="stock.pick-sheet">
                   Лист сборки
                 </Button>
               </div>
@@ -345,7 +346,7 @@ export default function PickingPage() {
               // отмечать можно и до «Начать сборку»: первая отметка сама начинает сборку
               const locked = picked || !canWork;
               return (
-                <label key={i} className={cx('stock-pick-line', isDone && !picked && 'is-done', locked && 'is-locked')}>
+                <label key={i} className={cx('stock-pick-line', isDone && !picked && 'is-done', locked && 'is-locked')} data-hint={locked ? undefined : 'stock.pick-check'}>
                   <input type="checkbox" checked={isDone} disabled={locked} onChange={() => toggle(l.line.productId)} aria-label="Отобрано" />
                   <ProductPhoto product={l.p} size={40} />
                   <span style={{ minWidth: 0 }}>
@@ -361,7 +362,7 @@ export default function PickingPage() {
             })}
           </div>
           {x.o.pick === 'picked' && x.o.fulfillment === 'delivery' ? (
-            <div style={{ marginTop: 12 }}>
+            <div style={{ marginTop: 12 }} data-hint="stock.pick-courier">
               <DeliveryNote d={x.delivery} courier={courier} />
             </div>
           ) : null}
@@ -384,7 +385,7 @@ export default function PickingPage() {
               Следующий: № {firstOpen.o.number}
             </Button>
           ) : null}
-          <Button icon={<Printer />} onClick={() => printer.print(<Waybill x={handed.x} at={handed.at} />)}>
+          <Button icon={<Printer />} onClick={() => printer.print(<Waybill x={handed.x} at={handed.at} />)} data-hint="stock.pick-waybill">
             Накладная
           </Button>
         </div>
@@ -402,7 +403,7 @@ export default function PickingPage() {
         section="stock"
         counts={stockTabCounts(db)}
         actions={
-          <Button icon={<Printer />} onClick={printToday}>
+          <Button icon={<Printer />} onClick={printToday} data-hint="stock.pick-print-all">
             Листы на сегодня
           </Button>
         }

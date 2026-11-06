@@ -64,33 +64,35 @@ export function ReturnLookup({ onClose }: { onClose: () => void }) {
         </Button>
       }
     >
-      <SearchInput
-        value={q}
-        onChange={(v) => {
-          setQ(v);
-          setHl(0);
-          setError(null);
-        }}
-        placeholder="Номер чека"
-        size="lg"
-        autoFocus
-        onKeyDown={(e) => {
-          if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            setHl((h) => Math.min(list.length - 1, h + 1));
-          } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            setHl((h) => Math.max(0, h - 1));
-          } else if (e.key === 'Enter') {
-            e.preventDefault();
-            const exact = receipts.find((r) => r.kind === 'sale' && String(r.number) === q.replace(/\D/g, ''));
-            go(exact ?? list[hl]);
-          }
-        }}
-      />
+      <div data-hint="register.lookup-search">
+        <SearchInput
+          value={q}
+          onChange={(v) => {
+            setQ(v);
+            setHl(0);
+            setError(null);
+          }}
+          placeholder="Номер чека"
+          size="lg"
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              setHl((h) => Math.min(list.length - 1, h + 1));
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              setHl((h) => Math.max(0, h - 1));
+            } else if (e.key === 'Enter') {
+              e.preventDefault();
+              const exact = receipts.find((r) => r.kind === 'sale' && String(r.number) === q.replace(/\D/g, ''));
+              go(exact ?? list[hl]);
+            }
+          }}
+        />
+      </div>
       {error ? <Notice tone="bad">{error}</Notice> : null}
       {list.length ? (
-        <div className="reg-picker">
+        <div className="reg-picker" data-hint="register.lookup-list">
           {list.map((r, i) => (
             <button key={r.id} type="button" className={cx('reg-picker-row', i === hl && 'is-hl')} onClick={() => go(r)} onMouseEnter={() => setHl(i)}>
               <span className="icon-tile">

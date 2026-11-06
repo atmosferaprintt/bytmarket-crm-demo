@@ -182,7 +182,7 @@ export function CompanyPage() {
                 Отменить изменения
               </Button>
             ) : null}
-            <Button variant="primary" disabled={!dirty} onClick={save}>
+            <Button variant="primary" disabled={!dirty} onClick={save} data-hint="settings.save">
               Сохранить
             </Button>
           </>
@@ -191,7 +191,7 @@ export function CompanyPage() {
 
       <div className="set-company">
         <div className="col-4" style={{ gap: 20 }}>
-          <Card title="Реквизиты" sub="Попадают в счета, накладные и акты сверки">
+          <Card hint="settings.requisites" title="Реквизиты" sub="Попадают в счета, накладные и акты сверки">
             <div className="set-form">
               {COMPANY_FIELDS.map((f) => (
                 <Field key={f.key} label={f.label} error={err(f.key)} className={f.wide ? 'is-wide' : undefined}>
@@ -201,7 +201,7 @@ export function CompanyPage() {
             </div>
           </Card>
 
-          <Card title="Так видит клиент в счёте">
+          <Card hint="settings.doc" title="Так видит клиент в счёте">
             <div className="set-doc">
               <div className="set-doc-title">
                 Счёт на оплату № {docSample.number} от {fmt.date(db.meta.today, { year: true })}
@@ -246,7 +246,7 @@ export function CompanyPage() {
         <Card title="Правила продаж" sub={lastChange ? `Последнее изменение: ${fmt.dateTime(lastChange.at)}${lastAuthor ? `, ${lastAuthor.short}` : ''}` : undefined}>
           <div className="set-rules">
             <div className="set-rule-group">
-              <div className="set-rule-title">Ручная скидка, не больше</div>
+              <div className="set-rule-title" data-hint="settings.limits">Ручная скидка, не больше</div>
               {sellRoles.map((r) => (
                 <RuleRow key={r} label={ROLES[r].name} error={err('limit-' + r)}>
                   <NumField
@@ -262,7 +262,7 @@ export function CompanyPage() {
             </div>
 
             <div className="set-rule-group">
-              <div className="set-rule-title">Наценка и отсрочка</div>
+              <div className="set-rule-title" data-hint="settings.margin">Наценка и отсрочка</div>
               <RuleRow label={<span title="Цена продажи не ниже себестоимости плюс этот процент. Ниже — программа предупредит">Минимальная наценка</span>} error={err('minMarginPct')}>
                 <NumField ariaLabel="Минимальная наценка" value={form.minMarginPct} suffix="%" invalid={!!err('minMarginPct')} onChange={(v) => setForm((f) => ({ ...f, minMarginPct: v }))} />
               </RuleRow>
@@ -288,7 +288,7 @@ export function CompanyPage() {
             </div>
 
             <div className="set-rule-group">
-              <div className="set-rule-title">Доставка</div>
+              <div className="set-rule-title" data-hint="settings.delivery">Доставка</div>
               <div className="set-rule-pair">
                 <Field label="Стоимость для клиента" error={err('deliveryFee')}>
                   <MoneyInput value={form.deliveryFee} onChange={(v) => setForm((f) => ({ ...f, deliveryFee: v }))} invalid={!!err('deliveryFee')} />

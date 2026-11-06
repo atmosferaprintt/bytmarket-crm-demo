@@ -54,6 +54,7 @@ export function CourierPicker({
   district,
   exclude,
   allowNone,
+  hint,
 }: {
   loads: CourierLoad[];
   value: ID | '';
@@ -61,11 +62,13 @@ export function CourierPicker({
   district: string;
   exclude?: ID | null;
   allowNone?: boolean;
+  /** метка для подсказок режима обучения */
+  hint?: string;
 }) {
   const sd = shortDistrict(district);
   const max = Math.max(1, ...loads.map((l) => l.points));
   return (
-    <div className="dl-pick-list" role="radiogroup" aria-label="Курьер">
+    <div className="dl-pick-list" role="radiogroup" aria-label="Курьер" data-hint={hint}>
       {loads.map((l) => {
         const same = l.districts.includes(sd);
         const current = exclude === l.courier.id;
@@ -200,7 +203,7 @@ export function AssignCourierModal({ id, mode, onClose }: { id: ID; mode: 'assig
       }
     >
       <DeliveryLine d={d} />
-      <div className="dl-when">
+      <div className="dl-when" data-hint="delivery.assign-when">
         <Field label="День">
           <DayChoice value={date} onChange={pickDate} c={c} />
         </Field>
@@ -210,7 +213,7 @@ export function AssignCourierModal({ id, mode, onClose }: { id: ID; mode: 'assig
       </div>
       {moved && intervalPassed(d.interval, date, c) ? <Notice tone="info">{`Интервал ${d.interval} сегодня уже прошёл — предложили ближайший`}</Notice> : null}
       <Field label={`Курьер на ${dayLabel(date, c).toLowerCase()}`}>
-        <CourierPicker loads={loads} value={courierId} onChange={setCourierId} district={d.district} exclude={mode === 'reassign' ? d.courierId : null} />
+        <CourierPicker loads={loads} value={courierId} onChange={setCourierId} district={d.district} exclude={mode === 'reassign' ? d.courierId : null} hint="delivery.assign-pick" />
       </Field>
       {error ? <Notice tone="bad">{error}</Notice> : null}
     </Modal>
@@ -312,13 +315,17 @@ export function RescheduleModal({ id, onClose }: { id: ID; onClose: () => void }
     >
       <DeliveryLine d={d} />
       {fail ? (
-        <Notice tone="warn" title={`Не удалось ${fmt.dateTime(fail.at)}: ${fail.reason}`}>
-          {wish ? `Клиент просит ${fmt.date(wish.date)}, ${wish.interval}` : null}
-        </Notice>
+        <div data-hint="delivery.resched-why">
+          <Notice tone="warn" title={`Не удалось ${fmt.dateTime(fail.at)}: ${fail.reason}`}>
+            {wish ? `Клиент просит ${fmt.date(wish.date)}, ${wish.interval}` : null}
+          </Notice>
+        </div>
       ) : wish ? (
-        <Notice tone="info">{`Клиент просит ${fmt.date(wish.date)}, ${wish.interval}`}</Notice>
+        <div data-hint="delivery.resched-why">
+          <Notice tone="info">{`Клиент просит ${fmt.date(wish.date)}, ${wish.interval}`}</Notice>
+        </div>
       ) : null}
-      <div className="dl-when">
+      <div className="dl-when" data-hint="delivery.resched-when">
         <Field label={retry ? 'День' : 'Новый день'}>
           <DayChoice value={date} onChange={pickDate} c={c} />
         </Field>
@@ -341,8 +348,9 @@ export function RescheduleModal({ id, onClose }: { id: ID; onClose: () => void }
         </div>
       ) : null}
       <Field label={`Курьер на ${dayLabel(date, c).toLowerCase()}`}>
-        <CourierPicker loads={loads} value={courierId} onChange={setCourierId} district={d.district} allowNone />
+        <CourierPicker loads={loads} value={courierId} onChange={setCourierId} district={d.district} allowNone hint="delivery.resched-courier" />
       </Field>
+      <div data-hint="delivery.resched-reason">
       <Field label={retry ? 'Причина' : 'Причина переноса'}>
         <Segmented
           ariaLabel="Причина"
@@ -354,6 +362,7 @@ export function RescheduleModal({ id, onClose }: { id: ID; onClose: () => void }
           options={RESCHEDULE_REASONS.map((r) => ({ value: r, label: r }))}
         />
       </Field>
+      </div>
       {reason ? (
         <Field label={reason === 'Другое' ? 'Что случилось' : 'Комментарий'}>
           <Textarea rows={2} value={comment} placeholder={reason === 'Другое' ? 'Попадёт в историю заказа' : 'Если нужно'} onChange={(e) => { setComment(e.target.value); setError(null); }} />
@@ -407,9 +416,11 @@ export function ReturnModal({ id, onClose }: { id: ID; onClose: () => void }) {
           {fmt.dateTime(fail.at)} · {fail.reason}
         </Notice>
       ) : null}
+      <div data-hint="delivery.return-info">
       <Notice tone="info">
         Заказ {order ? `№ ${order.number}` : ''} отменится. {fmt.count(lines.length, 'позиция', 'позиции', 'позиций')}, {fmt.qty(pcs)} уйдут на проверку в карантин склада.
       </Notice>
+      </div>
       <div className="dl-ret-list">
         {lines.slice(0, 8).map((l) => (
           <div key={l.productId} className="dl-ret-row">
@@ -505,7 +516,7 @@ export function BulkAssignModal({ ids, day, onClose }: { ids: ID[]; day: ISODate
         </>
       }
     >
-      <div className="dl-bulk-loads">
+      <div className="dl-bulk-loads" data-hint="delivery.bulk-loads">
         {loadsNow.map((l) => (
           <div key={l.courier.id} className="dl-bulk-load">
             <Avatar name={l.courier.name} size="sm" />
@@ -531,12 +542,13 @@ export function BulkAssignModal({ ids, day, onClose }: { ids: ID[]; day: ISODate
                     {d.collect > 0 ? ` · ${fmt.money(d.collect)}` : ''}
                   </span>
                 </span>
-                <span className="dl-bulk-iv">
+                <span className="dl-bulk-iv" data-hint="delivery.bulk-iv">
                   <IntervalSelect value={ivs[d.id] ?? d.interval} onChange={(v) => setIvs((x) => ({ ...x, [d.id]: v }))} day={target} c={c} current={d.interval} />
                 </span>
                 <Select
                   size="sm"
                   className="dl-bulk-select"
+                  data-hint="delivery.bulk-courier"
                   aria-label={`Курьер для доставки № ${d.number}`}
                   value={picks[d.id] ?? ''}
                   onChange={(e) => setPicks((p) => ({ ...p, [d.id]: e.target.value }))}
@@ -604,7 +616,7 @@ export function HandInModal({ courierId, onClose }: { courierId: ID; onClose: ()
     >
       {list.length ? (
         <>
-          <div className="dl-ret-list">
+          <div className="dl-ret-list" data-hint="delivery.handin-list">
             {list.map((d) => (
               <div key={d.id} className="dl-ret-row">
                 <span className="dl-line-no">№ {d.number}</span>
@@ -618,6 +630,7 @@ export function HandInModal({ courierId, onClose }: { courierId: ID; onClose: ()
               <span className="num w-700 t-16">{fmt.money(sum)}</span>
             </div>
           </div>
+          <div data-hint="delivery.handin-counted">
           <Field label="Пересчитано">
             <MoneyInput
               size="lg"
@@ -629,6 +642,7 @@ export function HandInModal({ courierId, onClose }: { courierId: ID; onClose: ()
               }}
             />
           </Field>
+          </div>
           {short > 0 ? (
             <>
               <Notice tone="warn" title={`Недостача ${fmt.money(short)} запишется на курьера`}>

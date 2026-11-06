@@ -110,6 +110,7 @@ export function AuditView({ onOpenEmployee }: { onOpenEmployee: (id: ID) => void
     <div className="set-audit">
       <DataTable
         id="settings-audit"
+        hint="settings.team.audit"
         rows={rows}
         columns={columns}
         rowKey={(a) => keyOf.get(a) ?? a.id}

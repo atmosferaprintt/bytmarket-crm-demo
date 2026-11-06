@@ -90,7 +90,7 @@ function columnsFor(mode: CatalogMode, narrow: boolean): Column<CatalogRow>[] {
   const packs: Column<CatalogRow> = { key: 'packs', header: 'Упаковки', className: 'prd-col-nowrap', render: (r) => <span className="muted t-12">{r.packs}</span>, csv: (r) => r.packs };
   const avail: Column<CatalogRow> = {
     key: 'avail',
-    header: 'Доступно',
+    header: <span data-hint="products.col-stock">Доступно</span>,
     align: 'right',
     render: (r) => (
       <span
@@ -131,7 +131,7 @@ function columnsFor(mode: CatalogMode, narrow: boolean): Column<CatalogRow>[] {
       { key: 'promo', header: 'Акция', className: 'prd-col-nowrap', render: (r) => (r.retail.promo ? <PromoChip promo={r.retail.promo} short /> : null), sort: (r) => (r.retail.promo ? 0 : 1), csv: (r) => r.retail.promo?.name ?? '' },
       {
         key: 'shop',
-        header: 'В магазине',
+        header: <span data-hint="products.col-stock">В магазине</span>,
         align: 'right',
         render: (r) => <Qty v={r.stock.shop.available} strong />,
         sort: (r) => r.stock.shop.available,
@@ -165,7 +165,7 @@ function columnsFor(mode: CatalogMode, narrow: boolean): Column<CatalogRow>[] {
     { key: 'retail', header: 'Розница', align: 'right', render: (r) => <span className="muted">{fmt.price(r.retail.price)}</span>, sort: (r) => r.retail.price, csv: (r) => r.retail.price },
     {
       key: 'whAvail',
-      header: 'Можно заказать',
+      header: <span data-hint="products.col-stock">Можно заказать</span>,
       align: 'right',
       className: 'prd-col-nowrap',
       render: (r) => (
@@ -223,7 +223,7 @@ export default function Catalog() {
         counts={{ catalog: count, pricing: promoCount }}
         actions={
           can('editCatalog') ? (
-            <Button variant="primary" icon={<Plus />} onClick={() => setAdding(true)}>
+            <Button variant="primary" icon={<Plus />} onClick={() => setAdding(true)} data-hint="products.add">
               Добавить товар
             </Button>
           ) : null
@@ -254,7 +254,7 @@ export default function Catalog() {
         }
         toolbar={
           <>
-            <Select className="prd-filter-select" aria-label="Категория" placeholder="Все категории" options={catOptions} value={cat} onChange={(e) => setCat(e.target.value)} />
+            <Select className="prd-filter-select" aria-label="Категория" placeholder="Все категории" options={catOptions} value={cat} onChange={(e) => setCat(e.target.value)} data-hint="products.filter-cat" />
             <Select className="prd-filter-select" aria-label="Бренд" placeholder="Все бренды" options={brandOptions} value={brand} onChange={(e) => setBrand(e.target.value)} />
             {mode === 'full' ? (
               <Select className="prd-filter-select" aria-label="Поставщик" placeholder="Все поставщики" options={supplierOptions} value={supplier} onChange={(e) => setSupplier(e.target.value)} />

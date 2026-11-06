@@ -177,7 +177,7 @@ export default function ChatsPage() {
             <Chip tone="green" icon={<MessageCircle />}>
               WhatsApp {fmt.phone(wa.phone)}
             </Chip>
-            {role === 'owner' ? <Button onClick={() => navigate('/settings/integrations')}>Настройки WhatsApp</Button> : null}
+            {role === 'owner' ? <Button onClick={() => navigate('/settings/integrations')} data-hint="chats.settings">Настройки WhatsApp</Button> : null}
           </>
         }
       />
@@ -220,7 +220,7 @@ export default function ChatsPage() {
                     const last = lastOf(c);
                     const staff = last?.from === 'staff';
                     return (
-                      <button key={c.id} type="button" className={cx('sales-chat-item', c.clientId === selClient && 'is-active')} onClick={() => pick(c.clientId)}>
+                      <button key={c.id} type="button" className={cx('sales-chat-item', c.clientId === selClient && 'is-active')} onClick={() => pick(c.clientId)} data-hint="chats.item">
                         <Avatar name={cl?.name ?? '?'} />
                         <span className="grow">
                           <span className="row" style={{ gap: 6 }}>
@@ -265,7 +265,7 @@ export default function ChatsPage() {
               headAction={
                 phone && canWrite ? (
                   // на телефоне «Создать заявку» — в шапке диалога: не закрывает поле ввода и «Отправить»
-                  <Button variant="primary" icon={<Plus />} onClick={() => setCreating({})} className="sales-conv-order" aria-label={can('createOrder') ? 'Создать заказ из чата' : 'Создать заявку из чата'}>
+                  <Button variant="primary" icon={<Plus />} onClick={() => setCreating({})} className="sales-conv-order" data-hint="chats.phone-order" aria-label={can('createOrder') ? 'Создать заказ из чата' : 'Создать заявку из чата'}>
                     {can('createOrder') ? 'Заказ' : 'Заявка'}
                   </Button>
                 ) : undefined
@@ -388,6 +388,8 @@ function Conversation({
   };
 
   let lastDay = '';
+  // подсказка режима обучения — у последнего автосообщения: оно обычно на виду
+  const lastAuto = messages.map((x) => !!x.auto).lastIndexOf(true);
   return (
     <section className="card sales-conv">
       <div className="sales-conv-head">
@@ -423,7 +425,7 @@ function Conversation({
           return (
             <div key={i} className="col" style={{ gap: 0 }}>
               {sep ? <div className="sales-day-sep">{capitalize(fmt.relDate(day, today))}</div> : null}
-              <div className={cx('sales-msg', staff ? 'is-staff' : 'is-client', m.auto && 'is-auto')}>
+              <div className={cx('sales-msg', staff ? 'is-staff' : 'is-client', m.auto && 'is-auto')} data-hint={i === lastAuto ? 'chats.auto' : undefined}>
                 {m.auto ? (
                   <div className="wa-auto-label">
                     <Zap size={12} />
@@ -438,7 +440,7 @@ function Conversation({
                   </EntityLink>
                 ) : null}
                 {p && onParse ? (
-                  <button type="button" className="wa-parse" onClick={() => onParse(p)}>
+                  <button type="button" className="wa-parse" onClick={() => onParse(p)} data-hint="chats.parse">
                     <ListPlus size={16} />
                     <span>
                       Разобрать в заказ · {fmt.count(p.items.length, 'товар', 'товара', 'товаров')}
@@ -458,7 +460,7 @@ function Conversation({
       </div>
       {canWrite ? (
         <div className="sales-composer">
-          <div className="sales-quick">
+          <div className="sales-quick" data-hint="chats.quick">
             {QUICK.map((t) => (
               <button key={t} type="button" className="chip sales-chip-btn" onClick={() => setText(t)}>
                 {t}
@@ -555,7 +557,7 @@ function ClientSide({ clientId, canOrder, orderLabel, onOrder, onClient }: { cli
           )}
         </div>
       </div>
-      <div className="sales-chat-side-foot">
+      <div className="sales-chat-side-foot" data-hint="chats.side">
         {canOrder ? (
           <Button variant="primary" block icon={<Plus />} onClick={onOrder}>
             {orderLabel}
